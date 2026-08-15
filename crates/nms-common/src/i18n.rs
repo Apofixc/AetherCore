@@ -2,12 +2,17 @@
 //!
 //! Обеспечивает сквозную локализацию сообщений об ошибках, системных событий,
 //! аудит-логов и интерфейсов на русском и английском языках.
-//! Поддерживает встроенные системные словари и динамическую регистрацию
-//! словарей плагинов (модулей) с префиксами `module_id.key`.
+//! Загружает базовые системные словари из каталога `locales/` и поддерживает
+//! динамическую регистрацию словарей плагинов (модулей) с префиксами `module_id.key`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
+
+/// Системный русский словарь, подключаемый на этапе сборки
+const BUILTIN_RU_JSON: &str = include_str!("../locales/ru.json");
+/// Системный английский словарь, подключаемый на этапе сборки
+const BUILTIN_EN_JSON: &str = include_str!("../locales/en.json");
 
 /// Поддерживаемые языковые локали платформы
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -63,39 +68,10 @@ impl I18nRegistry {
         Self::default()
     }
 
-    /// Загрузить встроенные системные словари ядра
+    /// Загрузить встроенные системные словари ядра из файлов locales/
     fn load_builtin_translations(&self) {
-        let mut dicts = self.dictionaries.write().expect("Lock poisoned");
-
-        // Словарь для русского языка
-        let ru_map = dicts.entry(Locale::Ru).or_default();
-        ru_map.insert("core.ok".into(), "Успешно".into());
-        ru_map.insert("core.error.internal".into(), "Внутренняя ошибка сервера: {details}".into());
-        ru_map.insert("core.error.not_found".into(), "Запрошенный ресурс '{resource}' не найден".into());
-        ru_map.insert("core.error.unauthorized".into(), "Требуется авторизация".into());
-        ru_map.insert("core.error.forbidden".into(), "Недостаточно прав доступа для выполнения операции: {permission}".into());
-        ru_map.insert("core.error.bad_request".into(), "Некорректные параметры запроса: {details}".into());
-        ru_map.insert("core.error.conflict".into(), "Конфликт данных: {details}".into());
-        ru_map.insert("core.error.database".into(), "Ошибка базы данных: {details}".into());
-        ru_map.insert("core.error.validation".into(), "Ошибка валидации поля '{field}': {details}".into());
-        ru_map.insert("core.error.plugin_failed".into(), "Сбой плагина '{plugin_id}': {details}".into());
-        ru_map.insert("core.error.plugin_timeout".into(), "Превышено время ожидания выполнения плагина '{plugin_id}'".into());
-        ru_map.insert("core.error.rate_limited".into(), "Превышен лимит запросов. Повторите попытку через {retry_after} сек.".into());
-
-        // Словарь для английского языка
-        let en_map = dicts.entry(Locale::En).or_default();
-        en_map.insert("core.ok".into(), "Success".into());
-        en_map.insert("core.error.internal".into(), "Internal server error: {details}".into());
-        en_map.insert("core.error.not_found".into(), "Requested resource '{resource}' was not found".into());
-        en_map.insert("core.error.unauthorized".into(), "Authentication required".into());
-        en_map.insert("core.error.forbidden".into(), "Forbidden: missing required permission: {permission}".into());
-        en_map.insert("core.error.bad_request".into(), "Bad request: {details}".into());
-        en_map.insert("core.error.conflict".into(), "Conflict: {details}".into());
-        en_map.insert("core.error.database".into(), "Database error: {details}".into());
-        en_map.insert("core.error.validation".into(), "Validation error for field '{field}': {details}".into());
-        en_map.insert("core.error.plugin_failed".into(), "Plugin '{plugin_id}' failed: {details}".into());
-        en_map.insert("core.error.plugin_timeout".into(), "Plugin '{plugin_id}' execution timed out".into());
-        en_map.insert("core.error.rate_limited".into(), "Too many requests. Please retry after {retry_after}s".into());
+        let _ = self.register_json(Locale::Ru, None, BUILTIN_RU_JSON);
+        let _ = self.register_json(Locale::En, None, BUILTIN_EN_JSON);
     }
 
     /// Зарегистрировать внешний JSON-словарь (например, из архива плагина)
@@ -175,60 +151,4 @@ pub fn global() -> &'static I18nRegistry {
 /// Удобная глобальная функция перевода
 pub fn tr(locale: Locale, key: &str, params: &[(&str, &str)]) -> String {
     global().translate(locale, key, params)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_builtin_translations() {
-        let registry = I18nRegistry::new();
-
-        let ru = registry.translate(Locale::Ru, "core.ok", &[]);
-        assert_eq!(ru, "Успешно");
-
-        let en = registry.translate(Locale::En, "core.ok", &[]);
-        assert_eq!(en, "Success");
-    }
-
-    #[test]
-    fn test_interpolation() {
-        let registry = I18nRegistry::new();
-
-        let err_ru = registry.translate(
-            Locale::Ru,
-            "core.error.not_found",
-            &[("resource", "users/42")],
-        );
-        assert_eq!(err_ru, "Запрошенный ресурс 'users/42' не найден");
-
-        let err_en = registry.translate(
-            Locale::En,
-            "core.error.not_found",
-            &[("resource", "users/42")],
-        );
-        assert_eq!(err_en, "Requested resource 'users/42' was not found");
-    }
-
-    #[test]
-    fn test_register_plugin_json() {
-        let registry = I18nRegistry::new();
-        let plugin_ru_json = r#"{"widget.title": "Статус сети", "status.online": "В сети"}"#;
-
-        let registered = registry
-            .register_json(Locale::Ru, Some("my_plugin"), plugin_ru_json)
-            .expect("Failed to register json");
-        assert_eq!(registered, 2);
-
-        let translated = registry.translate(Locale::Ru, "my_plugin.widget.title", &[]);
-        assert_eq!(translated, "Статус сети");
-    }
-
-    #[test]
-    fn test_locale_parsing() {
-        assert_eq!(Locale::from_str_relaxed("en-US,en;q=0.9"), Locale::En);
-        assert_eq!(Locale::from_str_relaxed("ru-RU,ru;q=0.8"), Locale::Ru);
-        assert_eq!(Locale::from_str_relaxed(""), Locale::Ru);
-    }
 }

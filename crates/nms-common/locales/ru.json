@@ -1,0 +1,14 @@
+{
+  "core.ok": "Успешно",
+  "core.error.internal": "Внутренняя ошибка сервера: {details}",
+  "core.error.not_found": "Запрошенный ресурс '{resource}' не найден",
+  "core.error.unauthorized": "Требуется авторизация",
+  "core.error.forbidden": "Недостаточно прав доступа для выполнения операции: {permission}",
+  "core.error.bad_request": "Некорректные параметры запроса: {details}",
+  "core.error.conflict": "Конфликт данных: {details}",
+  "core.error.database": "Ошибка базы данных: {details}",
+  "core.error.validation": "Ошибка валидации поля '{field}': {details}",
+  "core.error.plugin_failed": "Сбой плагина '{plugin_id}': {details}",
+  "core.error.plugin_timeout": "Превышено время ожидания выполнения плагина '{plugin_id}'",
+  "core.error.rate_limited": "Превышен лимит запросов. Повторите попытку через {retry_after} сек."
+}

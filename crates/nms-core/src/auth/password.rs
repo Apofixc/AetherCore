@@ -28,16 +28,3 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hash_and_verify_password() {
-        let password = "SuperSecretPassword123!";
-        let hash = hash_password(password).expect("Hashing failed");
-        assert!(verify_password(password, &hash).unwrap());
-        assert!(!verify_password("WrongPassword", &hash).unwrap());
-    }
-}

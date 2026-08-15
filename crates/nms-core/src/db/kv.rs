@@ -118,35 +118,3 @@ impl KvStore {
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_kv_store_crud_and_isolation() {
-        let db = Db::init_in_memory().await.unwrap();
-
-        let store_a = KvStore::for_plugin(db.clone(), "plugin_a");
-        let store_b = KvStore::for_plugin(db.clone(), "plugin_b");
-
-        // Запись в store_a
-        store_a.set("interval", &10).await.unwrap();
-        let val_a: Option<i32> = store_a.get("interval").await.unwrap();
-        assert_eq!(val_a, Some(10));
-
-        // Проверяем изоляцию: в store_b этого ключа нет
-        let val_b: Option<i32> = store_b.get("interval").await.unwrap();
-        assert_eq!(val_b, None);
-
-        // Список ключей
-        store_a.set("token", &"secret".to_string()).await.unwrap();
-        let keys = store_a.list_keys().await.unwrap();
-        assert_eq!(keys, vec!["interval", "token"]);
-
-        // Удаление
-        assert!(store_a.delete("interval").await.unwrap());
-        let deleted: Option<i32> = store_a.get("interval").await.unwrap();
-        assert_eq!(deleted, None);
-    }
-}

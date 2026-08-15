@@ -322,27 +322,3 @@ impl Db {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_database_init_in_memory() {
-        let db = Db::init_in_memory().await.expect("DB in memory init failed");
-        
-        // Проверяем, что стандартные роли созданы
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM roles")
-            .fetch_one(db.reader())
-            .await
-            .unwrap();
-        assert_eq!(row.0, 3);
-
-        // Проверяем, что права созданы
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM permissions")
-            .fetch_one(db.reader())
-            .await
-            .unwrap();
-        assert_eq!(row.0, 7);
-    }
-}

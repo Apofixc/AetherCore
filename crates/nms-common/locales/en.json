@@ -1,0 +1,14 @@
+{
+  "core.ok": "Success",
+  "core.error.internal": "Internal server error: {details}",
+  "core.error.not_found": "Requested resource '{resource}' was not found",
+  "core.error.unauthorized": "Authentication required",
+  "core.error.forbidden": "Forbidden: missing required permission: {permission}",
+  "core.error.bad_request": "Bad request: {details}",
+  "core.error.conflict": "Conflict: {details}",
+  "core.error.database": "Database error: {details}",
+  "core.error.validation": "Validation error for field '{field}': {details}",
+  "core.error.plugin_failed": "Plugin '{plugin_id}' failed: {details}",
+  "core.error.plugin_timeout": "Plugin '{plugin_id}' execution timed out",
+  "core.error.rate_limited": "Too many requests. Please retry after {retry_after}s"
+}
