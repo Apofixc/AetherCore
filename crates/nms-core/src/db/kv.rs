@@ -9,6 +9,9 @@ use nms_common::error::{AppError, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Сервис изолированного Key-Value хранилища
+///
+/// Все операции автоматически привязаны к заданному пространству имен (`namespace`),
+/// что предотвращает случайную перезапись данных между плагинами и системными настройками.
 #[derive(Debug, Clone)]
 pub struct KvStore {
     db: Db,
@@ -16,7 +19,11 @@ pub struct KvStore {
 }
 
 impl KvStore {
-    /// Создать KV-хранилище для указанного пространства имен
+    /// Создать экземпляр KV-хранилища для указанного пространства имен
+    ///
+    /// # Аргументы
+    /// * `db` — Экземпляр базы данных SQLite ([`Db`]).
+    /// * `namespace` — Идентификатор пространства имен (например, `"system"` или `"module:ping"`).
     pub fn new(db: Db, namespace: impl Into<String>) -> Self {
         Self {
             db,
@@ -24,17 +31,50 @@ impl KvStore {
         }
     }
 
-    /// Создать KV-хранилище для системных настроек ядра
+    /// Создать KV-хранилище для глобальных системных настроек ядра (`"system"`)
+    ///
+    /// # Аргументы
+    /// * `db` — Экземпляр базы данных SQLite ([`Db`]).
     pub fn system(db: Db) -> Self {
         Self::new(db, "system")
     }
 
-    /// Создать KV-хранилище для конкретного плагина
+    /// Создать изолированное KV-хранилище для плагина (`"module:{plugin_id}"`)
+    ///
+    /// # Аргументы
+    /// * `db` — Экземпляр базы данных SQLite ([`Db`]).
+    /// * `plugin_id` — Уникальный строковый идентификатор плагина (например, `"snmp-collector"`).
     pub fn for_plugin(db: Db, plugin_id: &str) -> Self {
         Self::new(db, format!("module:{}", plugin_id))
     }
 
-    /// Получить типизированное значение по ключу
+    /// Получить десериализованное значение по ключу
+    ///
+    /// # Аргументы
+    /// * `key` — Ключ в рамках текущего пространства имен.
+    ///
+    /// # Возвращаемое значение
+    /// - `Ok(Some(T))` — если ключ найден и успешно десериализован из JSON.
+    /// - `Ok(None)` — если ключ отсутствует в базе данных.
+    ///
+    /// # Ошибки
+    /// - [`AppError::Database`](nms_common::error::AppError) — при ошибке выполнения SQL-запроса.
+    /// - [`AppError::Validation`](nms_common::error::AppError) — если JSON-строку невозможно десериализовать в тип `T`.
+    ///
+    /// # Примеры
+    /// ```rust,no_run
+    /// use nms_core::db::{Db, kv::KvStore};
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Config { timeout_ms: u64 }
+    ///
+    /// # async fn test(db: Db) -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = KvStore::system(db);
+    /// let cfg: Option<Config> = store.get("network_config").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT value_json FROM kv_store WHERE namespace = ? AND key = ?",
@@ -58,7 +98,17 @@ impl KvStore {
         }
     }
 
-    /// Сохранить значение по ключу (UPSERT)
+    /// Сохранить сериализуемое значение по ключу (UPSERT)
+    ///
+    /// Если ключ уже существует в текущем `namespace`, его значение и поле `updated_at` обновляются.
+    ///
+    /// # Аргументы
+    /// * `key` — Ключ в рамках текущего пространства имен.
+    /// * `value` — Сериализуемый в JSON объект или примитив.
+    ///
+    /// # Ошибки
+    /// - [`AppError::Validation`](nms_common::error::AppError) — при ошибке сериализации объекта в JSON.
+    /// - [`AppError::Database`](nms_common::error::AppError) — при ошибке записи в базу данных.
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let json_str = serde_json::to_string(value).map_err(|e| {
             AppError::validation(key, format!("JSON serialization failed: {}", e))
@@ -88,7 +138,16 @@ impl KvStore {
         Ok(())
     }
 
-    /// Удалить значение по ключу
+    /// Удалить запись по ключу
+    ///
+    /// # Аргументы
+    /// * `key` — Ключ для удаления.
+    ///
+    /// # Возвращаемое значение
+    /// Возвращает `Ok(true)`, если запись существовала и была удалена, иначе `Ok(false)`.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса к БД.
     pub async fn delete(&self, key: &str) -> Result<bool> {
         let res = sqlx::query("DELETE FROM kv_store WHERE namespace = ? AND key = ?")
             .bind(&self.namespace)
@@ -102,7 +161,13 @@ impl KvStore {
         Ok(res.rows_affected() > 0)
     }
 
-    /// Получить все ключи в текущем пространстве имен
+    /// Получить отсортированный список всех ключей в текущем пространстве имен
+    ///
+    /// # Возвращаемое значение
+    /// Вектор строковых ключей в алфавитном порядке.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения запроса.
     pub async fn list_keys(&self) -> Result<Vec<String>> {
         let rows: Vec<(String,)> =
             sqlx::query_as("SELECT key FROM kv_store WHERE namespace = ? ORDER BY key ASC")

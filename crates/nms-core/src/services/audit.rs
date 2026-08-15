@@ -1,21 +1,33 @@
 //! # Сервис журнала аудита действий (AuditService)
+//!
+//! Фиксирует все важные действия пользователей и системных процессов (вход, создание/удаление устройств,
+//! смена конфигураций) для соответствия требованиям безопасности.
 
 use crate::db::Db;
 use chrono::{DateTime, Utc};
 use nms_common::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 
-/// Запись журнала аудита
+/// Запись журнала аудита безопасности и системных действий
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLogRecord {
+    /// Уникальный автоинкрементный идентификатор записи
     pub id: i64,
+    /// ID пользователя, совершившего действие (если применимо)
     pub user_id: Option<String>,
+    /// Имя пользователя
     pub username: Option<String>,
+    /// Выполненное действие (например, `"user.login"`, `"device.create"`)
     pub action: String,
+    /// Целевой ресурс (например, `"auth"`, `"device:192.168.1.1"`)
     pub resource: String,
+    /// Статус операции (`"success"`, `"failed"`)
     pub status: String,
+    /// Дополнительные детали в свободном формате или JSON
     pub details: Option<String>,
+    /// IP-адрес источника запроса
     pub ip_address: Option<String>,
+    /// Временная метка фиксации события (UTC)
     pub created_at: DateTime<Utc>,
 }
 
@@ -27,11 +39,29 @@ pub struct AuditService {
 
 impl AuditService {
     /// Создать новый экземпляр AuditService
+    ///
+    /// # Аргументы
+    /// * `db` — Экземпляр базы данных платформы ([`Db`]).
     pub fn new(db: Db) -> Self {
         Self { db }
     }
 
     /// Записать действие пользователя или системы в журнал аудита
+    ///
+    /// # Аргументы
+    /// * `user_id` — Опциональный идентификатор пользователя.
+    /// * `username` — Опциональное имя пользователя.
+    /// * `action` — Идентификатор действия (например, `"auth.login"`).
+    /// * `resource` — Затронутый ресурс (например, `"system"`).
+    /// * `status` — Результат выполнения (`"success"`, `"forbidden"` и т.д.).
+    /// * `details` — Опциональное подробное описание или контекст.
+    /// * `ip_address` — IP-адрес клиента.
+    ///
+    /// # Возвращаемое значение
+    /// ID добавленной записи аудита.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое записи в SQLite.
     pub async fn log(
         &self,
         user_id: Option<&str>,

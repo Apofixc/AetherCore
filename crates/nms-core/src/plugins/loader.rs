@@ -13,25 +13,39 @@ use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-/// Представление загруженного в память пакета плагина
+/// Пакет плагина, загруженный в оперативную память
+///
+/// Содержит все компоненты модуля:
+/// - [`ModuleManifest`] — метаданные, зависимости, точки интеграции и JSON-схему настроек.
+/// - Байткод WebAssembly для бэкенда (`backend.wasm`).
+/// - Цифровую подпись Ed25519 (`signature.bin`).
+/// - Карту словарей локализации (`locales/<lang>.json`).
+/// - Встроенные статические файлы веб-интерфейса (`frontend/*`).
 #[derive(Debug, Clone)]
 pub struct PluginPackage {
-    /// Манифест плагина
+    /// Разобранный манифест плагина
     pub manifest: ModuleManifest,
-    /// Сырой YAML манифеста для верификации подписи
+    /// Сырой YAML манифеста для криптографической верификации подписи
     pub manifest_raw: Vec<u8>,
-    /// WASM-байткод (backend.wasm)
+    /// Опциональный WASM-байткод (backend.wasm)
     pub backend_wasm: Option<Vec<u8>>,
-    /// Цифровая подпись пакета (signature.bin)
+    /// Опциональная цифровая подпись пакета (signature.bin, 64 байта)
     pub signature: Option<Vec<u8>>,
     /// Локали плагина: "ru" -> JSON строка, "en" -> JSON строка
     pub locales: HashMap<String, String>,
-    /// Файлы фронтенда (относительный путь -> байты)
+    /// Файлы фронтенда (относительный путь -> бинарное содержимое)
     pub frontend_assets: HashMap<String, Vec<u8>>,
 }
 
 impl PluginPackage {
-    /// Загрузить пакет плагина из ZIP архива (.nms-plugin) напрямую в память
+    /// Загрузить пакет плагина из ZIP архива (`.nms-plugin`) напрямую в оперативную память (Zero-Unpack)
+    ///
+    /// # Аргументы
+    /// * `bytes` — Байтовый срез содержимого ZIP-файла.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Validation`](nms_common::error::AppError), если архив поврежден,
+    /// отсутствует обязательный файл `manifest.yaml` или манифест содержит синтаксические ошибки.
     pub fn from_zip_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = Cursor::new(bytes);
         let mut zip = ZipArchive::new(reader).map_err(|e| {

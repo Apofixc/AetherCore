@@ -1,34 +1,45 @@
 //! # Системный сервис рассылки уведомлений и алертов (NotifyService)
+//!
+//! Обеспечивает отправку тревожных сообщений, уведомлений о сбоях сетевых устройств
+//! в системный журнал и во внешние системы через Webhooks (например, Telegram, Slack, Mattermost).
 
 use nms_common::error::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-/// Категория важности уведомления
+/// Категория важности аварийного уведомления
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertSeverity {
+    /// Информационное сообщение (нормальное функционирование, восстановление линка)
     Info,
+    /// Предупреждение (деградация сервиса, высокий RTT, потеря части пакетов)
     Warning,
+    /// Критическая авария (устройство недоступно, отказ сервиса)
     Critical,
 }
 
-/// Модель системного уведомления
+/// Модель системного уведомления/алерта
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertMessage {
+    /// Заголовок уведомления
     pub title: String,
+    /// Подробный текст оповещения
     pub body: String,
+    /// Уровень важности события ([`AlertSeverity`])
     pub severity: AlertSeverity,
+    /// Источник оповещения (например, `"plugin.snmp"` или `"system.ping"`)
     pub source: String,
 }
 
-/// Сервис отправки уведомлений
+/// Сервис отправки и маршрутизации уведомлений
 #[derive(Debug, Clone, Default)]
 pub struct NotifyService {
     http_client: reqwest::Client,
 }
 
 impl NotifyService {
+    /// Создать новый экземпляр NotifyService с настроенным HTTP-клиентом
     pub fn new() -> Self {
         Self {
             http_client: reqwest::Client::builder()
@@ -38,7 +49,11 @@ impl NotifyService {
         }
     }
 
-    /// Отправить уведомление через системный лог и внешние вебхуки
+    /// Отправить уведомление через системный журнал и внешний Webhook
+    ///
+    /// # Аргументы
+    /// * `alert` — Сообщение оповещения ([`AlertMessage`]).
+    /// * `webhook_url` — Опциональный HTTP/HTTPS URL вебхука для доставки алерта.
     pub async fn send_alert(&self, alert: AlertMessage, webhook_url: Option<&str>) -> Result<()> {
         match alert.severity {
             AlertSeverity::Info => {

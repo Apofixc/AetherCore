@@ -16,7 +16,11 @@ const BROADCAST_CAPACITY: usize = 1024;
 /// Размер буфера персистентной очереди MPSC
 const JOURNAL_QUEUE_CAPACITY: usize = 4096;
 
-/// Экземпляр гибридной шины событий
+/// Экземпляр гибридной шины событий платформы
+///
+/// Предоставляет двойной контур маршрутизации:
+/// - **Broadcast канал**: легковесная pub/sub модель для live-подписчиков (WebSockets, SSE, real-time UI).
+/// - **Reliable журнал**: асинхронный MPSC воркер, персистентно сохраняющий важные события в SQLite WAL.
 #[derive(Debug, Clone)]
 pub struct EventBus {
     /// Broadcast sender для передачи событий в реальном времени
@@ -28,7 +32,23 @@ pub struct EventBus {
 }
 
 impl EventBus {
-    /// Инициализировать шину событий и запустить фоновый воркер журнала
+    /// Инициализировать шину событий и запустить фоновый воркер персистентного журнала
+    ///
+    /// Создает broadcast канал с буфером на 1024 сообщения и MPSC очередь на 4096 записей.
+    /// Автоматически запускает асинхронную задачу Tokio для фонового сохранения событий в базу данных.
+    ///
+    /// # Аргументы
+    /// * `db` — Пул подключений к базе данных SQLite ([`Db`]).
+    ///
+    /// # Примеры
+    /// ```rust,no_run
+    /// use nms_core::bus::EventBus;
+    /// use nms_core::db::Db;
+    ///
+    /// # async fn run(db: Db) {
+    /// let event_bus = EventBus::new(db);
+    /// # }
+    /// ```
     pub fn new(db: Db) -> Self {
         let (broadcast_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let (journal_tx, mut journal_rx) = mpsc::channel(JOURNAL_QUEUE_CAPACITY);
@@ -58,6 +78,17 @@ impl EventBus {
     }
 
     /// Опубликовать событие в шину
+    ///
+    /// Событие безусловно отправляется в live broadcast-канал.
+    /// Если `event.event_type == EventType::Reliable`, оно также помещается в очередь
+    /// персистентной фиксации в журнале SQLite.
+    ///
+    /// # Аргументы
+    /// * `event` — Публикуемое событие ([`EventMessage`]).
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Internal`](nms_common::error::AppError), если очередь
+    /// надежного журнала переполнена или закрыта.
     pub async fn publish(&self, event: EventMessage) -> Result<()> {
         // 1. Отправляем в Live Broadcast канал (если есть подписчики)
         let _ = self.broadcast_tx.send(event.clone());
@@ -76,11 +107,25 @@ impl EventBus {
     }
 
     /// Подписаться на поток событий в реальном времени
+    ///
+    /// Возвращает асинхронный приемник [`broadcast::Receiver<EventMessage>`],
+    /// через который можно читать все входящие события в реальном времени.
     pub fn subscribe(&self) -> broadcast::Receiver<EventMessage> {
         self.broadcast_tx.subscribe()
     }
 
-    /// Запросить исторические события из журнала с фильтрацией
+    /// Запросить исторические события из надежного журнала с пагинацией и фильтрацией
+    ///
+    /// # Аргументы
+    /// * `topic_filter` — Опциональный префикс темы (например, `"device."` или `"system.auth"`).
+    /// * `after_id` — ID последней прочитанной записи для пагинации (курсор).
+    /// * `limit` — Максимальное число возвращаемых записей (ограничивается диапазоном 1..=1000).
+    ///
+    /// # Возвращаемое значение
+    /// Список сохраненных записей журнала [`ReliableEventRecord`] в порядке возрастания ID.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения SQL-запроса.
     pub async fn query_journal(
         &self,
         topic_filter: Option<&str>,

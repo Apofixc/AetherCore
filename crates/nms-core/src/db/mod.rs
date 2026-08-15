@@ -12,7 +12,11 @@ use std::path::Path;
 use std::str::FromStr;
 use tracing::info;
 
-/// Менеджер базы данных платформы
+/// Менеджер базы данных платформы SQLite (Single-Writer / Multi-Reader)
+///
+/// Разделяет соединения на:
+/// - `writer_pool`: строго одно соединение для записи (исключает `SQLITE_BUSY` и блокировки WAL).
+/// - `reader_pool`: масштабируемый пул соединений для параллельного неблокирующего чтения.
 #[derive(Debug, Clone)]
 pub struct Db {
     /// Пул для монопольной записи (1 соединение)
@@ -22,7 +26,19 @@ pub struct Db {
 }
 
 impl Db {
-    /// Инициализировать базу данных SQLite по указанному пути
+    /// Инициализировать базу данных SQLite по указанному пути в режиме WAL
+    ///
+    /// Автоматически создает директорию, настраивает WAL mode, `busy_timeout`,
+    /// foreign keys и накатывает все встроенные миграции схемы.
+    ///
+    /// # Аргументы
+    /// * `db_path` — Путь к файлу базы данных SQLite на диске.
+    /// * `max_readers` — Максимальный размер пула соединений на чтение.
+    /// * `busy_timeout_ms` — Таймаут ожидания освобождения базы данных в миллисекундах.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое создания каталога,
+    /// подключения к SQLite или выполнения миграций схемы.
     pub async fn init(db_path: &Path, max_readers: u32, busy_timeout_ms: u64) -> Result<Self> {
         // Создаем родительскую директорию, если она не существует
         if let Some(parent) = db_path.parent() {
@@ -69,7 +85,10 @@ impl Db {
         Ok(db)
     }
 
-    /// Инициализировать базу данных в памяти (для тестов)
+    /// Инициализировать изолированную базу данных в оперативной памяти (для unit/integration тестов)
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое создания in-memory пула или миграций.
     pub async fn init_in_memory() -> Result<Self> {
         let connect_opts = SqliteConnectOptions::from_str("sqlite::memory:")
             .map_err(|e| AppError::database(e.to_string()))?
@@ -91,12 +110,12 @@ impl Db {
         Ok(db)
     }
 
-    /// Получить пул для операций записи
+    /// Получить ссылку на пул соединений для операций записи (INSERT, UPDATE, DELETE)
     pub fn writer(&self) -> &Pool<Sqlite> {
         &self.writer_pool
     }
 
-    /// Получить пул для операций чтения
+    /// Получить ссылку на пул соединений для параллельных операций чтения (SELECT)
     pub fn reader(&self) -> &Pool<Sqlite> {
         &self.reader_pool
     }
