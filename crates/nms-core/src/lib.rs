@@ -9,6 +9,7 @@
 //! - [`services`]: Системные сервисы (журнал аудита действий [`AuditService`](services::AuditService), алерты и вебхуки [`NotifyService`](services::NotifyService), структурированное логирование [`LoggerService`](services::LoggerService)).
 //! - [`users`]: Управление учетными записями, ролями и инициализацией системы ([`UserService`](users::UserService)).
 
+#![warn(missing_docs)]
 #![warn(rustdoc::broken_intra_doc_links)]
 
 pub mod auth;

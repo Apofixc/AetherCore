@@ -133,7 +133,18 @@ impl UserService {
         self.get_user_by_id(id).await
     }
 
-    /// Получить пользователя по ID
+    /// Получить пользователя по его уникальному идентификатору (UUID)
+    ///
+    /// Включает загрузку связанных ролей и вычисление агрегированных прав доступа.
+    ///
+    /// # Аргументы
+    /// * `id` — Идентификатор пользователя ([`Uuid`]).
+    ///
+    /// # Возвращаемое значение
+    /// Полный объект [`User`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если пользователь не найден.
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<User> {
         let row: Option<(
             String,
@@ -163,7 +174,15 @@ impl UserService {
         }
     }
 
-    /// Получить пользователя по имени пользователя
+    /// Получить пользователя по логину (username)
+    ///
+    /// Поиск выполняется без учета регистра.
+    ///
+    /// # Аргументы
+    /// * `username` — Имя пользователя для поиска.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если пользователь не найден.
     pub async fn get_user_by_username(&self, username: &str) -> Result<User> {
         let username_clean = username.trim().to_lowercase();
         let row: Option<(
@@ -194,7 +213,20 @@ impl UserService {
         }
     }
 
-    /// Аутентификация пользователя по логину и паролю
+    /// Выполнить аутентификацию пользователя по логину и паролю
+    ///
+    /// Проверяет активность аккаунта (`is_active`), сверяет хэш пароля через Argon2id
+    /// и обновляет поле `last_login_at`.
+    ///
+    /// # Аргументы
+    /// * `username` — Имя пользователя.
+    /// * `password` — Открытый пароль.
+    ///
+    /// # Возвращаемое значение
+    /// Аутентифицированный объект [`User`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Unauthorized`](nms_common::error::AppError), если логин/пароль неверны или аккаунт отключен.
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
         let user = self.get_user_by_username(username).await.map_err(|_| {
             AppError::unauthorized("Invalid username or password")
@@ -219,7 +251,13 @@ impl UserService {
         Ok(user)
     }
 
-    /// Получить список всех пользователей
+    /// Получить список всех зарегистрированных пользователей системы
+    ///
+    /// # Возвращаемое значение
+    /// Вектор объектов [`User`] в алфавитном порядке имен пользователей.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса.
     pub async fn list_users(&self) -> Result<Vec<User>> {
         let rows: Vec<(
             String,
@@ -250,7 +288,18 @@ impl UserService {
         Ok(users)
     }
 
-    /// Обновить данные пользователя
+    /// Обновить профиль, пароль или роли пользователя
+    ///
+    /// # Аргументы
+    /// * `id` — Идентификатор обновляемого пользователя.
+    /// * `dto` — Объект с обновляемыми полями ([`UpdateUserDto`]).
+    ///
+    /// # Возвращаемое значение
+    /// Актуальный объект [`User`] после применения изменений.
+    ///
+    /// # Ошибки
+    /// - [`AppError::NotFound`](nms_common::error::AppError) — пользователь не найден.
+    /// - [`AppError::Database`](nms_common::error::AppError) — сбой при сохранении в SQLite.
     pub async fn update_user(&self, id: Uuid, dto: UpdateUserDto) -> Result<User> {
         let existing = self.get_user_by_id(id).await?;
         let now = Utc::now().to_rfc3339();
@@ -303,7 +352,18 @@ impl UserService {
         self.get_user_by_id(id).await
     }
 
-    /// Удалить пользователя
+    /// Удалить пользователя по его идентификатору
+    ///
+    /// Все связанные роли каскадно удаляются через внешние ключи SQLite (`ON DELETE CASCADE`).
+    ///
+    /// # Аргументы
+    /// * `id` — Идентификатор пользователя.
+    ///
+    /// # Возвращаемое значение
+    /// `Ok(true)` если пользователь существовал и был удален, иначе `Ok(false)`.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса.
     pub async fn delete_user(&self, id: Uuid) -> Result<bool> {
         let res = sqlx::query("DELETE FROM users WHERE id = ?")
             .bind(id.to_string())

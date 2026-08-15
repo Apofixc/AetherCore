@@ -19,15 +19,20 @@ use std::sync::{Arc, RwLock};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LogLevel {
+    /// Трассировочные детальные сообщения (наивысшая степень детализации)
     Trace,
+    /// Отладочные сообщения разработчиков
     Debug,
+    /// Информационные штатные события системы
     Info,
+    /// Предупреждения о нештатных ситуациях, не прерывающих работу
     Warn,
+    /// Критические ошибки и исключения
     Error,
 }
 
 impl LogLevel {
-    /// Преобразовать строку в LogLevel
+    /// Преобразовать произвольную строку в [`LogLevel`] без учета регистра
     pub fn from_str_loose(s: &str) -> Option<Self> {
         match s.trim().to_uppercase().as_str() {
             "TRACE" => Some(Self::Trace),
@@ -39,7 +44,7 @@ impl LogLevel {
         }
     }
 
-    /// Строковое представление
+    /// Получить каноническое строковое представление уровня
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Trace => "TRACE",
@@ -51,39 +56,52 @@ impl LogLevel {
     }
 }
 
-/// Структурированная запись лога
+/// Структурированная запись журнала логов
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
+    /// Временная метка события в формате UTC
     pub timestamp: DateTime<Utc>,
+    /// Уровень важности записи
     pub level: LogLevel,
+    /// Целевой компонент или модуль-источник (target)
     pub target: String,
+    /// Очищенное текстовое сообщение лога
     pub message: String,
+    /// Исходная сырая строка записи лога
     pub raw: String,
 }
 
-/// Информация об источнике (провайдере) логов
+/// Информация об источнике (провайдере) логов платформы
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogProvider {
+    /// Уникальный идентификатор провайдера (например, `"system"`, `"plugin-snmp"`)
     pub id: String,
+    /// Человекопонятное наименование источника
     pub name: String,
-    pub category: String, // "system", "module", "remote"
+    /// Категория источника (`"system"`, `"module"`, `"remote"`)
+    pub category: String,
+    /// Опциональный путь к файлу лога на диске
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_path: Option<PathBuf>,
+    /// Флаг доступности провайдера для чтения
     pub available: bool,
 }
 
-/// Ответ на запрос выборки логов
+/// Ответ на поисковый запрос выборки записей логов
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogQueryResult {
+    /// Идентификатор запрошенного провайдера
     pub provider_id: String,
+    /// Общее количество записей, удовлетворяющих фильтру
     pub total: usize,
+    /// Список извлеченных записей лога
     pub entries: Vec<LogEntry>,
 }
 
-/// Конфигурация LoggerService
+/// Конфигурация сервиса логирования [`LoggerService`]
 #[derive(Debug, Clone)]
 pub struct LoggerConfig {
-    /// Максимальное количество записей в кольцевом буфере памяти
+    /// Максимальное количество записей в кольцевом буфере оперативной памяти
     pub buffer_capacity: usize,
     /// Путь к основному файлу системного лога (опционально)
     pub log_file_path: Option<PathBuf>,
@@ -115,19 +133,25 @@ struct LoggerInner {
 }
 
 impl LoggerService {
-    /// Создать новый экземпляр LoggerService с конфигурацией по умолчанию
+    /// Создать новый экземпляр `LoggerService` с конфигурацией по умолчанию (5000 записей в буфере памяти)
     pub fn new() -> Self {
         Self::with_config(LoggerConfig::default())
     }
 
-    /// Создать экземпляр с указанным путем к системному лог-файлу
+    /// Создать экземпляр `LoggerService` с указанным путем к системному файлу журнала
+    ///
+    /// # Аргументы
+    /// * `path` — Путь к файлу лога (например, `"/var/log/nms/system.log"`).
     pub fn with_log_file(path: impl Into<PathBuf>) -> Self {
         let mut config = LoggerConfig::default();
         config.log_file_path = Some(path.into());
         Self::with_config(config)
     }
 
-    /// Создать экземпляр с подробной конфигурацией
+    /// Создать экземпляр с детальной пользовательской конфигурацией
+    ///
+    /// # Аргументы
+    /// * `config` — Параметры сервиса логирования ([`LoggerConfig`]).
     pub fn with_config(config: LoggerConfig) -> Self {
         let mut providers = HashMap::new();
 
@@ -154,14 +178,26 @@ impl LoggerService {
         }
     }
 
-    /// Зарегистрировать дополнительный провайдер логов (например, для плагина)
+    /// Зарегистрировать дополнительный источник логов (например, для плагина или внешнего демона)
+    ///
+    /// # Аргументы
+    /// * `provider` — Метаданные провайдера логов ([`LogProvider`]).
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Internal`](nms_common::error::AppError) при сбое блокировки внутреннего состояния.
     pub fn register_provider(&self, provider: LogProvider) -> Result<()> {
         let mut guard = self.inner.write().map_err(|e| AppError::internal(e.to_string()))?;
         guard.providers.insert(provider.id.clone(), provider);
         Ok(())
     }
 
-    /// Получить список всех зарегистрированных провайдеров
+    /// Получить отсортированный по ID список всех зарегистрированных провайдеров
+    ///
+    /// # Возвращаемое значение
+    /// Список провайдеров [`LogProvider`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Internal`](nms_common::error::AppError) при ошибке блокировки.
     pub fn list_providers(&self) -> Result<Vec<LogProvider>> {
         let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
         let mut list: Vec<LogProvider> = guard.providers.values().cloned().collect();
@@ -169,7 +205,12 @@ impl LoggerService {
         Ok(list)
     }
 
-    /// Записать событие лога в кольцевой буфер и в файл (если настроен)
+    /// Записать событие в кольцевой буфер оперативной памяти и в файл на диске (если настроен)
+    ///
+    /// # Аргументы
+    /// * `level` — Уровень важности ([`LogLevel`]).
+    /// * `target` — Модуль или подсистема (например, `"auth"` или `"bus"`).
+    /// * `message` — Текст сообщения.
     pub fn log(&self, level: LogLevel, target: &str, message: &str) {
         let now = Utc::now();
         let raw = format!(
@@ -202,7 +243,13 @@ impl LoggerService {
         }
     }
 
-    /// Записать структурированную ошибку платформы (AppError)
+    /// Записать структурированную ошибку платформы ([`AppError`])
+    ///
+    /// Ошибки со статусом `>= 500` логируются как [`LogLevel::Error`], остальные как [`LogLevel::Warn`].
+    ///
+    /// # Аргументы
+    /// * `target` — Модуль-источник ошибки.
+    /// * `error` — Экземпляр ошибки приложения [`AppError`].
     pub fn log_error(&self, target: &str, error: &AppError) {
         let level = if error.status_code >= 500 {
             LogLevel::Error
@@ -219,7 +266,19 @@ impl LoggerService {
         self.log(level, target, &msg);
     }
 
-    /// Запросить записи лога с фильтрацией
+    /// Запросить выборку записей логов с фильтрацией по уровню и строке поиска
+    ///
+    /// # Аргументы
+    /// * `provider_id` — Идентификатор провайдера (например, `"system"`).
+    /// * `limit` — Максимальное количество записей (ограничивается диапазоном `1..=1000`).
+    /// * `min_level` — Опциональный минимальный порог важности.
+    /// * `search_query` — Опциональная подстрока поиска (регистронезависимая).
+    ///
+    /// # Возвращаемое значение
+    /// Результат запроса [`LogQueryResult`] со списком подходящих записей.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если провайдер не зарегистрирован.
     pub fn get_logs(
         &self,
         provider_id: &str,

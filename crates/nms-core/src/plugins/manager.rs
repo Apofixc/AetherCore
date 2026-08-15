@@ -129,7 +129,16 @@ impl PluginManager {
         Ok(count)
     }
 
-    /// Зарегистрировать плагин в реестре
+    /// Зарегистрировать разобранный пакет плагина в реестре платформы
+    ///
+    /// Автоматически регистрирует словари i18n плагина в глобальном реестре локализации
+    /// и сохраняет метаданные плагина в потокобезопасном хранилище.
+    ///
+    /// # Аргументы
+    /// * `package` — Пакет плагина [`PluginPackage`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError`] при сбое регистрации.
     pub async fn register_plugin(&self, package: PluginPackage) -> Result<()> {
         let plugin_id = package.manifest.id.clone();
         let is_enabled = package.manifest.enabled_by_default;
@@ -154,19 +163,34 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Получить список всех установленных плагинов
+    /// Получить список всех установленных в платформе плагинов
+    ///
+    /// # Возвращаемое значение
+    /// Вектор установленных плагинов [`InstalledPlugin`].
     pub fn list_plugins(&self) -> Vec<InstalledPlugin> {
         let registry = self.plugins.read().expect("Lock poisoned");
         registry.values().cloned().collect()
     }
 
-    /// Получить установленный плагин по ID
+    /// Получить установленный плагин по его уникальному идентификатору
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина (например, `"snmp"`).
+    ///
+    /// # Возвращаемое значение
+    /// `Some(InstalledPlugin)`, если плагин зарегистрирован, иначе `None`.
     pub fn get_plugin(&self, plugin_id: &str) -> Option<InstalledPlugin> {
         let registry = self.plugins.read().expect("Lock poisoned");
         registry.get(plugin_id).cloned()
     }
 
-    /// Включить плагин
+    /// Активировать (включить) установленный плагин
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин с таким ID не найден.
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
         let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
@@ -178,7 +202,13 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Отключить плагин
+    /// Деактивировать (отключить) установленный плагин
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин с таким ID не найден.
     pub async fn disable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
         let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
@@ -190,7 +220,19 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Получить настройки плагина
+    /// Получить текущую сохраненную конфигурацию плагина
+    ///
+    /// Конфигурация извлекается из изолированного неймспейса `module:{plugin_id}` в KV-хранилище.
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина.
+    ///
+    /// # Возвращаемое значение
+    /// `Ok(Some(serde_json::Value))` с настройками плагина или `Ok(None)`, если настройки еще не задавались.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин не зарегистрирован,
+    /// или [`AppError::Database`](nms_common::error::AppError) при сбое запроса к БД.
     pub async fn get_plugin_config(&self, plugin_id: &str) -> Result<Option<serde_json::Value>> {
         let _ = self.get_plugin(plugin_id).ok_or_else(|| {
             AppError::module_not_found(plugin_id)
@@ -200,7 +242,20 @@ impl PluginManager {
         kv.get("config").await
     }
 
-    /// Сохранить настройки плагина с валидацией по manifest.config_schema
+    /// Сохранить и применить новую конфигурацию плагина
+    ///
+    /// 1. Валидирует переданный JSON-объект по `manifest.config_schema`.
+    /// 2. Сохраняет настройки в изолированное хранилище `module:{plugin_id}`.
+    /// 3. Публикует надежное событие `{plugin_id}.config_changed` в системную шину событий [`EventBus`].
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина.
+    /// * `config_value` — Валидируемый JSON-объект настроек.
+    ///
+    /// # Ошибки
+    /// - [`AppError::NotFound`](nms_common::error::AppError) — плагин не найден.
+    /// - [`AppError::Validation`](nms_common::error::AppError) — настройки не соответствуют схеме.
+    /// - [`AppError::Database`](nms_common::error::AppError) — сбой сохранения в базе данных.
     pub async fn set_plugin_config(
         &self,
         plugin_id: &str,
@@ -229,7 +284,14 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Получить фронтенд-ассет плагина по относительному пути
+    /// Получить бинарное содержимое статического веб-ассета плагина
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина.
+    /// * `asset_path` — Относительный путь к файлу (например, `"index.js"` или `"frontend/style.css"`).
+    ///
+    /// # Возвращаемое значение
+    /// `Some(Vec<u8>)` с байтами файла, либо `None`, если плагин или ассет не найден.
     pub fn get_frontend_asset(&self, plugin_id: &str, asset_path: &str) -> Option<Vec<u8>> {
         let plugin = self.get_plugin(plugin_id)?;
         // Ищем точное совпадение или с префиксом "frontend/"
