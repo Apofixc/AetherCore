@@ -10,9 +10,10 @@ use nms_core::bus::EventBus;
 use nms_core::db::Db;
 use nms_core::plugins::loader::PluginPackage;
 use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, NotifyService};
+use nms_core::services::{AuditService, LoggerService, NotifyService};
 use nms_core::users::UserService;
 use nms_server::state::AppState;
+
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::info;
@@ -115,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwt_manager = JwtManager::new(&config.security.jwt_secret, config.security.jwt_ttl_seconds);
     let user_service = UserService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
+    let logger_service = LoggerService::with_log_file("data/nms.log");
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
 
@@ -137,6 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_manager,
         user_service,
         audit_service,
+        logger_service,
         notify_service,
         plugin_manager,
         start_time: Instant::now(),

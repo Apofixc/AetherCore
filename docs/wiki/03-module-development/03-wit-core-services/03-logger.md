@@ -107,10 +107,33 @@ pub fn handle_packet(bytes_count: usize, peer_ip: &str) {
 
 ---
 
-## 4. Пример вывода в консоли сервера
+## 4. Интеграция с подсистемой ошибок (`AppError`)
 
-```text
-2026-08-15T18:30:15.123456Z  INFO nms_core::plugins::host: [plugin:my-sensor] Starting interface poller worker
-2026-08-15T18:30:15.124512Z DEBUG nms_core::plugins::host: [plugin:my-sensor] Received packet from 10.0.0.1 (size: 64 bytes)
-2026-08-15T18:30:15.125100Z  WARN nms_core::plugins::host: [plugin:my-sensor] Latency exceeded threshold: 124.5 ms
+Для централизованного логирования ошибок платформы `LoggerService` предоставляет метод `log_error`:
+
+```rust
+use nms_common::error::AppError;
+
+let err = AppError::validation("port", "Port must be between 1 and 65535");
+
+// Автоматически выбирает WARN для 4xx и ERROR для 5xx, форматирует код и метаданные
+state.logger_service.log_error("plugin:my-sensor", &err);
 ```
+
+---
+
+## 5. REST API для просмотра логов (Log Viewer UI)
+
+Ядро предоставляет защищенные эндпоинты для веб-интерфейса и внешних систем:
+
+1. **Список источников логов**:
+   - `GET /api/v1/system/logs/providers`
+   - Возвращает массив провайдеров (`system`, `module:<plugin_id>`, etc.).
+
+2. **Запрос строк лога с фильтрацией**:
+   - `GET /api/v1/system/logs?provider=system&limit=200&level=INFO&search=unreachable`
+   - Поддерживает выборку из ring-буфера памяти или дискового файла, поиск по подстроке и фильтрацию по уровням (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`).
+
+3. **Скачивание лог-файла**:
+   - `GET /api/v1/system/logs/download?provider=system`
+   - Выгружает полный файл в виде вложения (`Content-Disposition: attachment; filename="system.log"`).

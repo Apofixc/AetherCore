@@ -11,7 +11,7 @@ use nms_core::bus::EventBus;
 use nms_core::db::Db;
 use nms_core::plugins::loader::PluginPackage;
 use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, NotifyService};
+use nms_core::services::{AuditService, LogLevel, LoggerService, NotifyService};
 use nms_core::users::UserService;
 use nms_server::api::auth::LoginResponse;
 use nms_server::api::modules::ModuleSummaryDto;
@@ -27,6 +27,7 @@ async fn setup_test_app() -> (axum::Router, AppState) {
     let jwt_manager = JwtManager::new("test-secret-key-12345", 3600);
     let user_service = UserService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
+    let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
 
@@ -63,6 +64,7 @@ description: "Test module for API"
         jwt_manager,
         user_service,
         audit_service,
+        logger_service,
         notify_service,
         plugin_manager,
         start_time: Instant::now(),
@@ -192,3 +194,119 @@ async fn test_modules_api_and_assets() {
     let asset_bytes = asset_res.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&asset_bytes[..], b"window.__test = 1;");
 }
+
+#[tokio::test]
+async fn test_logs_endpoints() {
+    let (app, state) = setup_test_app().await;
+
+    // Авторизуемся под admin
+    let login_payload = serde_json::json!({
+        "username": "admin",
+        "password": "admin"
+    });
+
+    let login_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&login_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body_bytes = login_res.into_body().collect().await.unwrap().to_bytes();
+    let login_data: LoginResponse = serde_json::from_slice(&body_bytes).unwrap();
+    let token = login_data.token;
+
+    // Пишем несколько тестовых записей в LoggerService
+    state.logger_service.log(LogLevel::Info, "nms_core", "Server boot initialized");
+    state.logger_service.log(LogLevel::Warn, "nms_core", "High memory usage detected");
+    state.logger_service.log(LogLevel::Error, "test_plugin", "SNMP device unreachable");
+
+    // 1. Проверяем /api/v1/system/logs/providers
+    let prov_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/system/logs/providers")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(prov_res.status(), StatusCode::OK);
+    let prov_bytes = prov_res.into_body().collect().await.unwrap().to_bytes();
+    let providers: Vec<nms_core::services::LogProvider> = serde_json::from_slice(&prov_bytes).unwrap();
+    assert!(providers.iter().any(|p| p.id == "system"));
+
+    // 2. Проверяем /api/v1/system/logs (все логи)
+    let logs_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/system/logs")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(logs_res.status(), StatusCode::OK);
+    let logs_bytes = logs_res.into_body().collect().await.unwrap().to_bytes();
+    let query_res: nms_core::services::LogQueryResult = serde_json::from_slice(&logs_bytes).unwrap();
+    assert_eq!(query_res.total, 3);
+
+    // 3. Проверяем фильтрацию по уровню ERROR
+    let error_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/system/logs?level=ERROR")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(error_res.status(), StatusCode::OK);
+    let error_bytes = error_res.into_body().collect().await.unwrap().to_bytes();
+    let error_query: nms_core::services::LogQueryResult = serde_json::from_slice(&error_bytes).unwrap();
+    assert_eq!(error_query.total, 1);
+    assert_eq!(error_query.entries[0].level, LogLevel::Error);
+    assert!(error_query.entries[0].message.contains("SNMP device unreachable"));
+
+    // 4. Проверяем скачивание лога /api/v1/system/logs/download
+    let dl_res = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/system/logs/download?provider=system")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(dl_res.status(), StatusCode::OK);
+    assert_eq!(
+        dl_res.headers().get(header::CONTENT_TYPE).unwrap(),
+        "text/plain; charset=utf-8"
+    );
+    let dl_bytes = dl_res.into_body().collect().await.unwrap().to_bytes();
+    let dl_content = String::from_utf8(dl_bytes.to_vec()).unwrap();
+    assert!(dl_content.contains("Server boot initialized"));
+    assert!(dl_content.contains("SNMP device unreachable"));
+}
+

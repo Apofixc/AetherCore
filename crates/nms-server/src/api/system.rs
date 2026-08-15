@@ -3,12 +3,14 @@
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use nms_common::error::ErrorResponse;
 use nms_common::i18n::{global, Locale};
-use nms_core::services::AuditLogRecord;
+use nms_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -17,6 +19,9 @@ pub fn router() -> Router<AppState> {
         .route("/info", get(system_info_handler))
         .route("/i18n/{locale}", get(i18n_export_handler))
         .route("/audit", get(audit_logs_handler))
+        .route("/logs/providers", get(log_providers_handler))
+        .route("/logs", get(logs_query_handler))
+        .route("/logs/download", get(logs_download_handler))
 }
 
 #[derive(Debug, Serialize)]
@@ -73,4 +78,88 @@ async fn audit_logs_handler(
         })?;
 
     Ok(Json(logs))
+}
+
+/// GET /api/v1/system/logs/providers
+async fn log_providers_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    _auth: AuthUser,
+) -> Result<Json<Vec<LogProvider>>, (StatusCode, Json<ErrorResponse>)> {
+    let providers = state.logger_service.list_providers().map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(providers))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogQueryParams {
+    pub provider: Option<String>,
+    pub limit: Option<usize>,
+    pub level: Option<String>,
+    pub search: Option<String>,
+}
+
+/// GET /api/v1/system/logs
+async fn logs_query_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    _auth: AuthUser,
+    Query(params): Query<LogQueryParams>,
+) -> Result<Json<LogQueryResult>, (StatusCode, Json<ErrorResponse>)> {
+    let provider_id = params.provider.as_deref().unwrap_or("system");
+    let limit = params.limit.unwrap_or(200);
+    let min_level = params.level.as_deref().and_then(LogLevel::from_str_loose);
+
+    let result = state
+        .logger_service
+        .get_logs(provider_id, limit, min_level, params.search.as_deref())
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    Ok(Json(result))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogDownloadParams {
+    pub provider: Option<String>,
+}
+
+/// GET /api/v1/system/logs/download
+async fn logs_download_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    _auth: AuthUser,
+    Query(params): Query<LogDownloadParams>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let provider_id = params.provider.as_deref().unwrap_or("system");
+
+    let (bytes, filename) = state
+        .logger_service
+        .download_log(provider_id)
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, "text/plain; charset=utf-8".parse().unwrap());
+    headers.insert(
+        CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", filename)
+            .parse()
+            .unwrap(),
+    );
+
+    Ok((headers, bytes))
 }

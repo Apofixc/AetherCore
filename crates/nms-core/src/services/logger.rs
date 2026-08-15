@@ -1,0 +1,498 @@
+//! # Сервис управления системными логами и лог-провайдерами (LoggerService)
+//!
+//! Предоставляет:
+//! - In-memory кольцевой буфер недавних логов для мгновенного доступа через REST API / WebSockets.
+//! - Файловую запись логов с ограничением размера и ротацией.
+//! - Реестр источников логов (`LogProvider`: ядро, плагины, внешние сервисы).
+//! - Поиск, фильтрацию по уровням важности и скачивание лог-файлов.
+
+use chrono::{DateTime, Utc};
+use nms_common::error::{AppError, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+
+/// Уровни важности сообщений лога
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    /// Преобразовать строку в LogLevel
+    pub fn from_str_loose(s: &str) -> Option<Self> {
+        match s.trim().to_uppercase().as_str() {
+            "TRACE" => Some(Self::Trace),
+            "DEBUG" => Some(Self::Debug),
+            "INFO" => Some(Self::Info),
+            "WARN" | "WARNING" => Some(Self::Warn),
+            "ERROR" | "CRITICAL" | "FATAL" => Some(Self::Error),
+            _ => None,
+        }
+    }
+
+    /// Строковое представление
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Trace => "TRACE",
+            Self::Debug => "DEBUG",
+            Self::Info => "INFO",
+            Self::Warn => "WARN",
+            Self::Error => "ERROR",
+        }
+    }
+}
+
+/// Структурированная запись лога
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub timestamp: DateTime<Utc>,
+    pub level: LogLevel,
+    pub target: String,
+    pub message: String,
+    pub raw: String,
+}
+
+/// Информация об источнике (провайдере) логов
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogProvider {
+    pub id: String,
+    pub name: String,
+    pub category: String, // "system", "module", "remote"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<PathBuf>,
+    pub available: bool,
+}
+
+/// Ответ на запрос выборки логов
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogQueryResult {
+    pub provider_id: String,
+    pub total: usize,
+    pub entries: Vec<LogEntry>,
+}
+
+/// Конфигурация LoggerService
+#[derive(Debug, Clone)]
+pub struct LoggerConfig {
+    /// Максимальное количество записей в кольцевом буфере памяти
+    pub buffer_capacity: usize,
+    /// Путь к основному файлу системного лога (опционально)
+    pub log_file_path: Option<PathBuf>,
+    /// Максимальный размер лог-файла перед ротацией (в байтах, по умолчанию 10 МБ)
+    pub max_file_size_bytes: u64,
+}
+
+impl Default for LoggerConfig {
+    fn default() -> Self {
+        Self {
+            buffer_capacity: 5000,
+            log_file_path: None,
+            max_file_size_bytes: 10 * 1024 * 1024,
+        }
+    }
+}
+
+/// Сервис системного логирования и провайдеров логов
+#[derive(Debug, Clone)]
+pub struct LoggerService {
+    inner: Arc<RwLock<LoggerInner>>,
+    config: LoggerConfig,
+}
+
+#[derive(Debug)]
+struct LoggerInner {
+    buffer: VecDeque<LogEntry>,
+    providers: HashMap<String, LogProvider>,
+}
+
+impl LoggerService {
+    /// Создать новый экземпляр LoggerService с конфигурацией по умолчанию
+    pub fn new() -> Self {
+        Self::with_config(LoggerConfig::default())
+    }
+
+    /// Создать экземпляр с указанным путем к системному лог-файлу
+    pub fn with_log_file(path: impl Into<PathBuf>) -> Self {
+        let mut config = LoggerConfig::default();
+        config.log_file_path = Some(path.into());
+        Self::with_config(config)
+    }
+
+    /// Создать экземпляр с подробной конфигурацией
+    pub fn with_config(config: LoggerConfig) -> Self {
+        let mut providers = HashMap::new();
+
+        // Регистрируем системного провайдера по умолчанию
+        providers.insert(
+            "system".to_string(),
+            LogProvider {
+                id: "system".to_string(),
+                name: "Системный лог ядра".to_string(),
+                category: "system".to_string(),
+                file_path: config.log_file_path.clone(),
+                available: true,
+            },
+        );
+
+        let inner = LoggerInner {
+            buffer: VecDeque::with_capacity(config.buffer_capacity),
+            providers,
+        };
+
+        Self {
+            inner: Arc::new(RwLock::new(inner)),
+            config,
+        }
+    }
+
+    /// Зарегистрировать дополнительный провайдер логов (например, для плагина)
+    pub fn register_provider(&self, provider: LogProvider) -> Result<()> {
+        let mut guard = self.inner.write().map_err(|e| AppError::internal(e.to_string()))?;
+        guard.providers.insert(provider.id.clone(), provider);
+        Ok(())
+    }
+
+    /// Получить список всех зарегистрированных провайдеров
+    pub fn list_providers(&self) -> Result<Vec<LogProvider>> {
+        let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
+        let mut list: Vec<LogProvider> = guard.providers.values().cloned().collect();
+        list.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(list)
+    }
+
+    /// Записать событие лога в кольцевой буфер и в файл (если настроен)
+    pub fn log(&self, level: LogLevel, target: &str, message: &str) {
+        let now = Utc::now();
+        let raw = format!(
+            "{} | {:<5} | {} | {}",
+            now.format("%Y-%m-%d %H:%M:%S"),
+            level.as_str(),
+            target,
+            message
+        );
+
+        let entry = LogEntry {
+            timestamp: now,
+            level,
+            target: target.to_string(),
+            message: message.to_string(),
+            raw: raw.clone(),
+        };
+
+        // 1. Добавляем в кольцевой буфер памяти
+        if let Ok(mut guard) = self.inner.write() {
+            if guard.buffer.len() >= self.config.buffer_capacity {
+                guard.buffer.pop_front();
+            }
+            guard.buffer.push_back(entry);
+        }
+
+        // 2. Если задан файл лога, дописываем строку
+        if let Some(ref path) = self.config.log_file_path {
+            let _ = append_to_file_with_rotation(path, &raw, self.config.max_file_size_bytes);
+        }
+    }
+
+    /// Записать структурированную ошибку платформы (AppError)
+    pub fn log_error(&self, target: &str, error: &AppError) {
+        let level = if error.status_code >= 500 {
+            LogLevel::Error
+        } else {
+            LogLevel::Warn
+        };
+
+        let msg = if error.details.is_null() || error.details == serde_json::json!({}) {
+            format!("[{}] {}", error.code, error.message)
+        } else {
+            format!("[{}] {} (details: {})", error.code, error.message, error.details)
+        };
+
+        self.log(level, target, &msg);
+    }
+
+    /// Запросить записи лога с фильтрацией
+    pub fn get_logs(
+        &self,
+        provider_id: &str,
+        limit: usize,
+        min_level: Option<LogLevel>,
+        search_query: Option<&str>,
+    ) -> Result<LogQueryResult> {
+        let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
+
+        // Проверяем наличие провайдера
+        let provider = guard
+            .providers
+            .get(provider_id)
+            .ok_or_else(|| AppError::not_found(format!("Log provider '{}'", provider_id)))?;
+
+        let limit = limit.clamp(1, 1000);
+        let search = search_query.map(|s| s.to_lowercase());
+
+        // Если это system и нет отдельного файла, или если файл не существует — читаем из in-memory буфера
+        if provider_id == "system" && (provider.file_path.is_none() || !provider.file_path.as_ref().map_or(false, |p| p.exists())) {
+            let mut matched = Vec::new();
+
+            for entry in guard.buffer.iter().rev() {
+                if let Some(lvl) = min_level {
+                    if entry.level < lvl {
+                        continue;
+                    }
+                }
+
+                if let Some(ref q) = search {
+                    let in_msg = entry.message.to_lowercase().contains(q);
+                    let in_target = entry.target.to_lowercase().contains(q);
+                    let in_raw = entry.raw.to_lowercase().contains(q);
+                    if !in_msg && !in_target && !in_raw {
+                        continue;
+                    }
+                }
+
+                matched.push(entry.clone());
+                if matched.len() >= limit {
+                    break;
+                }
+            }
+
+            // Возвращаем в хронологическом порядке
+            matched.reverse();
+            let total = matched.len();
+
+            return Ok(LogQueryResult {
+                provider_id: provider_id.to_string(),
+                total,
+                entries: matched,
+            });
+        }
+
+        // Если у провайдера есть файл — читаем хвост файла
+        if let Some(ref path) = provider.file_path {
+            if path.exists() {
+                let entries = read_tail_from_file(path, limit, min_level, search.as_deref())?;
+                let total = entries.len();
+                return Ok(LogQueryResult {
+                    provider_id: provider_id.to_string(),
+                    total,
+                    entries,
+                });
+            }
+        }
+
+        Ok(LogQueryResult {
+            provider_id: provider_id.to_string(),
+            total: 0,
+            entries: Vec::new(),
+        })
+    }
+
+    /// Скачать весь файл лога для указанного провайдера
+    pub fn download_log(&self, provider_id: &str) -> Result<(Vec<u8>, String)> {
+        let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
+        let provider = guard
+            .providers
+            .get(provider_id)
+            .ok_or_else(|| AppError::not_found(format!("Log provider '{}'", provider_id)))?;
+
+        let filename = format!("{}.log", provider_id);
+
+        if let Some(ref path) = provider.file_path {
+            if path.exists() {
+                let bytes = std::fs::read(path).map_err(|e| {
+                    AppError::internal(format!("Failed to read log file {:?}: {}", path, e))
+                })?;
+                return Ok((bytes, filename));
+            }
+        }
+
+        // Если файла нет на диске, генерируем из in-memory буфера
+        let mut buffer = String::new();
+        for entry in &guard.buffer {
+            buffer.push_str(&entry.raw);
+            buffer.push('\n');
+        }
+
+        Ok((buffer.into_bytes(), filename))
+    }
+}
+
+impl Default for LoggerService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Дописать строку в файл с ротацией при превышении размера
+fn append_to_file_with_rotation(path: &Path, line: &str, max_bytes: u64) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Проверяем размер для ротации
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() >= max_bytes {
+            let backup_path = path.with_extension("log.1");
+            let _ = std::fs::rename(path, backup_path);
+        }
+    }
+
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(file, "{}", line)?;
+    Ok(())
+}
+
+/// Прочитать последние `limit` строк из файла с фильтрацией
+fn read_tail_from_file(
+    path: &Path,
+    limit: usize,
+    min_level: Option<LogLevel>,
+    search_lower: Option<&str>,
+) -> Result<Vec<LogEntry>> {
+    let file = File::open(path).map_err(|e| AppError::internal(e.to_string()))?;
+    let reader = BufReader::new(file);
+
+    let mut matched_entries = Vec::new();
+    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
+    for line in lines.iter().rev() {
+        let clean = clean_ansi(line);
+        let parsed = parse_log_line(&clean);
+
+        if let Some(lvl) = min_level {
+            if parsed.level < lvl {
+                continue;
+            }
+        }
+
+        if let Some(q) = search_lower {
+            if !clean.to_lowercase().contains(q) {
+                continue;
+            }
+        }
+
+        matched_entries.push(parsed);
+        if matched_entries.len() >= limit {
+            break;
+        }
+    }
+
+    matched_entries.reverse();
+    Ok(matched_entries)
+}
+
+/// Распарсить строку лога вида "2026-08-15 19:00:00 | INFO  | target | message"
+fn parse_log_line(line: &str) -> LogEntry {
+    let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+
+    if parts.len() >= 4 {
+        let ts = DateTime::parse_from_str(parts[0], "%Y-%m-%d %H:%M:%S")
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        let level = LogLevel::from_str_loose(parts[1]).unwrap_or(LogLevel::Info);
+        let target = parts[2].to_string();
+        let message = parts[3..].join(" | ");
+
+        LogEntry {
+            timestamp: ts,
+            level,
+            target,
+            message,
+            raw: line.to_string(),
+        }
+    } else {
+        // Неструктурированная строка — эвристический поиск уровня
+        let level = if line.contains("ERROR") || line.contains("FATAL") {
+            LogLevel::Error
+        } else if line.contains("WARN") {
+            LogLevel::Warn
+        } else if line.contains("DEBUG") {
+            LogLevel::Debug
+        } else if line.contains("TRACE") {
+            LogLevel::Trace
+        } else {
+            LogLevel::Info
+        };
+
+        LogEntry {
+            timestamp: Utc::now(),
+            level,
+            target: "system".to_string(),
+            message: line.to_string(),
+            raw: line.to_string(),
+        }
+    }
+}
+
+/// Очистить строку от управляющих ANSI кодов терминала
+fn clean_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_escape = false;
+
+    for c in text.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            out.push(c);
+        }
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_logger_service_in_memory() {
+        let logger = LoggerService::new();
+        logger.log(LogLevel::Info, "test_target", "Hello world");
+        logger.log(LogLevel::Error, "test_target", "Something broke");
+        logger.log(LogLevel::Debug, "test_target", "Debug details");
+
+        let all = logger.get_logs("system", 50, None, None).unwrap();
+        assert_eq!(all.total, 3);
+        assert_eq!(all.entries[0].level, LogLevel::Info);
+        assert_eq!(all.entries[1].level, LogLevel::Error);
+        assert_eq!(all.entries[2].level, LogLevel::Debug);
+
+        let only_errors = logger.get_logs("system", 50, Some(LogLevel::Error), None).unwrap();
+        assert_eq!(only_errors.total, 1);
+        assert_eq!(only_errors.entries[0].message, "Something broke");
+
+        let search = logger.get_logs("system", 50, None, Some("world")).unwrap();
+        assert_eq!(search.total, 1);
+        assert_eq!(search.entries[0].message, "Hello world");
+    }
+
+    #[test]
+    fn test_logger_file_and_download() {
+        let dir = tempdir().unwrap();
+        let log_file = dir.path().join("test.log");
+
+        let logger = LoggerService::with_log_file(&log_file);
+        logger.log(LogLevel::Info, "core", "Line 1 in file");
+        logger.log(LogLevel::Warn, "core", "Line 2 warn in file");
+
+        let (bytes, name) = logger.download_log("system").unwrap();
+        assert_eq!(name, "system.log");
+        let content = String::from_utf8(bytes).unwrap();
+        assert!(content.contains("Line 1 in file"));
+        assert!(content.contains("Line 2 warn in file"));
+    }
+}

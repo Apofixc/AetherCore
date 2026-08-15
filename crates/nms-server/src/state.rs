@@ -6,7 +6,7 @@ use nms_core::auth::JwtManager;
 use nms_core::bus::EventBus;
 use nms_core::db::Db;
 use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, NotifyService};
+use nms_core::services::{AuditService, LoggerService, NotifyService};
 use nms_core::users::UserService;
 use std::time::Instant;
 
@@ -19,6 +19,7 @@ pub struct AppState {
     pub jwt_manager: JwtManager,
     pub user_service: UserService,
     pub audit_service: AuditService,
+    pub logger_service: LoggerService,
     pub notify_service: NotifyService,
     pub plugin_manager: PluginManager,
     pub start_time: Instant,
