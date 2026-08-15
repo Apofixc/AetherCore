@@ -27,3 +27,4 @@ Thumbs.db
 backend.log
 crates/nms-core/data/
 cache/
+/data/

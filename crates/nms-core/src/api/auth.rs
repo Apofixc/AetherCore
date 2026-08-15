@@ -55,7 +55,7 @@ pub async fn login_handler(
 
     let row = sqlx::query(
         r#"
-        SELECT u.id, u.username, u.password_hash, u.is_active, u.totp_secret, u.is_totp_enabled
+        SELECT u.id, u.username, u.hashed_password AS password_hash, u.is_active, u.mfa_secret AS totp_secret, u.mfa_enabled AS is_totp_enabled
         FROM users u
         WHERE u.username = ?
         "#,

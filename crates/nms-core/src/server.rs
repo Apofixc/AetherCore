@@ -489,20 +489,26 @@ async fn ws_events_handler(
     Query(query): Query<WsQuery>,
     State(state): State<Arc<AppState>>,
 ) -> Result<axum::response::Response, crate::exceptions::NmsError> {
-    let user_id = if let Some(token) = &query.token {
+    let token =
+        query
+            .token
+            .as_deref()
+            .ok_or_else(|| crate::exceptions::NmsError::AuthRequired {
+                message: "WebSocket ticket or token required".to_string(),
+            })?;
+
+    let user_id = if let Some(ticket_user) = crate::auth::consume_ws_ticket(token).await {
+        ticket_user
+    } else {
         let secret = crate::config::get_or_create_secret_key();
         match crate::auth::decode_token(token, &secret) {
             Some(claims) => claims.sub,
-            None => query
-                .user_id
-                .clone()
-                .unwrap_or_else(|| "anonymous".to_string()),
+            None => {
+                return Err(crate::exceptions::NmsError::AuthRequired {
+                    message: "Invalid WebSocket ticket or token".to_string(),
+                })
+            }
         }
-    } else {
-        query
-            .user_id
-            .clone()
-            .unwrap_or_else(|| "anonymous".to_string())
     };
 
     if !state.connection_manager.add_connection(&user_id) {
@@ -767,6 +773,11 @@ pub async fn start_server(config: AppConfig) -> anyhow::Result<()> {
 
     let log_stream_manager = SharedLogStreamManager::new();
 
+    let db_path = std::env::var("NMS_DB_PATH").unwrap_or_else(|_| "data/nms.db".to_string());
+    let db_pool = crate::db::init_db_pool(&PathBuf::from(db_path)).await?;
+    let notification_engine =
+        crate::notify::NotificationEngine::new_with_db(event_bus.clone(), db_pool.clone());
+
     let state = Arc::new(AppState {
         config,
         event_bus,
@@ -774,9 +785,9 @@ pub async fn start_server(config: AppConfig) -> anyhow::Result<()> {
         log_stream_manager,
         i18n,
         connection_manager,
-        db_pool: None,
+        db_pool: Some(db_pool),
         rate_limiter,
-        notification_engine: None,
+        notification_engine: Some(notification_engine),
     });
     let app = create_router(state);
 

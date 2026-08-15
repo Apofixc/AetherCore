@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::header,
+    http::{header, HeaderMap},
     response::IntoResponse,
     Json,
 };
@@ -12,9 +12,25 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::auth::hash_password;
+use crate::auth::{hash_password, Claims};
 use crate::exceptions::NmsError;
 use crate::server::AppState;
+
+/// Извлечение и проверка Bearer JWT из заголовков запроса
+pub fn require_bearer_claims(headers: &HeaderMap) -> Result<Claims, NmsError> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| NmsError::AuthRequired {
+            message: "Authorization token required".to_string(),
+        })?;
+
+    let secret = crate::config::get_or_create_secret_key();
+    crate::auth::decode_token(token, &secret).ok_or_else(|| NmsError::AuthRequired {
+        message: "Invalid or expired token".to_string(),
+    })
+}
 
 /// Публичная информация о пользователе
 #[derive(Debug, Serialize)]
@@ -61,7 +77,7 @@ pub async fn list_users_handler(
 
     let rows = sqlx::query(
         r#"
-        SELECT u.id, u.username, u.full_name, u.email, u.role_id, r.name as role_name, u.is_active, u.is_totp_enabled, u.created_at
+        SELECT u.id, u.username, u.full_name, u.email, u.role_id, r.name as role_name, u.is_active, u.mfa_enabled AS is_totp_enabled, u.created_at
         FROM users u
         JOIN roles r ON u.role_id = r.id
         ORDER BY u.created_at DESC
@@ -110,7 +126,7 @@ pub async fn create_user_handler(
 
     sqlx::query(
         r#"
-        INSERT INTO users (id, username, password_hash, full_name, email, role_id)
+        INSERT INTO users (id, username, hashed_password, full_name, email, role_id)
         VALUES (?, ?, ?, ?, ?, ?)
         "#,
     )
@@ -150,7 +166,7 @@ pub async fn update_user_handler(
             message: e.to_string(),
             details: json!({}),
         })?;
-        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+        sqlx::query("UPDATE users SET hashed_password = ? WHERE id = ?")
             .bind(&hash)
             .bind(&user_id)
             .execute(pool)
@@ -216,9 +232,10 @@ pub fn verify_and_consume_recovery_code(_user_id: &str, _code: &str) -> bool {
 }
 
 /// Получение одноразового тикета WebSocket
-pub async fn get_ws_ticket_handler() -> Result<Json<Value>, NmsError> {
-    let ticket = format!("wst_{}", Uuid::new_v4().simple());
-    Ok(Json(json!({ "ticket": ticket, "expires_in": 60 })))
+pub async fn get_ws_ticket_handler(headers: HeaderMap) -> Result<Json<Value>, NmsError> {
+    let claims = require_bearer_claims(&headers)?;
+    let ticket = crate::auth::create_ws_ticket(&claims.sub, Some(&claims.jti), None).await;
+    Ok(Json(json!({ "ticket": ticket, "expires_in": 30 })))
 }
 
 /// Подтверждение 2FA кода при входе
@@ -245,15 +262,45 @@ pub async fn logout_handler() -> Result<Json<Value>, NmsError> {
 }
 
 /// Получение профиля текущего пользователя
-pub async fn get_me_handler() -> Result<Json<Value>, NmsError> {
+pub async fn get_me_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, NmsError> {
+    let claims = require_bearer_claims(&headers)?;
+
+    let pool = state.db_pool.as_ref().ok_or_else(|| NmsError::Internal {
+        message: "Database connection unavailable".to_string(),
+        details: json!({}),
+    })?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT u.id, u.username, u.full_name, u.email, u.role_id, r.name as role_name, u.is_active, u.mfa_enabled AS is_totp_enabled
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.id = ?
+        "#,
+    )
+    .bind(&claims.sub)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| NmsError::Internal {
+        message: e.to_string(),
+        details: json!({}),
+    })?
+    .ok_or_else(|| NmsError::AuthRequired {
+        message: "User not found".to_string(),
+    })?;
+
     Ok(Json(json!({
-        "id": "usr_root",
-        "username": "root",
-        "full_name": "Administrator",
-        "role_id": "role_admin",
-        "role_name": "Администратор",
-        "is_active": true,
-        "is_totp_enabled": false
+        "id": row.get::<String, _>("id"),
+        "username": row.get::<String, _>("username"),
+        "full_name": row.get::<Option<String>, _>("full_name"),
+        "email": row.get::<Option<String>, _>("email"),
+        "role_id": row.get::<String, _>("role_id"),
+        "role_name": row.get::<String, _>("role_name"),
+        "is_active": row.get::<bool, _>("is_active"),
+        "is_totp_enabled": row.get::<bool, _>("is_totp_enabled")
     })))
 }
 
