@@ -195,7 +195,17 @@ impl EventBus {
     }
 }
 
-/// Запись события в таблицу SQLite
+/// Персистентная запись надежного события в таблицу журнала SQLite `event_journal`
+///
+/// Сериализует JSON-пейлоад события и сохраняет запись с временной меткой в формате RFC 3339.
+///
+/// # Аргументы
+/// * `db` — Экземпляр базы данных SQLite ([`Db`]).
+/// * `event` — Сохраняемое событие ([`EventMessage`]).
+///
+/// # Ошибки
+/// - [`AppError::Validation`](nms_common::error::AppError) — при ошибке сериализации полезной нагрузки в JSON.
+/// - [`AppError::Database`](nms_common::error::AppError) — при сбое выполнения SQL-вставки.
 async fn record_event_to_db(db: &Db, event: &EventMessage) -> Result<()> {
     let payload_str = serde_json::to_string(&event.payload).map_err(|e| {
         AppError::validation("payload", e.to_string())

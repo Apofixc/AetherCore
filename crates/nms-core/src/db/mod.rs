@@ -120,7 +120,13 @@ impl Db {
         &self.reader_pool
     }
 
-    /// Выполнить миграции схемы БД
+    /// Выполнить создание и миграции схемы реляционных таблиц SQLite
+    ///
+    /// Создает таблицы `users`, `roles`, `permissions`, `role_permissions`, `user_roles`,
+    /// `kv_store`, `audit_logs`, `event_journal` и заполняет системные роли/права по умолчанию.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения DDL/DML запросов.
     async fn run_migrations(&self) -> Result<()> {
         let pool = &self.writer_pool;
 

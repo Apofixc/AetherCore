@@ -95,7 +95,17 @@ impl AuditService {
         Ok(res.last_insert_rowid())
     }
 
-    /// Получить список записей журнала аудита
+    /// Получить список записей журнала аудита с пагинацией
+    ///
+    /// # Аргументы
+    /// * `limit` — Максимальное количество возвращаемых записей (ограничивается диапазоном `1..=500`).
+    /// * `after_id` — ID последней прочитанной записи для постраничной пагинации.
+    ///
+    /// # Возвращаемое значение
+    /// Вектор записей журнала аудита [`AuditLogRecord`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса к SQLite.
     pub async fn list_logs(&self, limit: u32, after_id: Option<i64>) -> Result<Vec<AuditLogRecord>> {
         let limit = limit.min(500).max(1) as i64;
         let after_id = after_id.unwrap_or(0);
