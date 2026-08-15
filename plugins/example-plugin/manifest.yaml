@@ -1,0 +1,89 @@
+manifest_version: 1
+id: "example-plugin"
+name: "Демонстрационный Модуль"
+version: "1.0.0"
+description: "Универсальный демонстрационный плагин платформы Next-Gen Core"
+type: "feature"
+enabled_by_default: true
+min_core_version: "2.0.0"
+
+capabilities:
+  network:
+    allow_raw_sockets: false
+  filesystem:
+    allow_host_dirs: []
+  environment:
+    allow_env_vars: []
+
+events:
+  publishes:
+    - "example-plugin.status_updated"
+    - "example-plugin.metric_tick"
+  subscribes:
+    - "core.system_started"
+    - "core.config_changed"
+
+routes:
+  - path: "/demo"
+    name: "demo-dashboard"
+    component: "frontend/dist/ui.js#DemoDashboardView"
+    meta:
+      title: "Демо Панель"
+      icon: "activity"
+      group: "general"
+      requires_auth: true
+      permissions: ["example.view"]
+
+menu:
+  location: "sidebar"
+  group: "Обзор"
+  items:
+    - path: "/demo"
+      label: "Демо Модуль"
+      icon: "activity"
+
+widgets:
+  - id: "demo_summary_widget"
+    title: "Статус Демо Плагина"
+    component: "frontend/dist/ui.js#DemoSummaryWidget"
+    size: "medium"
+    refresh_interval: 15
+    endpoint: "/api/v1/modules/example-plugin/summary"
+    view_permission: "example.view"
+
+permissions:
+  - id: "example.view"
+    name: "Просмотр демонстрационного плагина"
+    category: "Demo"
+    description: "Разрешение на просмотр графиков и дашборда демо плагина"
+  - id: "example.manage"
+    name: "Управление демонстрационным плагином"
+    category: "Demo"
+    description: "Разрешение на изменение конфигурации демо плагина"
+
+config_schema:
+  type: "object"
+  required: ["refresh_interval_sec", "max_items"]
+  properties:
+    refresh_interval_sec:
+      type: "integer"
+      minimum: 1
+      maximum: 3600
+      default: 10
+    max_items:
+      type: "integer"
+      minimum: 5
+      maximum: 500
+      default: 50
+    debug_mode:
+      type: "boolean"
+      default: false
+
+hooks:
+  install: "init_schema"
+  on_enable: "start_worker"
+  on_disable: "stop_worker"
+
+assets:
+  cache_dirs: ["cache/"]
+  data_dirs: ["data/"]

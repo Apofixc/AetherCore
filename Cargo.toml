@@ -1,0 +1,73 @@
+[workspace]
+members = [
+    "crates/nms-common",
+    "crates/nms-core",
+    "crates/nms-server",
+    "crates/nms-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+authors = ["NMSNext-Gen Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Apofixc/NMSNext-Gen"
+
+[workspace.dependencies]
+# Внутренние крейты
+nms-common = { path = "crates/nms-common" }
+nms-core = { path = "crates/nms-core" }
+nms-server = { path = "crates/nms-server" }
+
+# Асинхронность и рантайм
+tokio = { version = "1.43", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Сериализация и схемы
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+jsonschema = "0.28"
+semver = { version = "1.0", features = ["serde"] }
+
+# База данных
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono", "uuid"] }
+
+# HTTP & Web
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = { version = "0.5", features = ["util", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "compression-gzip", "compression-br"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+# Безопасность и криптография
+argon2 = { version = "0.5", features = ["std"] }
+jsonwebtoken = "9.3"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+rand = "0.8"
+uuid = { version = "1.13", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# WASM и песочница
+wasmtime = { version = "29.0", features = ["component-model", "async"] }
+wasmtime-wasi = "29.0"
+
+# Логирование и метрики
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Утилиты
+thiserror = "2.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+tempfile = "3.17"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

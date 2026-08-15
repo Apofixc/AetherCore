@@ -1,0 +1,92 @@
+package nms:core@2.0.0;
+
+/// Host API: Шина событий (Events)
+interface events {
+    /// Опубликовать эфемеренное событие телеметрии
+    publish-telemetry: func(topic: string, payload-json: string) -> result<_, string>;
+    
+    /// Опубликовать гарантированное системное событие в журнал
+    publish-reliable: func(topic: string, payload-json: string) -> result<_, string>;
+}
+
+/// Host API: Изолированное Key-Value хранилище (Storage)
+interface storage {
+    /// Получить JSON значение по ключу
+    get: func(key: string) -> result<option<string>, string>;
+    
+    /// Сохранить JSON значение по ключу
+    set: func(key: string, value-json: string) -> result<_, string>;
+    
+    /// Удалить значение по ключу
+    delete: func(key: string) -> result<bool, string>;
+    
+    /// Получить список всех ключей модуля
+    list-keys: func() -> result<list<string>, string>;
+}
+
+/// Host API: Системный логгер (Logger)
+interface logger {
+    log-trace: func(message: string);
+    log-debug: func(message: string);
+    log-info: func(message: string);
+    log-warn: func(message: string);
+    log-error: func(message: string);
+}
+
+/// Host API: Оповещения (Notify)
+interface notify {
+    /// Отправить системное оповещение
+    send-alert: func(title: string, body: string, severity: string) -> result<_, string>;
+}
+
+/// Host API: Интернационализация (i18n)
+interface i18n {
+    /// Перевести ключ с подстановкой параметров
+    translate: func(locale: string, key: string, params-json: string) -> string;
+}
+
+/// Host API: Межмодульный RPC (RPC Broker)
+interface rpc {
+    /// Вызов метода другого модуля через брокер ядра
+    call: func(target-module: string, method: string, payload-json: string) -> result<string, string>;
+}
+
+/// Guest API: Жизненный цикл плагина (Lifecycle)
+interface lifecycle {
+    on-install: func() -> result<_, string>;
+    on-uninstall: func() -> result<_, string>;
+    on-enable: func() -> result<_, string>;
+    on-disable: func() -> result<_, string>;
+}
+
+/// Guest API: Получатель событий шины (Event Consumer)
+interface event-consumer {
+    on-event: func(topic: string, payload-json: string) -> result<_, string>;
+}
+
+/// Guest API: Обработчик таймеров и интервалов (Timer Consumer)
+interface timer-consumer {
+    on-timer: func(timer-id: string) -> result<_, string>;
+}
+
+/// Guest API: Обработчик межмодульных RPC запросов (RPC Handler)
+interface rpc-handler {
+    handle-rpc: func(method: string, payload-json: string) -> result<string, string>;
+}
+
+/// Полный мир плагина NMSNext-Gen
+world plugin {
+    // Импорты ядра
+    import events;
+    import storage;
+    import logger;
+    import notify;
+    import i18n;
+    import rpc;
+
+    // Экспорты плагина
+    export lifecycle;
+    export event-consumer;
+    export timer-consumer;
+    export rpc-handler;
+}

@@ -1,0 +1,22 @@
+[package]
+name = "nms-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nms"
+path = "src/main.rs"
+
+[dependencies]
+nms-common = { workspace = true }
+nms-core = { workspace = true }
+nms-server = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+zip = { workspace = true }

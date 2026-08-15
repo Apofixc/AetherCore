@@ -1,0 +1,7 @@
+{
+  "title": "Example Demo Plugin",
+  "widget.summary_title": "Example plugin status summary",
+  "status.active": "Module is active and processing",
+  "status.idle": "Waiting for events",
+  "settings.saved": "Plugin settings saved successfully"
+}
