@@ -88,9 +88,14 @@ ping-collector-1.2.0.nms-plugin (zip)
    * `permissions`: Список гранулярных разрешений (`id`, `name`, `category`, `description`), регистрируемых модулем в общей матрице прав ядра.
 
 6. **Схема конфигурации и хуки**:
-   * `config_schema`: JSON Schema (Draft-07/2020-12) настроек модуля. Ядро валидирует пользовательский ввод по этой схеме, а фронтенд-оболочка автоматически строит по ней форму настроек плагина.
-   * `hooks`: Декларация жизненных хуков модуля (`install`, `uninstall`, `on_enable`, `on_disable`).
-   * `assets`: Каталоги кэша (`cache_dirs`) и изолированного хранилища данных (`data_dirs`).
+   * **`config_schema`**: JSON Schema (Draft-07/2020-12) настроек модуля. Ядро валидирует пользовательский ввод по этой схеме, а фронтенд-оболочка автоматически строит по ней форму настроек плагина.
+   * **`hooks`**: Декларация жизненных хуков модуля (`install`, `uninstall`, `on_enable`, `on_disable`).
+   * **`assets`**: Каталоги кэша (`cache_dirs`) и изолированного хранилища данных (`data_dirs`).
+
+7. **Системные возможности песочницы и повышение прав (`capabilities`)**:
+   * **`network`**: Запрос прямого сетевого доступа WASI (`allow_raw_sockets: bool`, `allowed_hosts: list[str]`). По умолчанию `false` (сеть доступна только через безопасный Host API `nms:core/net`).
+   * **`filesystem`**: Запрос на проброс директорий хоста (`allow_host_dirs: [{path, mode: "read_only" | "read_write"}]`). По умолчанию `[]` (доступно только изолированное KV-хранилище ядра).
+   * **`environment`**: Доступ к переменным окружения ОС (`allow_env_vars: list[str]`).
 
 ##### Пример полного `manifest.yaml` плагина:
 ```yaml
@@ -107,6 +112,14 @@ deps:
   - "network-topology"
 optional_deps:
   - "alert-telegram"
+
+capabilities:
+  network:
+    allow_raw_sockets: false    # false = работаем безопасно через Host API nms:core/net
+  filesystem:
+    allow_host_dirs: []         # Доступ к ФС хоста не требуется
+  environment:
+    allow_env_vars: []
 
 events:
   publishes:
