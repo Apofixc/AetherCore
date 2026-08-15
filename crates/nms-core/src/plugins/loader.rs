@@ -34,9 +34,8 @@ impl PluginPackage {
     /// Загрузить пакет плагина из ZIP архива (.nms-plugin) напрямую в память
     pub fn from_zip_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = Cursor::new(bytes);
-        let mut zip = ZipArchive::new(reader).map_err(|e| AppError::Validation {
-            field: "plugin_archive".into(),
-            details: format!("Failed to read ZIP archive: {}", e),
+        let mut zip = ZipArchive::new(reader).map_err(|e| {
+            AppError::validation("plugin_archive", format!("Failed to read ZIP archive: {}", e))
         })?;
 
         let mut manifest_raw: Option<Vec<u8>> = None;
@@ -46,9 +45,8 @@ impl PluginPackage {
         let mut frontend_assets = HashMap::new();
 
         for i in 0..zip.len() {
-            let mut file = zip.by_index(i).map_err(|e| AppError::Validation {
-                field: "zip_entry".into(),
-                details: e.to_string(),
+            let mut file = zip.by_index(i).map_err(|e| {
+                AppError::validation("zip_entry", e.to_string())
             })?;
 
             if file.is_dir() {
@@ -57,8 +55,8 @@ impl PluginPackage {
 
             let file_name = file.name().to_string();
             let mut buf = Vec::with_capacity(file.size() as usize);
-            file.read_to_end(&mut buf).map_err(|e| AppError::Internal {
-                details: format!("Failed to read ZIP entry '{}': {}", file_name, e),
+            file.read_to_end(&mut buf).map_err(|e| {
+                AppError::internal(format!("Failed to read ZIP entry '{}': {}", file_name, e))
             })?;
 
             if file_name == "manifest.yaml" || file_name == "manifest.yml" {
@@ -81,14 +79,12 @@ impl PluginPackage {
             }
         }
 
-        let raw_manifest = manifest_raw.ok_or_else(|| AppError::Validation {
-            field: "manifest.yaml".into(),
-            details: "Plugin package is missing manifest.yaml".into(),
+        let raw_manifest = manifest_raw.ok_or_else(|| {
+            AppError::validation("manifest.yaml", "Plugin package is missing manifest.yaml")
         })?;
 
-        let manifest_str = std::str::from_utf8(&raw_manifest).map_err(|e| AppError::Validation {
-            field: "manifest.yaml".into(),
-            details: format!("Manifest is not valid UTF-8: {}", e),
+        let manifest_str = std::str::from_utf8(&raw_manifest).map_err(|e| {
+            AppError::validation("manifest.yaml", format!("Manifest is not valid UTF-8: {}", e))
         })?;
 
         let manifest = ModuleManifest::from_yaml(manifest_str)?;
@@ -107,26 +103,23 @@ impl PluginPackage {
     pub fn from_directory(dir: &Path) -> Result<Self> {
         let manifest_path = dir.join("manifest.yaml");
         if !manifest_path.exists() {
-            return Err(AppError::NotFound {
-                resource: format!("manifest.yaml in {:?}", dir),
-            });
+            return Err(AppError::not_found(format!("manifest.yaml in {:?}", dir)));
         }
 
-        let manifest_raw = std::fs::read(&manifest_path).map_err(|e| AppError::Internal {
-            details: format!("Failed to read {:?}: {}", manifest_path, e),
+        let manifest_raw = std::fs::read(&manifest_path).map_err(|e| {
+            AppError::internal(format!("Failed to read {:?}: {}", manifest_path, e))
         })?;
 
-        let manifest_str = std::str::from_utf8(&manifest_raw).map_err(|e| AppError::Validation {
-            field: "manifest.yaml".into(),
-            details: e.to_string(),
+        let manifest_str = std::str::from_utf8(&manifest_raw).map_err(|e| {
+            AppError::validation("manifest.yaml", e.to_string())
         })?;
 
         let manifest = ModuleManifest::from_yaml(manifest_str)?;
 
         let wasm_path = dir.join("backend.wasm");
         let backend_wasm = if wasm_path.exists() {
-            Some(std::fs::read(&wasm_path).map_err(|e| AppError::Internal {
-                details: format!("Failed to read {:?}: {}", wasm_path, e),
+            Some(std::fs::read(&wasm_path).map_err(|e| {
+                AppError::internal(format!("Failed to read {:?}: {}", wasm_path, e))
             })?)
         } else {
             None
@@ -182,15 +175,11 @@ impl PluginPackage {
         };
 
         let verifying_key = VerifyingKey::from_bytes(public_key_bytes).map_err(|e| {
-            AppError::Validation {
-                field: "public_key".into(),
-                details: format!("Invalid public key: {}", e),
-            }
+            AppError::validation("public_key", format!("Invalid public key: {}", e))
         })?;
 
-        let signature = Signature::from_slice(sig_bytes).map_err(|e| AppError::Validation {
-            field: "signature".into(),
-            details: format!("Invalid signature format: {}", e),
+        let signature = Signature::from_slice(sig_bytes).map_err(|e| {
+            AppError::validation("signature", format!("Invalid signature format: {}", e))
         })?;
 
         // Подписываемые данные: manifest_raw + backend_wasm (если есть)
@@ -213,23 +202,16 @@ impl PluginPackage {
 
         // 1. Записываем manifest.yaml
         zip.start_file("manifest.yaml", options)
-            .map_err(|e| AppError::Internal {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         zip.write_all(&package.manifest_raw)
-            .map_err(|e| AppError::Internal {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
 
         // 2. Записываем backend.wasm
         if let Some(wasm) = &package.backend_wasm {
             zip.start_file("backend.wasm", options)
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
-            zip.write_all(wasm).map_err(|e| AppError::Internal {
-                details: e.to_string(),
-            })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
+            zip.write_all(wasm)
+                .map_err(|e| AppError::internal(e.to_string()))?;
         }
 
         // 3. Записываем цифровую подпись (если передан ключ)
@@ -240,42 +222,30 @@ impl PluginPackage {
             }
             let sig = signer.sign(&signed_data);
             zip.start_file("signature.bin", options)
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
             zip.write_all(&sig.to_bytes())
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
         }
 
         // 4. Записываем локали
         for (lang, json) in &package.locales {
             let entry_name = format!("locales/{}.json", lang);
             zip.start_file(entry_name, options)
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
             zip.write_all(json.as_bytes())
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
         }
 
         // 5. Записываем фронтенд файлы
         for (rel_path, data) in &package.frontend_assets {
             zip.start_file(rel_path, options)
-                .map_err(|e| AppError::Internal {
-                    details: e.to_string(),
-                })?;
-            zip.write_all(data).map_err(|e| AppError::Internal {
-                details: e.to_string(),
-            })?;
+                .map_err(|e| AppError::internal(e.to_string()))?;
+            zip.write_all(data)
+                .map_err(|e| AppError::internal(e.to_string()))?;
         }
 
-        zip.finish().map_err(|e| AppError::Internal {
-            details: format!("Failed to finish ZIP archive: {}", e),
-        })?;
+        zip.finish()
+            .map_err(|e| AppError::internal(format!("Failed to finish ZIP archive: {}", e)))?;
 
         Ok(zip_buf)
     }

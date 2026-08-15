@@ -213,9 +213,8 @@ fn default_manifest_version() -> u32 {
 impl ModuleManifest {
     /// Распарсить манифест из YAML строки
     pub fn from_yaml(yaml_content: &str) -> Result<Self> {
-        let manifest: Self = serde_yaml::from_str(yaml_content).map_err(|e| AppError::Validation {
-            field: "manifest.yaml".into(),
-            details: format!("YAML deserialization error: {}", e),
+        let manifest: Self = serde_yaml::from_str(yaml_content).map_err(|e| {
+            AppError::validation("manifest.yaml", format!("YAML deserialization error: {}", e))
         })?;
 
         manifest.validate()?;
@@ -231,19 +230,18 @@ impl ModuleManifest {
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
         {
-            return Err(AppError::Validation {
-                field: "id".into(),
-                details: format!(
+            return Err(AppError::validation(
+                "id",
+                format!(
                     "Module id '{}' must contain only lowercase latin letters, digits, '-' and '_'",
                     self.id
                 ),
-            });
+            ));
         }
 
         // 2. Проверка корректности SemVer версии модуля
-        Version::parse(&self.version).map_err(|e| AppError::Validation {
-            field: "version".into(),
-            details: format!("Invalid SemVer version '{}': {}", self.version, e),
+        Version::parse(&self.version).map_err(|e| {
+            AppError::validation("version", format!("Invalid SemVer version '{}': {}", self.version, e))
         })?;
 
         // 3. Валидация безопасности топиков событий:
@@ -251,20 +249,17 @@ impl ModuleManifest {
         let prefix = format!("{}.", self.id);
         for topic in &self.events.publishes {
             if !topic.starts_with(&prefix) {
-                return Err(AppError::Forbidden {
-                    permission: format!(
-                        "Module '{}' cannot publish to topic '{}'. Topic must start with '{}'",
-                        self.id, topic, prefix
-                    ),
-                });
+                return Err(AppError::forbidden(format!(
+                    "Module '{}' cannot publish to topic '{}'. Topic must start with '{}'",
+                    self.id, topic, prefix
+                )));
             }
         }
 
         // 4. Проверка JSON Schema конфигурации (если указана)
         if let Some(schema_json) = &self.config_schema {
-            jsonschema::validator_for(schema_json).map_err(|e| AppError::Validation {
-                field: "config_schema".into(),
-                details: format!("Invalid JSON Schema: {}", e),
+            jsonschema::validator_for(schema_json).map_err(|e| {
+                AppError::validation("config_schema", format!("Invalid JSON Schema: {}", e))
             })?;
         }
 
@@ -274,17 +269,13 @@ impl ModuleManifest {
     /// Проверка совместимости версии ядра
     pub fn is_compatible_with_core(&self, core_version_str: &str) -> Result<bool> {
         let core_version =
-            Version::parse(core_version_str).map_err(|e| AppError::Validation {
-                field: "core_version".into(),
-                details: e.to_string(),
+            Version::parse(core_version_str).map_err(|e| {
+                AppError::validation("core_version", e.to_string())
             })?;
 
         if let Some(min_ver) = &self.min_core_version {
             let req = VersionReq::parse(&format!(">={}", min_ver)).map_err(|e| {
-                AppError::Validation {
-                    field: "min_core_version".into(),
-                    details: e.to_string(),
-                }
+                AppError::validation("min_core_version", e.to_string())
             })?;
             if !req.matches(&core_version) {
                 return Ok(false);
@@ -293,10 +284,7 @@ impl ModuleManifest {
 
         if let Some(max_ver) = &self.max_core_version {
             let req = VersionReq::parse(&format!("<={}", max_ver)).map_err(|e| {
-                AppError::Validation {
-                    field: "max_core_version".into(),
-                    details: e.to_string(),
-                }
+                AppError::validation("max_core_version", e.to_string())
             })?;
             if !req.matches(&core_version) {
                 return Ok(false);
@@ -310,17 +298,11 @@ impl ModuleManifest {
     pub fn validate_config(&self, config: &serde_json::Value) -> Result<()> {
         if let Some(schema_json) = &self.config_schema {
             let validator = jsonschema::validator_for(schema_json).map_err(|e| {
-                AppError::Validation {
-                    field: "config_schema".into(),
-                    details: format!("Schema error: {}", e),
-                }
+                AppError::validation("config_schema", format!("Schema error: {}", e))
             })?;
 
             if let Err(err) = validator.validate(config) {
-                return Err(AppError::Validation {
-                    field: "config".into(),
-                    details: err.to_string(),
-                });
+                return Err(AppError::validation("config", err.to_string()));
             }
         }
         Ok(())
@@ -343,9 +325,10 @@ pub fn resolve_module_dag(manifests: &[ModuleManifest]) -> Result<Vec<ModuleMani
     for m in manifests {
         for dep in &m.deps {
             if !manifest_map.contains_key(dep) {
-                return Err(AppError::NotFound {
-                    resource: format!("Required dependency '{}' for module '{}'", dep, m.id),
-                });
+                return Err(AppError::not_found(format!(
+                    "Required dependency '{}' for module '{}'",
+                    dep, m.id
+                )));
             }
             adj.get_mut(dep).unwrap().push(m.id.clone());
             *in_degrees.get_mut(&m.id).unwrap() += 1;
@@ -378,9 +361,7 @@ pub fn resolve_module_dag(manifests: &[ModuleManifest]) -> Result<Vec<ModuleMani
     }
 
     if visited_count != manifests.len() {
-        return Err(AppError::BadRequest {
-            details: "Cyclic dependency detected among modules".into(),
-        });
+        return Err(AppError::bad_request("Cyclic dependency detected among modules"));
     }
 
     Ok(result)

@@ -51,8 +51,8 @@ impl JwtManager {
         };
 
         let encoding_key = EncodingKey::from_secret(self.secret.as_bytes());
-        encode(&Header::default(), &claims, &encoding_key).map_err(|e| AppError::Internal {
-            details: format!("JWT encoding error: {}", e),
+        encode(&Header::default(), &claims, &encoding_key).map_err(|e| {
+            AppError::internal(format!("JWT encoding error: {}", e))
         })
     }
 
@@ -63,9 +63,7 @@ impl JwtManager {
 
         let decoding_key = DecodingKey::from_secret(self.secret.as_bytes());
         let token_data = decode::<JwtClaims>(token, &decoding_key, &validation).map_err(
-            |e| AppError::Unauthorized {
-                details: format!("Invalid or expired token: {}", e),
-            },
+            |e| AppError::unauthorized(format!("Invalid or expired token: {}", e)),
         )?;
 
         Ok(token_data.claims)

@@ -76,9 +76,7 @@ async fn get_module_handler(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(AppError::NotFound {
-                    resource: format!("Plugin '{}'", id),
-                }.to_api_response(locale)),
+                Json(AppError::module_not_found(&id).to_api_response(locale)),
             )
         })?;
 

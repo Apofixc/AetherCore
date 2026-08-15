@@ -1,17 +1,22 @@
-//! # Middleware аутентификации, авторизации и локализации
+//! # HTTP Middleware для Axum сервера
 
 use axum::extract::FromRequestParts;
+use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use nms_common::error::AppError;
+use nms_common::error::{AppError, ErrorResponse};
 use nms_common::i18n::Locale;
 use nms_common::models::user::JwtClaims;
 use nms_core::auth::JwtManager;
 
-/// Экстрактор локали из заголовка Accept-Language или query параметра
-#[derive(Debug, Clone, Copy)]
+/// Трейт для извлечения менеджера JWT из состояния
+pub trait HasJwtManager {
+    fn jwt_manager(&self) -> &JwtManager;
+}
+
+/// Extractor для определения локали клиента
 pub struct RequestLocale(pub Locale);
 
 impl<S> FromRequestParts<S> for RequestLocale
@@ -21,43 +26,39 @@ where
     type Rejection = std::convert::Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let accept_language = parts
+        let locale_str = parts
             .headers
-            .get("accept-language")
+            .get("Accept-Language")
             .and_then(|h| h.to_str().ok())
-            .unwrap_or("ru");
+            .unwrap_or("");
 
-        Ok(RequestLocale(Locale::from_str_relaxed(accept_language)))
+        Ok(RequestLocale(Locale::from_str_relaxed(locale_str)))
     }
 }
 
-/// Экстрактор аутентифицированного пользователя (JWT Claims)
-#[derive(Debug, Clone)]
+/// Extractor для извлечения аутентифицированного пользователя
 pub struct AuthUser(pub JwtClaims);
-
-/// Структура состояния для верификации токена
-pub trait HasJwtManager {
-    fn jwt_manager(&self) -> &JwtManager;
-}
 
 impl<S> FromRequestParts<S> for AuthUser
 where
-    S: Send + Sync + HasJwtManager,
+    S: HasJwtManager + Send + Sync,
 {
     type Rejection = AuthErrorResponse;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
-            .get(axum::http::header::AUTHORIZATION)
+            .get(AUTHORIZATION)
             .and_then(|h| h.to_str().ok());
 
         let token = match auth_header {
-            Some(header) if header.starts_with("Bearer ") => &header[7..],
+            Some(header_val) if header_val.starts_with("Bearer ") => {
+                &header_val["Bearer ".len()..]
+            }
             _ => {
-                return Err(AuthErrorResponse(AppError::Unauthorized {
-                    details: "Missing Bearer token in Authorization header".into(),
-                }))
+                return Err(AuthErrorResponse(AppError::unauthorized(
+                    "Missing Bearer authorization header",
+                )))
             }
         };
 
@@ -70,13 +71,12 @@ where
     }
 }
 
-/// Обертка ошибки аутентификации для Axum ответа
 pub struct AuthErrorResponse(pub AppError);
 
 impl IntoResponse for AuthErrorResponse {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.0.status_code()).unwrap_or(StatusCode::UNAUTHORIZED);
-        let body = self.0.to_api_response(Locale::Ru);
-        (status, Json(body)).into_response()
+        let error_response: ErrorResponse = self.0.to_api_response(Locale::Ru);
+        (status, Json(error_response)).into_response()
     }
 }

@@ -67,8 +67,8 @@ impl EventBus {
             self.journal_tx
                 .send(event)
                 .await
-                .map_err(|e| AppError::Internal {
-                    details: format!("Failed to enqueue event for persistent journal: {}", e),
+                .map_err(|e| {
+                    AppError::internal(format!("Failed to enqueue event for persistent journal: {}", e))
                 })?;
         }
 
@@ -125,8 +125,8 @@ impl EventBus {
             }
         };
 
-        let rows = query_sql.map_err(|e| AppError::Database {
-            details: format!("Failed to query event journal: {}", e),
+        let rows = query_sql.map_err(|e| {
+            AppError::database(format!("Failed to query event journal: {}", e))
         })?;
 
         let mut records = Vec::with_capacity(rows.len());
@@ -152,9 +152,8 @@ impl EventBus {
 
 /// Запись события в таблицу SQLite
 async fn record_event_to_db(db: &Db, event: &EventMessage) -> Result<()> {
-    let payload_str = serde_json::to_string(&event.payload).map_err(|e| AppError::Validation {
-        field: "payload".into(),
-        details: e.to_string(),
+    let payload_str = serde_json::to_string(&event.payload).map_err(|e| {
+        AppError::validation("payload", e.to_string())
     })?;
 
     sqlx::query(
@@ -170,9 +169,7 @@ async fn record_event_to_db(db: &Db, event: &EventMessage) -> Result<()> {
     .bind(event.timestamp.to_rfc3339())
     .execute(db.writer())
     .await
-    .map_err(|e| AppError::Database {
-        details: e.to_string(),
-    })?;
+    .map_err(|e| AppError::database(e.to_string()))?;
 
     Ok(())
 }

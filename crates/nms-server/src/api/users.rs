@@ -33,10 +33,13 @@ async fn list_users_handler(
     })?;
 
     let users = state.user_service.list_users().await.map_err(|e| {
-        (StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), Json(e.to_api_response(locale)))
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
     })?;
 
-    let dtos = users.into_iter().map(Into::into).collect();
+    let dtos = users.into_iter().map(UserResponseDto::from).collect();
     Ok(Json(dtos))
 }
 
@@ -52,7 +55,10 @@ async fn create_user_handler(
     })?;
 
     let user = state.user_service.create_user(dto).await.map_err(|e| {
-        (StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST), Json(e.to_api_response(locale)))
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+            Json(e.to_api_response(locale)),
+        )
     })?;
 
     let _ = state
@@ -63,15 +69,15 @@ async fn create_user_handler(
             "users.create",
             &format!("users/{}", user.id),
             "success",
-            Some(&format!("Created user '{}'", user.username)),
+            None,
             None,
         )
         .await;
 
-    Ok(Json(user.into()))
+    Ok(Json(UserResponseDto::from(user)))
 }
 
-/// GET /api/v1/users/:id
+/// GET /api/v1/users/{id}
 async fn get_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -83,13 +89,16 @@ async fn get_user_handler(
     })?;
 
     let user = state.user_service.get_user_by_id(id).await.map_err(|e| {
-        (StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::NOT_FOUND), Json(e.to_api_response(locale)))
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::NOT_FOUND),
+            Json(e.to_api_response(locale)),
+        )
     })?;
 
-    Ok(Json(user.into()))
+    Ok(Json(UserResponseDto::from(user)))
 }
 
-/// PUT /api/v1/users/:id
+/// PUT /api/v1/users/{id}
 async fn update_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -101,9 +110,16 @@ async fn update_user_handler(
         (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
     })?;
 
-    let user = state.user_service.update_user(id, dto).await.map_err(|e| {
-        (StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST), Json(e.to_api_response(locale)))
-    })?;
+    let user = state
+        .user_service
+        .update_user(id, dto)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
 
     let _ = state
         .audit_service
@@ -118,10 +134,10 @@ async fn update_user_handler(
         )
         .await;
 
-    Ok(Json(user.into()))
+    Ok(Json(UserResponseDto::from(user)))
 }
 
-/// DELETE /api/v1/users/:id
+/// DELETE /api/v1/users/{id}
 async fn delete_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -132,18 +148,23 @@ async fn delete_user_handler(
         (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
     })?;
 
-    let deleted = state.user_service.delete_user(id).await.map_err(|e| {
-        (StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), Json(e.to_api_response(locale)))
-    })?;
-
-    if !deleted {
+    // Нельзя удалить самого себя
+    if claims.sub == id {
         return Err((
-            StatusCode::NOT_FOUND,
-            Json(AppError::NotFound {
-                resource: format!("User '{}'", id),
-            }.to_api_response(locale)),
+            StatusCode::BAD_REQUEST,
+            Json(
+                AppError::bad_request("Cannot delete your own user account")
+                    .to_api_response(locale),
+            ),
         ));
     }
+
+    state.user_service.delete_user(id).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
 
     let _ = state
         .audit_service

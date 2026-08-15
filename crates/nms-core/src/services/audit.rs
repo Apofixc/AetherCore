@@ -1,4 +1,4 @@
-//! # Сервис аудита действий пользователей (AuditService)
+//! # Сервис журнала аудита действий (AuditService)
 
 use crate::db::Db;
 use chrono::{DateTime, Utc};
@@ -19,18 +19,19 @@ pub struct AuditLogRecord {
     pub created_at: DateTime<Utc>,
 }
 
-/// Сервис аудита
+/// Сервис для работы с журналом аудита
 #[derive(Debug, Clone)]
 pub struct AuditService {
     db: Db,
 }
 
 impl AuditService {
+    /// Создать новый экземпляр AuditService
     pub fn new(db: Db) -> Self {
         Self { db }
     }
 
-    /// Зафиксировать событие аудита
+    /// Записать действие пользователя или системы в журнал аудита
     pub async fn log(
         &self,
         user_id: Option<&str>,
@@ -40,10 +41,10 @@ impl AuditService {
         status: &str,
         details: Option<&str>,
         ip_address: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         let now = Utc::now().to_rfc3339();
 
-        sqlx::query(
+        let res = sqlx::query(
             r#"
             INSERT INTO audit_logs (user_id, username, action, resource, status, details, ip_address, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -59,14 +60,12 @@ impl AuditService {
         .bind(now)
         .execute(self.db.writer())
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to record audit log: {}", e),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
-        Ok(())
+        Ok(res.last_insert_rowid())
     }
 
-    /// Получить список последних записей аудита
+    /// Получить список записей журнала аудита
     pub async fn list_logs(&self, limit: u32, after_id: Option<i64>) -> Result<Vec<AuditLogRecord>> {
         let limit = limit.min(500).max(1) as i64;
         let after_id = after_id.unwrap_or(0);
@@ -94,12 +93,10 @@ impl AuditService {
         .bind(limit)
         .fetch_all(self.db.reader())
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to query audit logs: {}", e),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         let mut records = Vec::with_capacity(rows.len());
-        for (id, u_id, u_name, act, res, stat, det, ip, created_str) in rows {
+        for (id, u_id, u_name, action, res, status, details, ip, created_str) in rows {
             let created_at = DateTime::parse_from_rfc3339(&created_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
@@ -108,10 +105,10 @@ impl AuditService {
                 id,
                 user_id: u_id,
                 username: u_name,
-                action: act,
+                action,
                 resource: res,
-                status: stat,
-                details: det,
+                status,
+                details,
                 ip_address: ip,
                 created_at,
             });

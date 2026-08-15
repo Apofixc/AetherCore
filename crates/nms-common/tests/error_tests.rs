@@ -5,11 +5,9 @@ use nms_common::i18n::Locale;
 
 #[test]
 fn test_error_localization_ru() {
-    let err = AppError::NotFound {
-        resource: "users/admin".into(),
-    };
+    let err = AppError::not_found("users/admin");
     assert_eq!(err.status_code(), 404);
-    assert_eq!(err.error_code(), "NOT_FOUND");
+    assert_eq!(err.code(), "NOT_FOUND");
     assert_eq!(
         err.localized_message(Locale::Ru),
         "Запрошенный ресурс 'users/admin' не найден"
@@ -18,11 +16,9 @@ fn test_error_localization_ru() {
 
 #[test]
 fn test_error_localization_en() {
-    let err = AppError::Forbidden {
-        permission: "users.manage".into(),
-    };
+    let err = AppError::forbidden("users.manage");
     assert_eq!(err.status_code(), 403);
-    assert_eq!(err.error_code(), "INSUFFICIENT_PERMISSIONS");
+    assert_eq!(err.code(), "INSUFFICIENT_PERMISSIONS");
     assert_eq!(
         err.localized_message(Locale::En),
         "Forbidden: missing required permission: users.manage"
@@ -31,10 +27,7 @@ fn test_error_localization_en() {
 
 #[test]
 fn test_standard_api_response_structure() {
-    let err = AppError::Validation {
-        field: "email".into(),
-        details: "invalid format".into(),
-    };
+    let err = AppError::validation("email", "invalid format");
     let res = err.to_api_response(Locale::Ru);
     assert_eq!(res.success, false);
     assert_eq!(res.error.code, "VALIDATION_ERROR");
@@ -47,7 +40,7 @@ fn test_standard_api_response_structure() {
 fn test_custom_errors_support() {
     // 1. Простая кастомная ошибка
     let custom_err = AppError::custom("EXTERNAL_SERVICE_UNAVAILABLE", "Upstream device timed out", 503);
-    assert_eq!(custom_err.error_code(), "EXTERNAL_SERVICE_UNAVAILABLE");
+    assert_eq!(custom_err.code(), "EXTERNAL_SERVICE_UNAVAILABLE");
     assert_eq!(custom_err.status_code(), 503);
     assert_eq!(custom_err.localized_message(Locale::Ru), "Upstream device timed out");
 
@@ -70,6 +63,6 @@ fn test_custom_errors_support() {
 
     // 3. Модульные ошибки
     let mod_not_found = AppError::module_not_found("tuya");
-    assert_eq!(mod_not_found.error_code(), "MODULE_NOT_FOUND");
+    assert_eq!(mod_not_found.code(), "MODULE_NOT_FOUND");
     assert_eq!(mod_not_found.status_code(), 404);
 }

@@ -13,15 +13,13 @@ pub fn hash_password(password: &str) -> Result<String> {
     argon2
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
-        .map_err(|e| AppError::Internal {
-            details: format!("Password hashing failed: {}", e),
-        })
+        .map_err(|e| AppError::internal(format!("Password hashing failed: {}", e)))
 }
 
 /// Проверить соответствие пароля хэшу
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
-    let parsed_hash = PasswordHash::new(password_hash).map_err(|e| AppError::Internal {
-        details: format!("Invalid password hash format: {}", e),
+    let parsed_hash = PasswordHash::new(password_hash).map_err(|e| {
+        AppError::internal(format!("Invalid password hash format: {}", e))
     })?;
 
     Ok(Argon2::default()

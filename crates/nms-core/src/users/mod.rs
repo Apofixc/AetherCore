@@ -26,9 +26,7 @@ impl UserService {
         let count_row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(self.db.reader())
             .await
-            .map_err(|e| AppError::Database {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
 
         if count_row.0 == 0 {
             info!("No users found in database. Initializing default admin user: 'admin'");
@@ -51,17 +49,14 @@ impl UserService {
     pub async fn create_user(&self, dto: CreateUserDto) -> Result<User> {
         let username = dto.username.trim().to_lowercase();
         if username.is_empty() {
-            return Err(AppError::Validation {
-                field: "username".into(),
-                details: "Username cannot be empty".into(),
-            });
+            return Err(AppError::validation("username", "Username cannot be empty"));
         }
 
         if dto.password.len() < 4 {
-            return Err(AppError::Validation {
-                field: "password".into(),
-                details: "Password must be at least 4 characters long".into(),
-            });
+            return Err(AppError::validation(
+                "password",
+                "Password must be at least 4 characters long",
+            ));
         }
 
         // Проверка уникальности имени пользователя
@@ -70,14 +65,10 @@ impl UserService {
                 .bind(&username)
                 .fetch_optional(self.db.reader())
                 .await
-                .map_err(|e| AppError::Database {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::database(e.to_string()))?;
 
         if existing.is_some() {
-            return Err(AppError::Conflict {
-                details: format!("User '{}' already exists", username),
-            });
+            return Err(AppError::conflict(format!("User '{}' already exists", username)));
         }
 
         let id = Uuid::new_v4();
@@ -104,9 +95,7 @@ impl UserService {
         .bind(now.to_rfc3339())
         .execute(self.db.writer())
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to insert user: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to insert user: {}", e)))?;
 
         // Назначаем роли
         let roles = dto.roles.unwrap_or_else(|| vec!["viewer".to_string()]);
@@ -116,9 +105,7 @@ impl UserService {
                 .bind(role)
                 .execute(self.db.writer())
                 .await
-                .map_err(|e| AppError::Database {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::database(e.to_string()))?;
         }
 
         self.get_user_by_id(id).await
@@ -146,15 +133,11 @@ impl UserService {
         .bind(id.to_string())
         .fetch_optional(self.db.reader())
         .await
-        .map_err(|e| AppError::Database {
-            details: e.to_string(),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         match row {
             Some(r) => self.map_user_row(r).await,
-            None => Err(AppError::NotFound {
-                resource: format!("User with id '{}'", id),
-            }),
+            None => Err(AppError::not_found(format!("User with id '{}'", id))),
         }
     }
 
@@ -181,36 +164,26 @@ impl UserService {
         .bind(&username_clean)
         .fetch_optional(self.db.reader())
         .await
-        .map_err(|e| AppError::Database {
-            details: e.to_string(),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         match row {
             Some(r) => self.map_user_row(r).await,
-            None => Err(AppError::NotFound {
-                resource: format!("User '{}'", username),
-            }),
+            None => Err(AppError::not_found(format!("User '{}'", username))),
         }
     }
 
     /// Аутентификация пользователя по логину и паролю
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
         let user = self.get_user_by_username(username).await.map_err(|_| {
-            AppError::Unauthorized {
-                details: "Invalid username or password".into(),
-            }
+            AppError::unauthorized("Invalid username or password")
         })?;
 
         if !user.is_active {
-            return Err(AppError::Unauthorized {
-                details: "Account is disabled".into(),
-            });
+            return Err(AppError::unauthorized("Account is disabled"));
         }
 
         if !verify_password(password, &user.password_hash)? {
-            return Err(AppError::Unauthorized {
-                details: "Invalid username or password".into(),
-            });
+            return Err(AppError::unauthorized("Invalid username or password"));
         }
 
         // Обновляем время последнего входа
@@ -245,9 +218,7 @@ impl UserService {
         )
         .fetch_all(self.db.reader())
         .await
-        .map_err(|e| AppError::Database {
-            details: e.to_string(),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         let mut users = Vec::with_capacity(rows.len());
         for row in rows {
@@ -287,9 +258,7 @@ impl UserService {
         .bind(id.to_string())
         .execute(self.db.writer())
         .await
-        .map_err(|e| AppError::Database {
-            details: e.to_string(),
-        })?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         // Обновляем роли, если переданы
         if let Some(roles) = dto.roles {
@@ -297,9 +266,7 @@ impl UserService {
                 .bind(id.to_string())
                 .execute(self.db.writer())
                 .await
-                .map_err(|e| AppError::Database {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::database(e.to_string()))?;
 
             for role in roles {
                 sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, ?)")
@@ -307,9 +274,7 @@ impl UserService {
                     .bind(role)
                     .execute(self.db.writer())
                     .await
-                    .map_err(|e| AppError::Database {
-                        details: e.to_string(),
-                    })?;
+                    .map_err(|e| AppError::database(e.to_string()))?;
             }
         }
 
@@ -322,9 +287,7 @@ impl UserService {
             .bind(id.to_string())
             .execute(self.db.writer())
             .await
-            .map_err(|e| AppError::Database {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(res.rows_affected() > 0)
     }
@@ -380,9 +343,7 @@ impl UserService {
                 .bind(&id_str)
                 .fetch_all(self.db.reader())
                 .await
-                .map_err(|e| AppError::Database {
-                    details: e.to_string(),
-                })?;
+                .map_err(|e| AppError::database(e.to_string()))?;
 
         let roles: Vec<String> = role_rows.into_iter().map(|r| r.0).collect();
 
@@ -395,9 +356,7 @@ impl UserService {
             .bind(role)
             .fetch_all(self.db.reader())
             .await
-            .map_err(|e| AppError::Database {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
 
             for p in perm_rows {
                 permissions_set.insert(p.0);

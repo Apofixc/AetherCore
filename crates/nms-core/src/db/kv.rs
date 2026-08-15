@@ -43,15 +43,14 @@ impl KvStore {
         .bind(key)
         .fetch_optional(self.db.reader())
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to read KV key '{}:{}': {}", self.namespace, key, e),
+        .map_err(|e| {
+            AppError::database(format!("Failed to read KV key '{}:{}': {}", self.namespace, key, e))
         })?;
 
         match row {
             Some((json_str,)) => {
-                let val: T = serde_json::from_str(&json_str).map_err(|e| AppError::Validation {
-                    field: key.to_string(),
-                    details: format!("JSON deserialization failed: {}", e),
+                let val: T = serde_json::from_str(&json_str).map_err(|e| {
+                    AppError::validation(key, format!("JSON deserialization failed: {}", e))
                 })?;
                 Ok(Some(val))
             }
@@ -61,9 +60,8 @@ impl KvStore {
 
     /// Сохранить значение по ключу (UPSERT)
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
-        let json_str = serde_json::to_string(value).map_err(|e| AppError::Validation {
-            field: key.to_string(),
-            details: format!("JSON serialization failed: {}", e),
+        let json_str = serde_json::to_string(value).map_err(|e| {
+            AppError::validation(key, format!("JSON serialization failed: {}", e))
         })?;
 
         let now = Utc::now().to_rfc3339();
@@ -83,8 +81,8 @@ impl KvStore {
         .bind(now)
         .execute(self.db.writer())
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to write KV key '{}:{}': {}", self.namespace, key, e),
+        .map_err(|e| {
+            AppError::database(format!("Failed to write KV key '{}:{}': {}", self.namespace, key, e))
         })?;
 
         Ok(())
@@ -97,8 +95,8 @@ impl KvStore {
             .bind(key)
             .execute(self.db.writer())
             .await
-            .map_err(|e| AppError::Database {
-                details: format!("Failed to delete KV key '{}:{}': {}", self.namespace, key, e),
+            .map_err(|e| {
+                AppError::database(format!("Failed to delete KV key '{}:{}': {}", self.namespace, key, e))
             })?;
 
         Ok(res.rows_affected() > 0)
@@ -111,8 +109,8 @@ impl KvStore {
                 .bind(&self.namespace)
                 .fetch_all(self.db.reader())
                 .await
-                .map_err(|e| AppError::Database {
-                    details: format!("Failed to list KV keys for '{}': {}", self.namespace, e),
+                .map_err(|e| {
+                    AppError::database(format!("Failed to list KV keys for '{}': {}", self.namespace, e))
                 })?;
 
         Ok(rows.into_iter().map(|r| r.0).collect())

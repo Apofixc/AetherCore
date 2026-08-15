@@ -149,8 +149,8 @@ impl PluginManager {
     /// Включить плагин
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
-        let plugin = registry.get_mut(plugin_id).ok_or_else(|| AppError::NotFound {
-            resource: format!("Plugin '{}'", plugin_id),
+        let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
+            AppError::module_not_found(plugin_id)
         })?;
 
         plugin.is_enabled = true;
@@ -161,8 +161,8 @@ impl PluginManager {
     /// Отключить плагин
     pub async fn disable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
-        let plugin = registry.get_mut(plugin_id).ok_or_else(|| AppError::NotFound {
-            resource: format!("Plugin '{}'", plugin_id),
+        let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
+            AppError::module_not_found(plugin_id)
         })?;
 
         plugin.is_enabled = false;
@@ -172,8 +172,8 @@ impl PluginManager {
 
     /// Получить настройки плагина
     pub async fn get_plugin_config(&self, plugin_id: &str) -> Result<Option<serde_json::Value>> {
-        let _ = self.get_plugin(plugin_id).ok_or_else(|| AppError::NotFound {
-            resource: format!("Plugin '{}'", plugin_id),
+        let _ = self.get_plugin(plugin_id).ok_or_else(|| {
+            AppError::module_not_found(plugin_id)
         })?;
 
         let kv = KvStore::for_plugin(self.db.clone(), plugin_id);
@@ -186,8 +186,8 @@ impl PluginManager {
         plugin_id: &str,
         config_value: &serde_json::Value,
     ) -> Result<()> {
-        let plugin = self.get_plugin(plugin_id).ok_or_else(|| AppError::NotFound {
-            resource: format!("Plugin '{}'", plugin_id),
+        let plugin = self.get_plugin(plugin_id).ok_or_else(|| {
+            AppError::module_not_found(plugin_id)
         })?;
 
         // Валидация по JSON Schema

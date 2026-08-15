@@ -27,17 +27,15 @@ impl Db {
         // Создаем родительскую директорию, если она не существует
         if let Some(parent) = db_path.parent() {
             if !parent.as_os_str().is_empty() {
-                tokio::fs::create_dir_all(parent).await.map_err(|e| AppError::Database {
-                    details: format!("Failed to create database directory {:?}: {}", parent, e),
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    AppError::database(format!("Failed to create database directory {:?}: {}", parent, e))
                 })?;
             }
         }
 
         let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
         let connect_opts = SqliteConnectOptions::from_str(&db_url)
-            .map_err(|e| AppError::Database {
-                details: format!("Invalid SQLite connection string: {}", e),
-            })?
+            .map_err(|e| AppError::database(format!("Invalid SQLite connection string: {}", e)))?
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
             .busy_timeout(std::time::Duration::from_millis(busy_timeout_ms))
@@ -49,9 +47,7 @@ impl Db {
             .min_connections(1)
             .connect_with(connect_opts.clone())
             .await
-            .map_err(|e| AppError::Database {
-                details: format!("Failed to create SQLite writer pool: {}", e),
-            })?;
+            .map_err(|e| AppError::database(format!("Failed to create SQLite writer pool: {}", e)))?;
 
         // 2. Multi-Reader Pool: пул соединений на чтение
         let reader_pool = SqlitePoolOptions::new()
@@ -59,9 +55,7 @@ impl Db {
             .min_connections(1)
             .connect_with(connect_opts)
             .await
-            .map_err(|e| AppError::Database {
-                details: format!("Failed to create SQLite reader pool: {}", e),
-            })?;
+            .map_err(|e| AppError::database(format!("Failed to create SQLite reader pool: {}", e)))?;
 
         let db = Self {
             writer_pool,
@@ -78,9 +72,7 @@ impl Db {
     /// Инициализировать базу данных в памяти (для тестов)
     pub async fn init_in_memory() -> Result<Self> {
         let connect_opts = SqliteConnectOptions::from_str("sqlite::memory:")
-            .map_err(|e| AppError::Database {
-                details: e.to_string(),
-            })?
+            .map_err(|e| AppError::database(e.to_string()))?
             .busy_timeout(std::time::Duration::from_millis(5000))
             .foreign_keys(true);
 
@@ -88,9 +80,7 @@ impl Db {
             .max_connections(1)
             .connect_with(connect_opts)
             .await
-            .map_err(|e| AppError::Database {
-                details: e.to_string(),
-            })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
 
         let db = Self {
             writer_pool: pool.clone(),
@@ -134,9 +124,7 @@ impl Db {
         )
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to create users table: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to create users table: {}", e)))?;
 
         // 2. Таблицы RBAC (роли и права)
         sqlx::query(
@@ -173,9 +161,7 @@ impl Db {
         )
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to create RBAC tables: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to create RBAC tables: {}", e)))?;
 
         // 3. Таблица Key-Value хранилища (изолированное состояние ядра и плагинов)
         sqlx::query(
@@ -192,9 +178,7 @@ impl Db {
         )
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to create kv_store table: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to create kv_store table: {}", e)))?;
 
         // 4. Таблица журнала системных событий (Reliable Event Journal)
         sqlx::query(
@@ -213,9 +197,7 @@ impl Db {
         )
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to create event_journal table: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to create event_journal table: {}", e)))?;
 
         // 5. Таблица журнала аудита
         sqlx::query(
@@ -236,9 +218,7 @@ impl Db {
         )
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database {
-            details: format!("Failed to create audit_logs table: {}", e),
-        })?;
+        .map_err(|e| AppError::database(format!("Failed to create audit_logs table: {}", e)))?;
 
         // Сидирование стандартных ролей и прав
         self.seed_default_rbac().await?;
@@ -271,7 +251,7 @@ impl Db {
             .bind(desc)
             .execute(pool)
             .await
-            .map_err(|e| AppError::Database { details: e.to_string() })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
         }
 
         // Встроенные роли
@@ -290,7 +270,7 @@ impl Db {
             .bind(is_sys)
             .execute(pool)
             .await
-            .map_err(|e| AppError::Database { details: e.to_string() })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
         }
 
         // Назначение прав ролям
@@ -305,7 +285,7 @@ impl Db {
             .bind(perm)
             .execute(pool)
             .await
-            .map_err(|e| AppError::Database { details: e.to_string() })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
         }
 
         let viewer_perms = ["system.view", "modules.view", "events.view"];
@@ -316,7 +296,7 @@ impl Db {
             .bind(perm)
             .execute(pool)
             .await
-            .map_err(|e| AppError::Database { details: e.to_string() })?;
+            .map_err(|e| AppError::database(e.to_string()))?;
         }
 
         Ok(())
