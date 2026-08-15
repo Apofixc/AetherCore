@@ -1,0 +1,121 @@
+// WIT-контракт ядра платформы Next-Gen Core (nms:core@2.0.0)
+// Определяет полный набор Host API (импорты плагина) и Guest API (экспорты плагина)
+// согласно спецификации MIGRATION_RUST_WASM.md (раздел 1.4)
+package nms:core@2.0.0;
+
+// Шина событий ядра: публикация телеметрии (broadcast) и надежных событий (Event Journal)
+interface events {
+    // Публикация эфемерного события телеметрии в broadcast-шину
+    publish-telemetry: func(topic: string, payload: list<u8>) -> result<_, string>;
+    // Публикация надежного события с персистентной записью в журнал SQLite WAL
+    publish-reliable: func(topic: string, payload: list<u8>) -> result<_, string>;
+}
+
+// Изолированное Key-Value хранилище модуля (авто-префикс module:{id}:)
+interface storage {
+    // Чтение значения по ключу из изолированного пространства модуля
+    get: func(key: string) -> result<option<list<u8>>, string>;
+    // Запись значения по ключу в изолированное пространство модуля
+    set: func(key: string, value: list<u8>) -> result<_, string>;
+    // Удаление ключа из изолированного пространства модуля
+    delete: func(key: string) -> result<_, string>;
+}
+
+// Системная трассировка логов плагина через пайплайн tracing ядра
+interface logger {
+    log-trace: func(msg: string);
+    log-debug: func(msg: string);
+    log-info: func(msg: string);
+    log-warn: func(msg: string);
+    log-error: func(msg: string);
+}
+
+// Отправка оповещений пользователям через NotificationEngine ядра
+interface notify {
+    // Отправка алерта: severity (info|warning|error|critical), заголовок и текст
+    send-alert: func(severity: string, title: string, message: string) -> result<_, string>;
+}
+
+// Регистрация периодических фоновых задач в планировщике ядра
+interface cron {
+    // Регистрация интервального таймера; возвращает идентификатор таймера
+    schedule-interval: func(seconds: f64, timer-id: string) -> result<string, string>;
+    // Отмена ранее зарегистрированного таймера
+    cancel: func(timer-id: string) -> result<_, string>;
+}
+
+// Динамический межмодульный RPC через брокер ядра
+interface rpc {
+    // Вызов метода другого плагина; ядро валидирует deps и применяет таймаут
+    call: func(target-module: string, method: string, params: list<u8>) -> result<list<u8>, string>;
+}
+
+// Системный сетевой модуль ядра: ICMP/HTTP/TCP/UDP от имени хоста
+interface net {
+    // Результат ICMP-опроса узла
+    record ping-result {
+        // Доступность узла
+        reachable: bool,
+        // Задержка ответа в миллисекундах
+        latency-ms: f64,
+    }
+    // Результат HTTP-запроса
+    record http-response {
+        status: u16,
+        body: list<u8>,
+    }
+    // Асинхронный ICMP Ping через нативный сокет хоста
+    ping: func(host: string, timeout-ms: u32) -> result<ping-result, string>;
+    // Асинхронный HTTP/HTTPS запрос через пул соединений ядра
+    http-fetch: func(method: string, url: string, body: option<list<u8>>) -> result<http-response, string>;
+    // Проверка доступности TCP-порта (probe)
+    tcp-probe: func(host: string, port: u16, timeout-ms: u32) -> result<bool, string>;
+}
+
+// Сервис интернационализации ядра: перевод ключей с подстановкой параметров
+interface i18n {
+    // Перевод ключа с параметрами подстановки (key, [(name, value)...])
+    translate: func(key: string, args: list<tuple<string, string>>) -> string;
+}
+
+// Хуки жизненного цикла плагина (вызываются ядром)
+interface lifecycle {
+    on-install: func() -> result<_, string>;
+    on-uninstall: func() -> result<_, string>;
+    on-enable: func() -> result<_, string>;
+    on-disable: func() -> result<_, string>;
+}
+
+// Доставка событий шины, на которые подписан плагин
+interface event-consumer {
+    on-event: func(topic: string, payload: list<u8>) -> result<_, string>;
+}
+
+// Обработка периодических срабатываний таймеров и cron
+interface timer-consumer {
+    on-timer: func(timer-id: string) -> result<_, string>;
+}
+
+// Обработка входящих межмодульных RPC-запросов
+interface rpc-handler {
+    handle-rpc: func(method: string, params: list<u8>) -> result<list<u8>, string>;
+}
+
+// Мир плагина: полный контракт песочницы Wasmtime Component Model
+world plugin {
+    // Host API (импортируется плагином из ядра)
+    import events;
+    import storage;
+    import logger;
+    import notify;
+    import cron;
+    import rpc;
+    import net;
+    import i18n;
+
+    // Guest API (экспортируется плагином для вызова ядром)
+    export lifecycle;
+    export event-consumer;
+    export timer-consumer;
+    export rpc-handler;
+}
