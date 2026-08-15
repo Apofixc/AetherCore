@@ -109,16 +109,22 @@ pub fn handle_packet(bytes_count: usize, peer_ip: &str) {
 
 ## 4. Интеграция с подсистемой ошибок (`AppError`)
 
-Для централизованного логирования ошибок платформы `LoggerService` предоставляет метод `log_error`:
+Структура `AppError` поддерживает прямое логирование ошибок в систему трассировки при их возникновении/возврате через методы `.logged(target)` и `.log(target)`:
 
 ```rust
-use nms_common::error::AppError;
+use nms_common::error::{AppError, Result};
 
-let err = AppError::validation("port", "Port must be between 1 and 65535");
-
-// Автоматически выбирает WARN для 4xx и ERROR для 5xx, форматирует код и метаданные
-state.logger_service.log_error("plugin:my-sensor", &err);
+pub fn parse_port(raw: &str) -> Result<u16> {
+    raw.parse::<u16>().map_err(|_| {
+        // Ошибка сразу отправляется в систему логирования с тегом компонента
+        AppError::validation("port", format!("Invalid port value: '{}'", raw))
+            .logged("plugin:my-sensor")
+    })
+}
 ```
+
+* **Автоматическая градация уровня**: Ошибки клиента (`4xx: VALIDATION, NOT_FOUND, UNAUTHORIZED`) логируются как `WARN`, а внутренние сбои (`5xx: INTERNAL, DATABASE, TIMEOUT`) — как `ERROR`.
+* **Сервисный метод**: Дополнительно доступен прямой вызов через `state.logger_service.log_error("core:db", &err)`.
 
 ---
 

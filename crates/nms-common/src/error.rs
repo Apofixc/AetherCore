@@ -7,6 +7,7 @@
 use crate::i18n::{self, Locale};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tracing::{error, warn};
 
 /// Результат выполнения операций с типом ошибки `AppError`
 pub type Result<T, E = AppError> = std::result::Result<T, E>;
@@ -50,6 +51,22 @@ impl AppError {
             i18n_key: String::new(),
             details: serde_json::json!({}),
         }
+    }
+
+    /// Залогировать ошибку в трассировку с указанием целевого модуля/компонента
+    pub fn log(&self, target: &str) -> &Self {
+        if self.status_code >= 500 {
+            error!(component = target, code = %self.code, status = self.status_code, "{}", self.message);
+        } else if self.status_code >= 400 {
+            warn!(component = target, code = %self.code, status = self.status_code, "{}", self.message);
+        }
+        self
+    }
+
+    /// Залогировать ошибку и вернуть self (для удобного чейнинга `return Err(err.logged("bus"))`)
+    pub fn logged(self, target: &str) -> Self {
+        self.log(target);
+        self
     }
 
     /// Добавить структурированные детали к ошибке
