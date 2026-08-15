@@ -1,7 +1,10 @@
-//! # Web-сервер и сетевой шлюз платформы nms-server
+//! # Web-сервер и сетевой шлюз платформы (nms-server)
 //!
-//! Обеспечивает маршрутизацию REST API, WebSocket событий,
-//! аутентификацию и прямую потоковую отдачу ассетов плагинов.
+//! Обеспечивает маршрутизацию REST API (`/api/v1`), WebSocket поток системных событий (`/ws/events`),
+//! JWT аутентификацию, RBAC авторизацию и потоковую Zero-Unpack раздачу ассетов плагинов (`/modules/{id}/*`).
+
+#![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 pub mod api;
 pub mod middleware;
@@ -21,7 +24,10 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-/// Создать полный Axum роутер приложения
+/// Создать сконфигурированный Axum роутер с поддержкой CORS, трейсинга и инъекцией состояния
+///
+/// # Аргументы
+/// * `state` — Глобальное состояние приложения [`AppState`].
 pub fn create_app_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -38,7 +44,7 @@ pub fn create_app_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Обработчик прямой отдачи ассетов модулей /modules/{id}/*path
+/// Обработчик прямой потоковой отдачи статических ассетов модулей из оперативной памяти
 async fn module_assets_handler(
     State(state): State<AppState>,
     Path((id, path)): Path<(String, String)>,
@@ -67,7 +73,13 @@ async fn module_assets_handler(
     }
 }
 
-/// Запустить HTTP веб-сервер
+/// Запустить асинхронный HTTP/WebSocket веб-сервер Tokio/Axum
+///
+/// # Аргументы
+/// * `state` — Экземпляр состояния [`AppState`].
+///
+/// # Ошибки
+/// Возвращает ошибку, если привязка к TCP-порту завершилась сбоем.
 pub async fn run_server(state: AppState) -> Result<(), Box<dyn std::error::Error>> {
     let host = &state.config.server.host;
     let port = state.config.server.port;

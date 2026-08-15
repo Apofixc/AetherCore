@@ -9,7 +9,7 @@ pub mod users;
 use crate::state::AppState;
 use axum::Router;
 
-/// Создать объединенный роутер API v1
+/// Создать объединенный маршрутизатор подсистем REST API v1 (`/auth`, `/users`, `/modules`, `/system`, `/events`)
 pub fn create_api_v1_router() -> Router<AppState> {
     Router::new()
         .nest("/auth", auth::router())

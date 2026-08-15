@@ -34,41 +34,64 @@ pub struct User {
     pub last_login_at: Option<DateTime<Utc>>,
 }
 
-/// DTO для создания нового пользователя
+/// DTO для создания нового пользователя в системе
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateUserDto {
+    /// Уникальное имя пользователя (логин)
     pub username: String,
+    /// Пароль в открытом виде (будет захэширован через Argon2id)
     pub password: String,
+    /// Полное имя или ФИО пользователя
     pub full_name: Option<String>,
+    /// Контактный адрес электронной почты
     pub email: Option<String>,
+    /// Флаг активности учетной записи (по умолчанию `true`)
     pub is_active: Option<bool>,
+    /// Флаг суперпользователя (по умолчанию `false`)
     pub is_superuser: Option<bool>,
+    /// Список назначаемых ролей (по умолчанию `["viewer"]`)
     pub roles: Option<Vec<String>>,
 }
 
-/// DTO для обновления данных пользователя
+/// DTO для частичного обновления учетной записи пользователя
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserDto {
+    /// Новое полное имя (если передано)
     pub full_name: Option<String>,
+    /// Новый адрес электронной почты
     pub email: Option<String>,
+    /// Новый пароль (будет перехэширован, если передан непустым)
     pub password: Option<String>,
+    /// Новый статус активности
     pub is_active: Option<bool>,
+    /// Новый статус суперпользователя
     pub is_superuser: Option<bool>,
+    /// Новый список ролей
     pub roles: Option<Vec<String>>,
 }
 
-/// DTO для ответа с публичной информацией о пользователе
+/// DTO для безопасного ответа API с публичной информацией о пользователе (без хэша пароля)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserResponseDto {
+    /// Уникальный идентификатор пользователя
     pub id: Uuid,
+    /// Имя пользователя (логин)
     pub username: String,
+    /// Отображаемое имя
     pub full_name: Option<String>,
+    /// Электронная почта
     pub email: Option<String>,
+    /// Флаг активности учетной записи
     pub is_active: bool,
+    /// Флаг суперпользователя
     pub is_superuser: bool,
+    /// Список назначенных ролей
     pub roles: Vec<String>,
+    /// Агрегированный список прав доступа
     pub permissions: Vec<String>,
+    /// Временная метка создания пользователя (UTC)
     pub created_at: DateTime<Utc>,
+    /// Временная метка последнего успешного входа
     pub last_login_at: Option<DateTime<Utc>>,
 }
 

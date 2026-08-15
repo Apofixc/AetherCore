@@ -1,8 +1,11 @@
 //! # Крейт общих структур, типов и моделей nms-common
 //!
-//! Содержит базовые типы данных, систему ошибок `AppError`, модели пользователей и RBAC,
-//! движок интернационализации `i18n`, спецификацию и валидатор манифеста плагинов `manifest.yaml`
-//! и конфигурацию платформы.
+//! Содержит базовые типы данных, систему ошибок [`AppError`], модели пользователей и RBAC,
+//! движок интернационализации [`i18n`], спецификацию и валидатор манифеста плагинов [`manifest`](manifest::ModuleManifest)
+//! и конфигурацию платформы [`AppConfig`].
+
+#![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 pub mod config;
 pub mod error;
@@ -15,3 +18,4 @@ pub use error::{AppError, ErrorResponse, Result};
 pub use i18n::{tr, I18nRegistry, Locale};
 pub use manifest::{resolve_module_dag, ModuleCapabilities, ModuleManifest, ModuleType};
 pub use models::*;
+

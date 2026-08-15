@@ -10,14 +10,19 @@ use nms_common::error::ErrorResponse;
 use nms_common::models::events::ReliableEventRecord;
 use serde::Deserialize;
 
+/// Создать вложенный роутер системных событий `/events`
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(query_events_handler))
 }
 
+/// Параметры фильтрации и пагинации журнала событий
 #[derive(Debug, Deserialize)]
 pub struct EventsQuery {
+    /// Фильтр по префиксу или точному имени топика
     pub topic: Option<String>,
+    /// ID последнего прочитанного события (для пагинации)
     pub after_id: Option<i64>,
+    /// Максимальное количество записей в ответе (по умолчанию 100)
     pub limit: Option<u32>,
 }
 

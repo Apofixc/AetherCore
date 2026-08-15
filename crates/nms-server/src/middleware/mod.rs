@@ -11,12 +11,13 @@ use nms_common::i18n::Locale;
 use nms_common::models::user::JwtClaims;
 use nms_core::auth::JwtManager;
 
-/// Трейт для извлечения менеджера JWT из состояния
+/// Трейт для извлечения менеджера JWT из состояния Axum
 pub trait HasJwtManager {
+    /// Получить ссылку на [`JwtManager`]
     fn jwt_manager(&self) -> &JwtManager;
 }
 
-/// Extractor для определения локали клиента
+/// Extractor для определения локали клиента из заголовка `Accept-Language`
 pub struct RequestLocale(pub Locale);
 
 impl<S> FromRequestParts<S> for RequestLocale
@@ -36,7 +37,7 @@ where
     }
 }
 
-/// Extractor для извлечения аутентифицированного пользователя
+/// Extractor для извлечения аутентифицированного пользователя из заголовка `Authorization: Bearer <token>`
 pub struct AuthUser(pub JwtClaims);
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -71,6 +72,7 @@ where
     }
 }
 
+/// Обертка ошибки аутентификации для конвертации в HTTP-ответ
 pub struct AuthErrorResponse(pub AppError);
 
 impl IntoResponse for AuthErrorResponse {

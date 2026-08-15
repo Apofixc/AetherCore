@@ -11,6 +11,7 @@ use nms_common::models::user::{CreateUserDto, UpdateUserDto, UserResponseDto};
 use nms_core::auth::check_permission;
 use uuid::Uuid;
 
+/// Создать вложенный роутер управления пользователями `/users`
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_users_handler))

@@ -14,6 +14,7 @@ use nms_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Создать вложенный роутер системных эндпоинтов `/system`
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/info", get(system_info_handler))
@@ -24,12 +25,18 @@ pub fn router() -> Router<AppState> {
         .route("/logs/download", get(logs_download_handler))
 }
 
+/// Ответ с метаинформацией о запущенном экземпляре ядра
 #[derive(Debug, Serialize)]
 pub struct SystemInfoResponse {
+    /// Имя платформы
     pub name: &'static str,
+    /// Версия платформы
     pub version: &'static str,
+    /// Время непрерывной работы в секундах
     pub uptime_seconds: u64,
+    /// Флаг режима разработки
     pub dev_mode: bool,
+    /// Флаг безопасного режима
     pub safe_mode: bool,
 }
 
@@ -52,9 +59,12 @@ async fn i18n_export_handler(Path(locale_str): Path<String>) -> Json<HashMap<Str
     Json(dict)
 }
 
+/// Параметры запроса журнала аудита
 #[derive(Debug, Deserialize)]
 pub struct AuditQuery {
+    /// Лимит возвращаемых записей
     pub limit: Option<u32>,
+    /// ID последней прочитанной записи для пагинации
     pub after_id: Option<i64>,
 }
 
@@ -96,11 +106,16 @@ async fn log_providers_handler(
     Ok(Json(providers))
 }
 
+/// Параметры выборки системных логов
 #[derive(Debug, Deserialize)]
 pub struct LogQueryParams {
+    /// Идентификатор провайдера логов (по умолчанию `"system"`)
     pub provider: Option<String>,
+    /// Максимальное число возвращаемых строк
     pub limit: Option<usize>,
+    /// Минимальный уровень логирования для фильтрации
     pub level: Option<String>,
+    /// Подстрока полнотекстового поиска
     pub search: Option<String>,
 }
 
@@ -128,8 +143,10 @@ async fn logs_query_handler(
     Ok(Json(result))
 }
 
+/// Параметры скачивания файла логов
 #[derive(Debug, Deserialize)]
 pub struct LogDownloadParams {
+    /// Идентификатор источника логов
     pub provider: Option<String>,
 }
 

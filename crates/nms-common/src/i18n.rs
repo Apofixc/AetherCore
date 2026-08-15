@@ -75,7 +75,18 @@ impl I18nRegistry {
     }
 
     /// Зарегистрировать внешний JSON-словарь (например, из архива плагина)
-    /// с опциональным префиксом модуля
+    /// с опциональным префиксом модуля (`"{prefix}.{key}"`)
+    ///
+    /// # Аргументы
+    /// * `locale` — Целевой язык ([`Locale`]).
+    /// * `prefix` — Опциональный префикс пространства имен плагина.
+    /// * `json_content` — Содержимое JSON словаря перевода.
+    ///
+    /// # Возвращаемое значение
+    /// Количество зарегистрированных пар ключ-значение.
+    ///
+    /// # Ошибки
+    /// Возвращает [`serde_json::Error`], если JSON синтаксически некорректен.
     pub fn register_json(
         &self,
         locale: Locale,
@@ -98,7 +109,14 @@ impl I18nRegistry {
         Ok(count)
     }
 
-    /// Выполнить перевод ключа для указанной локали с интерполяцией параметров
+    /// Выполнить перевод ключа для указанной локали с интерполяцией именованных параметров `{param}`
+    ///
+    /// При отсутствии ключа в указанной локали автоматически выполняется fallback в русский язык (`Locale::Ru`).
+    ///
+    /// # Аргументы
+    /// * `locale` — Запрошенная локаль ([`Locale`]).
+    /// * `key` — Ключ перевода (например, `"auth.invalid_password"`).
+    /// * `params` — Срез кортежей `(имя_параметра, значение)` для подстановки.
     pub fn translate(&self, locale: Locale, key: &str, params: &[(&str, &str)]) -> String {
         let dicts = self.dictionaries.read().expect("Lock poisoned");
 
@@ -123,7 +141,10 @@ impl I18nRegistry {
         }
     }
 
-    /// Экспортировать все ключи для указанной локали (для передачи на фронтенд)
+    /// Экспортировать все ключи для указанной локали (для передачи на фронтенд / REST API)
+    ///
+    /// # Аргументы
+    /// * `locale` — Запрашиваемый язык.
     pub fn export_locale(&self, locale: Locale) -> HashMap<String, String> {
         let dicts = self.dictionaries.read().expect("Lock poisoned");
         dicts.get(&locale).cloned().unwrap_or_default()
@@ -143,12 +164,19 @@ fn interpolate(template: &str, params: &[(&str, &str)]) -> String {
 /// Глобальный инстанс реестра локализации
 static GLOBAL_REGISTRY: OnceLock<I18nRegistry> = OnceLock::new();
 
-/// Получить глобальный реестр переводов
+/// Получить ссылку на глобальный синглтон реестра переводов [`I18nRegistry`]
 pub fn global() -> &'static I18nRegistry {
     GLOBAL_REGISTRY.get_or_init(I18nRegistry::new)
 }
 
-/// Удобная глобальная функция перевода
+/// Удобная глобальная функция для выполнения перевода строки
+///
+/// # Примеры
+/// ```rust
+/// use nms_common::i18n::{tr, Locale};
+///
+/// let msg = tr(Locale::Ru, "system.started", &[("version", "2.0.0")]);
+/// ```
 pub fn tr(locale: Locale, key: &str, params: &[(&str, &str)]) -> String {
     global().translate(locale, key, params)
 }

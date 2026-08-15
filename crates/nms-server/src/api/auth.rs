@@ -1,3 +1,5 @@
+//! # Маршруты и обработчики аутентификации API (`/api/v1/auth`)
+
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
 use axum::extract::State;
@@ -7,22 +9,30 @@ use axum::{Json, Router};
 use nms_common::models::user::UserResponseDto;
 use serde::{Deserialize, Serialize};
 
+/// Создать вложенный роутер аутентификации `/auth` (`/login`, `/me`)
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login_handler))
         .route("/me", get(me_handler))
 }
 
+/// Запрос на аутентификацию по логину и паролю
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
+    /// Логин пользователя
     pub username: String,
+    /// Пароль пользователя
     pub password: String,
 }
 
+/// Ответ успешной аутентификации с выпуском токена
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
+    /// Флаг успеха
     pub success: bool,
+    /// Выпущенный JWT токен
     pub token: String,
+    /// Данные профиля авторизованного пользователя
     pub user: UserResponseDto,
 }
 

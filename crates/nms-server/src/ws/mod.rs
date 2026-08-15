@@ -8,12 +8,16 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::debug;
 
+/// Query-параметры подключения к WebSocket потоку событий
 #[derive(Debug, Deserialize)]
 pub struct WsAuthQuery {
+    /// Опциональный JWT токен доступа (`?token=<jwt>`)
     pub token: Option<String>,
 }
 
-/// WebSocket хэндлер /ws/events
+/// WebSocket обработчик подключения клиентов (`/ws/events`)
+///
+/// Транслирует все события системной шины в реальном времени в формате JSON.
 pub async fn ws_events_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,

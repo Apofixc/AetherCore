@@ -266,14 +266,17 @@ impl AppError {
 
     // --- Методы доступа к свойствам ---
 
+    /// Получить машиночитаемый код ошибки (например, `"AUTH_REQUIRED"`)
     pub fn code(&self) -> &str {
         &self.code
     }
 
+    /// Получить ассоциированный HTTP статус-код ошибки
     pub fn status_code(&self) -> u16 {
         self.status_code
     }
 
+    /// Получить ключ интернационализации ошибки
     pub fn i18n_key(&self) -> &str {
         &self.i18n_key
     }
@@ -324,10 +327,15 @@ impl AppError {
 /// Стандартизированная структура информации об ошибке
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorDetail {
+    /// Машиночитаемый код ошибки
     pub code: String,
+    /// Человекопонятный локализованный текст ошибки
     pub message: String,
+    /// HTTP статус-код
     pub status_code: u16,
+    /// Ключ словаря i18n
     pub i18n_key: String,
+    /// Структурированные детали и контекст ошибки
     #[serde(default)]
     pub details: serde_json::Value,
 }
@@ -335,6 +343,8 @@ pub struct ErrorDetail {
 /// Стандартный единый формат JSON ответа с ошибкой в REST API платформы
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorResponse {
+    /// Флаг успешности выполнения запроса (всегда `false` для ошибок)
     pub success: bool,
+    /// Вложенный объект с подробностями ошибки ([`ErrorDetail`])
     pub error: ErrorDetail,
 }

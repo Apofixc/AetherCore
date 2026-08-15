@@ -36,7 +36,12 @@ pub struct EventMessage {
 }
 
 impl EventMessage {
-    /// Создать новое событие телеметрии
+    /// Создать новое эфемеренное событие телеметрии (высокочастотная доставка в память)
+    ///
+    /// # Аргументы
+    /// * `topic` — Тема события (например, `"devices.metrics"`).
+    /// * `source` — Идентификатор отправителя (например, `"ping-collector"`).
+    /// * `payload` — Сериализованные в JSON данные события.
     pub fn telemetry(topic: impl Into<String>, source: impl Into<String>, payload: serde_json::Value) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -49,7 +54,12 @@ impl EventMessage {
         }
     }
 
-    /// Создать новое гарантированное системное событие
+    /// Создать новое системное событие с гарантированной персистентной записью в журнал SQLite
+    ///
+    /// # Аргументы
+    /// * `topic` — Тема события (например, `"users.created"`).
+    /// * `source` — Идентификатор отправителя (например, `"core"`).
+    /// * `payload` — Сериализованные в JSON данные события.
     pub fn reliable(topic: impl Into<String>, source: impl Into<String>, payload: serde_json::Value) -> Self {
         Self {
             id: Uuid::new_v4(),

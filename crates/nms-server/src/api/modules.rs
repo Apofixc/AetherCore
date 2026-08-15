@@ -11,25 +11,37 @@ use nms_common::manifest::ModuleManifest;
 use nms_core::auth::check_permission;
 use serde::{Deserialize, Serialize};
 
+/// Создать вложенный роутер управления плагинами `/modules`
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_modules_handler))
         .route("/{id}", get(get_module_handler))
         .route("/{id}/enable", post(enable_module_handler))
-        .route("/{id}/disable", post(disable_module_handler))
+        .route("/{id}/disable", disable_module_handler_post())
         .route("/{id}/config", get(get_module_config_handler))
         .route("/{id}/config", put(set_module_config_handler))
 }
 
+fn disable_module_handler_post() -> axum::routing::MethodRouter<AppState> {
+    post(disable_module_handler)
+}
+
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
+/// DTO сводной информации об установленном плагине
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModuleSummaryDto {
+    /// Идентификатор плагина
     pub id: String,
+    /// Отображаемое название плагина
     pub name: String,
+    /// Версия плагина
     pub version: String,
+    /// Описание функционала
     pub description: String,
+    /// Активен ли плагин в рантайме
     pub is_enabled: bool,
+    /// Декларативный манифест плагина
     pub manifest: ModuleManifest,
 }
 

@@ -9,20 +9,20 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Категория модуля
+/// Категория и назначение модуля
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleType {
-    /// Системный модуль платформы
+    /// Системный модуль платформы (ядро, инфраструктура)
     System,
-    /// Прикладной функциональный модуль
+    /// Прикладной функциональный модуль (бизнес-логика)
     #[default]
     Feature,
-    /// Драйвер опроса / интеграции устройств
+    /// Драйвер опроса / интеграции сетевых устройств
     Driver,
 }
 
-/// Запрашиваемые системные права песочницы Wasmtime (Capabilities)
+/// Запрашиваемые системные права песочницы Wasmtime (WASI Capabilities)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleCapabilities {
     /// Сетевой доступ WASI
@@ -55,22 +55,24 @@ pub struct FilesystemCapability {
     pub allow_host_dirs: Vec<HostDirMapping>,
 }
 
-/// Маппинг пробрасываемой директории
+/// Маппинг пробрасываемой директории хоста в песочницу Wasm
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HostDirMapping {
+    /// Путь к директории на хосте
     pub path: String,
-    pub mode: String, // "read_only" или "read_write"
+    /// Режим доступа: `"read_only"` или `"read_write"`
+    pub mode: String,
 }
 
-/// Права доступа к окружению WASI
+/// Права доступа к переменным окружения WASI
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct EnvironmentCapability {
-    /// Список доступных переменных окружения
+    /// Список разрешенных к чтению имен переменных окружения
     #[serde(default)]
     pub allow_env_vars: Vec<String>,
 }
 
-/// Декларация контрактов шины событий
+/// Декларация контрактов шины событий плагина
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleEvents {
     /// Топики, которые модуль имеет право публиковать (обязан быть префикс `{id}.*`)
@@ -81,26 +83,35 @@ pub struct ModuleEvents {
     pub subscribes: Vec<String>,
 }
 
-/// Декларация маршрута пользовательского интерфейса (Vue Shell Route)
+/// Декларация маршрута пользовательского интерфейса (Vue Router)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleRoute {
+    /// URL-путь маршрута (например, `"/network/topology"`)
     pub path: String,
+    /// Уникальное имя маршрута
     pub name: String,
+    /// Относительный путь к файлу Vue-компонента в `frontend/`
     pub component: Option<String>,
+    /// Метаданные страницы (заголовок, иконка, права)
     #[serde(default)]
     pub meta: ModuleRouteMeta,
 }
 
-/// Метаданные маршрута UI
+/// Метаданные страницы маршрута UI
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleRouteMeta {
+    /// Заголовок страницы в меню и вкладке браузера
     pub title: String,
+    /// Имя иконки (Lucide icon name)
     #[serde(default)]
     pub icon: Option<String>,
+    /// Группа меню навигации
     #[serde(default)]
     pub group: Option<String>,
+    /// Требуется ли аутентификация (по умолчанию `true`)
     #[serde(default = "default_true")]
     pub requires_auth: bool,
+    /// Список требуемых прав доступа RBAC
     #[serde(default)]
     pub permissions: Vec<String>,
 }
@@ -109,12 +120,15 @@ fn default_true() -> bool {
     true
 }
 
-/// Декларация меню навигации
+/// Декларация структуры меню навигации плагина
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleMenu {
+    /// Расположение меню (`"sidebar"` или `"footer"`)
     #[serde(default = "default_sidebar")]
-    pub location: String, // "sidebar" или "footer"
+    pub location: String,
+    /// Группа меню для категоризации
     pub group: String,
+    /// Элементы меню
     #[serde(default)]
     pub items: Vec<ModuleMenuItem>,
 }
@@ -123,29 +137,40 @@ fn default_sidebar() -> String {
     "sidebar".into()
 }
 
-/// Пункт меню
+/// Пункт навигационного меню
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleMenuItem {
+    /// Целевой URL-путь
     pub path: String,
+    /// Название пункта меню
     pub label: String,
+    /// Опциональная иконка пункта
     #[serde(default)]
     pub icon: Option<String>,
 }
 
-/// Виджет для Dashboard
+/// Виджет для Dashboard рабочего стола
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleWidget {
+    /// Уникальный идентификатор виджета
     pub id: String,
+    /// Заголовок виджета
     pub title: String,
+    /// Путь к Vue-компоненту виджета
     pub component: Option<String>,
+    /// Размер виджета (`"small"`, `"medium"`, `"large"`)
     #[serde(default = "default_widget_size")]
     pub size: String,
+    /// Интервал автообновления данных в секундах
     #[serde(default = "default_refresh_interval")]
     pub refresh_interval: u32,
+    /// Опциональный REST эндпоинт данных виджета
     #[serde(default)]
     pub endpoint: Option<String>,
+    /// Требуемое право доступа для просмотра виджета
     #[serde(default)]
     pub view_permission: Option<String>,
+    /// Требуемое право доступа для управления через виджет
     #[serde(default)]
     pub control_permission: Option<String>,
 }
@@ -158,51 +183,74 @@ fn default_refresh_interval() -> u32 {
     30
 }
 
-/// Директории ассетов модуля
+/// Конфигурация изолированных директорий ассетов модуля
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleAssets {
+    /// Пути к каталогам временного кэша
     #[serde(default)]
     pub cache_dirs: Vec<String>,
+    /// Пути к каталогам персистентных данных
     #[serde(default)]
     pub data_dirs: Vec<String>,
 }
 
-/// Полная структура манифеста плагина `manifest.yaml`
+/// Полная структура декларативного манифеста плагина `manifest.yaml`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModuleManifest {
+    /// Версия спецификации манифеста (по умолчанию 1)
     #[serde(default = "default_manifest_version")]
     pub manifest_version: u32,
+    /// Уникальный идентификатор плагина в формате kebab-case (например, `"snmp-collector"`)
     pub id: String,
+    /// Отображаемое название модуля
     pub name: String,
+    /// Версия модуля по спецификации SemVer (например, `"1.0.0"`)
     pub version: String,
+    /// Краткое описание назначения модуля
     pub description: String,
+    /// Тип модуля ([`ModuleType`])
     #[serde(default)]
     pub r#type: ModuleType,
+    /// Флаг включения плагина по умолчанию при установке
     #[serde(default = "default_true")]
     pub enabled_by_default: bool,
+    /// Минимально совместимая версия ядра платформы
     pub min_core_version: Option<String>,
+    /// Максимально совместимая версия ядра платформы
     pub max_core_version: Option<String>,
 
+    /// Обязательные зависимости от других модулей (список ID)
     #[serde(default)]
     pub deps: Vec<String>,
+    /// Опциональные зависимости от других модулей
     #[serde(default)]
     pub optional_deps: Vec<String>,
+    /// Родительский модуль для группировки в иерархии
     pub parent: Option<String>,
 
+    /// Запрашиваемые системные права песочницы WASI
     #[serde(default)]
     pub capabilities: ModuleCapabilities,
+    /// Декларация публикуемых и прослушиваемых топиков шины событий
     #[serde(default)]
     pub events: ModuleEvents,
+    /// Маршруты пользовательского интерфейса
     #[serde(default)]
     pub routes: Vec<ModuleRoute>,
+    /// Меню навигации
     pub menu: Option<ModuleMenu>,
+    /// Виджеты для дашборда
     #[serde(default)]
     pub widgets: Vec<ModuleWidget>,
+    /// Регистрируемые плагином гранулярные права доступа RBAC
     #[serde(default)]
     pub permissions: Vec<Permission>,
+    /// Схема валидации настроек в формате JSON Schema Draft 7
     pub config_schema: Option<serde_json::Value>,
+    /// Хуки жизненного цикла
     #[serde(default)]
     pub hooks: HashMap<String, String>,
+    /// Директории статических и кэшируемых ассетов
     pub assets: Option<ModuleAssets>,
 }
 
@@ -211,7 +259,16 @@ fn default_manifest_version() -> u32 {
 }
 
 impl ModuleManifest {
-    /// Распарсить манифест из YAML строки
+    /// Распарсить манифест плагина из YAML строки и выполнить валидацию
+    ///
+    /// # Аргументы
+    /// * `yaml_content` — Содержимое файла `manifest.yaml` в текстовом виде.
+    ///
+    /// # Возвращаемое значение
+    /// Провалидированный экземпляр [`ModuleManifest`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Validation`](crate::error::AppError), если YAML некорректен или нарушены правила безопасности.
     pub fn from_yaml(yaml_content: &str) -> Result<Self> {
         let manifest: Self = serde_yaml::from_str(yaml_content).map_err(|e| {
             AppError::validation("manifest.yaml", format!("YAML deserialization error: {}", e))
@@ -221,7 +278,15 @@ impl ModuleManifest {
         Ok(manifest)
     }
 
-    /// Валидация корректности манифеста и правил безопасности
+    /// Проверить соблюдение инвариантов безопасности и корректности манифеста
+    ///
+    /// - Проверяет допустимость символов в `id` (только lowercase latin, digits, `-`, `_`).
+    /// - Валидирует формат SemVer в поле `version`.
+    /// - Защита от спуфинга событий: проверяет, что все публикуемые топики начинаются с `{id}.`.
+    /// - Валидирует корректность JSON Schema в `config_schema`.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Validation`](crate::error::AppError) или [`AppError::Forbidden`](crate::error::AppError).
     pub fn validate(&self) -> Result<()> {
         // 1. Проверка формата идентификатора модуля (kebab-case)
         if self.id.is_empty()
@@ -266,7 +331,13 @@ impl ModuleManifest {
         Ok(())
     }
 
-    /// Проверка совместимости версии ядра
+    /// Проверить совместимость манифеста плагина с текущей версией ядра платформы
+    ///
+    /// # Аргументы
+    /// * `core_version_str` — Версия ядра в формате SemVer (например, `"2.0.0"`).
+    ///
+    /// # Возвращаемое значение
+    /// `Ok(true)` если версия совместима с `min_core_version` и `max_core_version`.
     pub fn is_compatible_with_core(&self, core_version_str: &str) -> Result<bool> {
         let core_version =
             Version::parse(core_version_str).map_err(|e| {
@@ -294,7 +365,13 @@ impl ModuleManifest {
         Ok(true)
     }
 
-    /// Провалидировать настройки пользователя по `config_schema`
+    /// Провалидировать пользовательские настройки модуля по схеме `config_schema`
+    ///
+    /// # Аргументы
+    /// * `config` — JSON-значение конфигурации.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::Validation`](crate::error::AppError) при несоответствии схеме.
     pub fn validate_config(&self, config: &serde_json::Value) -> Result<()> {
         if let Some(schema_json) = &self.config_schema {
             let validator = jsonschema::validator_for(schema_json).map_err(|e| {
@@ -309,7 +386,20 @@ impl ModuleManifest {
     }
 }
 
-/// Топологическая сортировка DAG зависимостей модулей
+/// Выполнить топологическую сортировку графа зависимостей модулей (DAG)
+///
+/// Использует алгоритм Кана (Kahn's algorithm) для определения очередности загрузки.
+/// Модули, не имеющие зависимостей, загружаются первыми.
+///
+/// # Аргументы
+/// * `manifests` — Срез манифестов доступных в системе модулей.
+///
+/// # Возвращаемое значение
+/// Вектор манифестов в порядке безопасной инициализации.
+///
+/// # Ошибки
+/// - [`AppError::NotFound`](crate::error::AppError) — если требуемая зависимость отсутствует в системе.
+/// - [`AppError::BadRequest`](crate::error::AppError) — при обнаружении циклической зависимости (Cyclic Dependency).
 pub fn resolve_module_dag(manifests: &[ModuleManifest]) -> Result<Vec<ModuleManifest>> {
     let mut manifest_map: HashMap<String, &ModuleManifest> = HashMap::new();
     let mut in_degrees: HashMap<String, usize> = HashMap::new();
