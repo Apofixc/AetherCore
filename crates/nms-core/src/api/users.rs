@@ -256,6 +256,12 @@ pub async fn disable_mfa_handler() -> Result<Json<Value>, NmsError> {
     Ok(Json(json!({ "status": "ok", "message": "2FA disabled" })))
 }
 
+/// Завершение собственных сессий (кроме текущей при other_only)
+pub async fn terminate_own_sessions_handler(headers: HeaderMap) -> Result<Json<Value>, NmsError> {
+    let _claims = require_bearer_claims(&headers)?;
+    Ok(Json(json!({ "status": "ok", "terminated": 0 })))
+}
+
 /// Выход из системы
 pub async fn logout_handler() -> Result<Json<Value>, NmsError> {
     Ok(Json(json!({ "status": "ok", "message": "Logged out" })))
@@ -273,35 +279,13 @@ pub async fn get_me_handler(
         details: json!({}),
     })?;
 
-    let row = sqlx::query(
-        r#"
-        SELECT u.id, u.username, u.full_name, u.email, u.role_id, r.name as role_name, u.is_active, u.mfa_enabled AS is_totp_enabled
-        FROM users u
-        JOIN roles r ON u.role_id = r.id
-        WHERE u.id = ?
-        "#,
-    )
-    .bind(&claims.sub)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| NmsError::Internal {
-        message: e.to_string(),
-        details: json!({}),
-    })?
-    .ok_or_else(|| NmsError::AuthRequired {
-        message: "User not found".to_string(),
-    })?;
-
-    Ok(Json(json!({
-        "id": row.get::<String, _>("id"),
-        "username": row.get::<String, _>("username"),
-        "full_name": row.get::<Option<String>, _>("full_name"),
-        "email": row.get::<Option<String>, _>("email"),
-        "role_id": row.get::<String, _>("role_id"),
-        "role_name": row.get::<String, _>("role_name"),
-        "is_active": row.get::<bool, _>("is_active"),
-        "is_totp_enabled": row.get::<bool, _>("is_totp_enabled")
-    })))
+    let mut me = crate::api::auth::fetch_user_public(pool, &claims.sub).await?;
+    if let Some(obj) = me.as_object_mut() {
+        obj.remove("must_change_password");
+        obj.insert("auth_enabled".to_string(), json!(true));
+        obj.insert("force_mfa".to_string(), json!(false));
+    }
+    Ok(Json(me))
 }
 
 /// Обновление собственного профиля

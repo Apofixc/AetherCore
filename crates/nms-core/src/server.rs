@@ -358,7 +358,215 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/v1/events/history",
             get(events::get_events_history_handler),
         )
+        // ── Python-совместимые маршруты (контракт frontend nms-webui, префикс /api) ──
+        .route("/api/auth/login", post(auth::login_handler))
+        .route("/api/auth/refresh", post(auth::refresh_handler))
+        .route("/api/auth/mfa/setup", post(auth::setup_mfa_handler))
+        .route("/api/auth/mfa/enable", post(users::enable_mfa_handler))
+        .route("/api/auth/mfa/disable", post(users::disable_mfa_handler))
+        .route(
+            "/api/auth/mfa/verify",
+            post(users::verify_mfa_login_handler),
+        )
+        .route("/api/auth/logout", post(users::logout_handler))
+        .route(
+            "/api/auth/terminate-sessions",
+            post(users::terminate_own_sessions_handler),
+        )
+        .route("/api/auth/me", get(users::get_me_handler))
+        .route("/api/auth/ws-ticket", post(users::get_ws_ticket_handler))
+        .route("/api/users/me", put(users::update_own_profile_handler))
+        .route(
+            "/api/users/me/password",
+            put(users::change_own_password_handler),
+        )
+        .route(
+            "/api/users/me/sessions",
+            get(users::get_my_sessions_handler),
+        )
+        .route(
+            "/api/users/me/sessions/{id}",
+            delete(users::revoke_my_session_handler),
+        )
+        .route(
+            "/api/users",
+            get(users::list_users_handler).post(users::create_user_handler),
+        )
+        .route(
+            "/api/users/{id}",
+            put(users::update_user_handler).delete(users::delete_user_handler),
+        )
+        .route(
+            "/api/users/{id}/terminate-sessions",
+            post(users::terminate_user_sessions_handler),
+        )
+        .route(
+            "/api/users/{id}/sessions",
+            get(users::get_user_sessions_handler),
+        )
+        .route(
+            "/api/users/sessions/{id}",
+            delete(users::revoke_session_handler),
+        )
+        .route(
+            "/api/users/bulk-action",
+            post(users::bulk_users_action_handler),
+        )
+        .route(
+            "/api/roles",
+            get(users::list_roles_handler).post(users::create_role_handler),
+        )
+        .route(
+            "/api/roles/{id}",
+            put(users::update_role_handler).delete(users::delete_role_handler),
+        )
+        .route("/api/permissions", get(users::list_permissions_handler))
+        .route("/api/audit-logs", get(users::get_audit_logs_handler))
+        .route(
+            "/api/audit-logs/export",
+            get(users::export_audit_logs_handler),
+        )
+        .route(
+            "/api/audit-logs/rotate",
+            post(users::rotate_audit_logs_endpoint_handler),
+        )
+        .route(
+            "/api/settings/security",
+            get(users::get_security_settings_endpoint_handler)
+                .put(users::update_security_settings_endpoint_handler),
+        )
+        .route("/api/modules", get(modules::list_modules_handler))
+        .route("/api/modules/loaded", get(modules::loaded_modules_handler))
+        .route(
+            "/api/modules/widgets",
+            get(modules::list_module_widgets_handler),
+        )
+        .route(
+            "/api/modules/scan",
+            post(modules::scan_modules_endpoint_handler),
+        )
+        .route(
+            "/api/modules/install",
+            post(modules::install_module_endpoint_handler),
+        )
+        .route(
+            "/api/modules/config-schema",
+            get(modules::module_config_schema_handler),
+        )
+        .route(
+            "/api/modules/{id}/export",
+            get(modules::export_module_endpoint_handler),
+        )
+        .route(
+            "/api/modules/{id}",
+            delete(modules::delete_module_endpoint_handler),
+        )
+        .route(
+            "/api/modules/{id}/enabled",
+            put(modules::toggle_module_handler),
+        )
+        .route(
+            "/api/modules/{id}/views",
+            get(modules::module_views_handler),
+        )
+        .route(
+            "/api/modules/{id}/settings-definition",
+            get(modules::module_settings_definition_handler),
+        )
+        .route(
+            "/api/modules/{id}/settings",
+            get(modules::module_settings_get_handler).put(modules::module_settings_put_handler),
+        )
+        .route("/api/system/backup", get(system::download_backup_handler))
+        .route("/api/system/restore", post(system::restore_backup_handler))
+        .route("/api/system/logs", get(list_logs_handler))
+        .route(
+            "/api/system/logs/{provider_id}",
+            get(get_log_content_handler),
+        )
+        .route(
+            "/api/system/logs/remote-sources",
+            post(system::add_remote_log_source_handler),
+        )
+        .route(
+            "/api/system/logs/remote-sources/{id}",
+            delete(system::delete_remote_log_source_handler),
+        )
+        .route(
+            "/api/system/ws-metrics",
+            get(system::get_websocket_metrics_handler),
+        )
+        .route("/api/system/sessions", get(system::list_sessions_handler))
+        .route(
+            "/api/system/sessions/terminate-all",
+            post(system::terminate_all_sessions_handler),
+        )
+        .route(
+            "/api/system/docs/module-guide",
+            get(system::get_module_guide_doc_handler),
+        )
+        .route(
+            "/api/system/docs/wiki/tree",
+            get(system::get_wiki_tree_handler),
+        )
+        .route(
+            "/api/system/docs/wiki/article",
+            get(system::get_wiki_article_handler),
+        )
+        .route(
+            "/api/notifications",
+            get(notifications::list_notifications_handler),
+        )
+        .route(
+            "/api/notifications/categories",
+            get(notifications::list_categories_handler),
+        )
+        .route(
+            "/api/notifications/modules",
+            get(notifications::list_modules_handler),
+        )
+        .route(
+            "/api/notifications/{id}/read",
+            post(notifications::mark_read_handler),
+        )
+        .route(
+            "/api/notifications/{id}/unread",
+            post(notifications::unread_notification_handler),
+        )
+        .route(
+            "/api/notifications/{id}/acknowledge",
+            post(notifications::acknowledge_handler),
+        )
+        .route(
+            "/api/notifications/acknowledge-all",
+            post(notifications::acknowledge_all_user_notifications_handler),
+        )
+        .route(
+            "/api/notifications/read-all",
+            post(notifications::mark_all_read_handler),
+        )
+        .route(
+            "/api/notifications/clear-read",
+            delete(notifications::delete_all_read_handler),
+        )
+        .route(
+            "/api/notifications/prune",
+            post(notifications::prune_stale_notifications_handler),
+        )
+        .route(
+            "/api/notifications/{id}",
+            delete(notifications::remove_notification_handler),
+        )
+        .route(
+            "/api/notifications/preferences",
+            get(notifications::get_preferences_handler).put(notifications::set_preferences_handler),
+        )
+        .route(
+            "/api/notifications/export",
+            get(notifications::export_notifications_handler),
+        )
         // Realtime WebSocket
+        .route("/api/events/ws", get(ws_events_handler))
         .route("/api/v1/ws/events", get(ws_events_handler))
         .route(
             "/api/v1/system/logs/stream/{log_name}",
@@ -487,21 +695,33 @@ pub struct WsClientCommand {
 async fn ws_events_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<WsQuery>,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<axum::response::Response, crate::exceptions::NmsError> {
-    let token =
-        query
-            .token
-            .as_deref()
-            .ok_or_else(|| crate::exceptions::NmsError::AuthRequired {
-                message: "WebSocket ticket or token required".to_string(),
-            })?;
+    // Тикет/токен: query-параметр или субпротокол "bearer, <ticket>" (контракт frontend)
+    let subprotocol_token = headers
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| {
+            let mut parts = v.split(',').map(str::trim);
+            if parts.next() == Some("bearer") {
+                parts.next().map(str::to_string)
+            } else {
+                None
+            }
+        });
 
-    let user_id = if let Some(ticket_user) = crate::auth::consume_ws_ticket(token).await {
+    let token = query.token.clone().or(subprotocol_token).ok_or_else(|| {
+        crate::exceptions::NmsError::AuthRequired {
+            message: "WebSocket ticket or token required".to_string(),
+        }
+    })?;
+
+    let user_id = if let Some(ticket_user) = crate::auth::consume_ws_ticket(&token).await {
         ticket_user
     } else {
         let secret = crate::config::get_or_create_secret_key();
-        match crate::auth::decode_token(token, &secret) {
+        match crate::auth::decode_token(&token, &secret) {
             Some(claims) => claims.sub,
             None => {
                 return Err(crate::exceptions::NmsError::AuthRequired {
@@ -520,7 +740,9 @@ async fn ws_events_handler(
         });
     }
 
-    Ok(ws.on_upgrade(move |socket| handle_ws_socket(socket, state, user_id)))
+    Ok(ws
+        .protocols(["bearer"])
+        .on_upgrade(move |socket| handle_ws_socket(socket, state, user_id)))
 }
 
 /// Фильтрация событий для доставки конкретному WebSocket клиенту

@@ -1,6 +1,11 @@
 // REST API эндпоинты аутентификации пользователей и управления 2FA (Auth Router)
 
-use axum::{extract::State, Json};
+use axum::{
+    extract::State,
+    http::{header, HeaderMap},
+    response::{AppendHeaders, IntoResponse},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -31,16 +36,82 @@ pub struct AuthResponse {
 }
 
 /// Модель входящего токена обновления
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct RefreshPayload {
-    pub refresh_token: String,
+    pub refresh_token: Option<String>,
+}
+
+/// Сборка httpOnly cookie с refresh-токеном (как в Python-бэкенде)
+fn refresh_cookie(token: &str) -> String {
+    format!("nms_refresh_token={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800")
+}
+
+/// Извлечение refresh-токена из cookie запроса
+fn refresh_token_from_cookies(headers: &HeaderMap) -> Option<String> {
+    let cookies = headers.get(header::COOKIE)?.to_str().ok()?;
+    cookies.split(';').find_map(|c| {
+        let (name, value) = c.trim().split_once('=')?;
+        (name == "nms_refresh_token").then(|| value.to_string())
+    })
+}
+
+/// Публичный профиль пользователя с правами роли (формат Python /auth/me)
+pub async fn fetch_user_public(pool: &sqlx::SqlitePool, user_id: &str) -> Result<Value, NmsError> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        r#"
+        SELECT u.id, u.username, u.full_name, u.email, u.uid, u.role_id, r.name AS role_name,
+               u.avatar, u.must_change_password, u.mfa_enabled
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.id = ?
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| NmsError::Internal {
+        message: e.to_string(),
+        details: json!({}),
+    })?
+    .ok_or_else(|| NmsError::AuthRequired {
+        message: "User not found".to_string(),
+    })?;
+
+    let role_id: String = row.get("role_id");
+    let perm_rows = sqlx::query("SELECT permission_id FROM role_permissions WHERE role_id = ?")
+        .bind(&role_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| NmsError::Internal {
+            message: e.to_string(),
+            details: json!({}),
+        })?;
+    let permissions: Vec<String> = perm_rows
+        .into_iter()
+        .map(|r| r.get::<String, _>("permission_id"))
+        .collect();
+
+    Ok(json!({
+        "id": row.get::<String, _>("id"),
+        "username": row.get::<String, _>("username"),
+        "full_name": row.get::<Option<String>, _>("full_name"),
+        "email": row.get::<Option<String>, _>("email"),
+        "uid": row.get::<Option<String>, _>("uid"),
+        "role_id": role_id,
+        "role_name": row.get::<String, _>("role_name"),
+        "avatar": row.get::<Option<String>, _>("avatar"),
+        "permissions": permissions,
+        "must_change_password": row.get::<bool, _>("must_change_password"),
+        "mfa_enabled": row.get::<bool, _>("mfa_enabled"),
+    }))
 }
 
 /// Обработчик входа в систему по логину и паролю
 pub async fn login_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LoginPayload>,
-) -> Result<Json<AuthResponse>, NmsError> {
+) -> Result<impl IntoResponse, NmsError> {
     let limiter_key = format!("login:{}", payload.username);
     if state.rate_limiter.is_rate_limited(&limiter_key, 5, 60) {
         return Err(NmsError::PermissionDenied {
@@ -118,23 +189,51 @@ pub async fn login_handler(
             }
         })?;
 
-    Ok(Json(AuthResponse {
-        access_token,
-        refresh_token,
-        token_type: "bearer".to_string(),
-    }))
+    let mut user_public = fetch_user_public(pool, &user_id).await?;
+    let must_change_password = user_public
+        .get("must_change_password")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if let Some(obj) = user_public.as_object_mut() {
+        obj.remove("mfa_enabled");
+    }
+
+    sqlx::query(
+        "UPDATE users SET last_login = CURRENT_TIMESTAMP, failed_login_attempts = 0 WHERE id = ?",
+    )
+    .bind(&user_id)
+    .execute(pool)
+    .await
+    .ok();
+
+    Ok((
+        AppendHeaders([(header::SET_COOKIE, refresh_cookie(&refresh_token))]),
+        Json(json!({
+            "token": access_token,
+            "refresh_token": refresh_token,
+            "must_change_password": must_change_password,
+            "mfa_required": false,
+            "user": user_public,
+        })),
+    ))
 }
 
-/// Обработчик обновления JWT доступа по refresh_token
+/// Обработчик обновления JWT доступа по refresh_token (тело или cookie, как в Python)
 pub async fn refresh_handler(
     State(_state): State<Arc<AppState>>,
-    Json(payload): Json<RefreshPayload>,
-) -> Result<Json<AuthResponse>, NmsError> {
+    headers: HeaderMap,
+    payload: Option<Json<RefreshPayload>>,
+) -> Result<impl IntoResponse, NmsError> {
+    let token = payload
+        .and_then(|Json(p)| p.refresh_token)
+        .or_else(|| refresh_token_from_cookies(&headers))
+        .ok_or_else(|| NmsError::AuthRequired {
+            message: "Refresh token missing".to_string(),
+        })?;
+
     let secret_key = get_or_create_secret_key();
-    let claims = decode_token(&payload.refresh_token, &secret_key).ok_or_else(|| {
-        NmsError::AuthRequired {
-            message: "Invalid or expired refresh token".to_string(),
-        }
+    let claims = decode_token(&token, &secret_key).ok_or_else(|| NmsError::AuthRequired {
+        message: "Invalid or expired refresh token".to_string(),
     })?;
 
     let access_token = create_access_token(&claims.sub, &claims.username, &secret_key, 24)
@@ -151,11 +250,13 @@ pub async fn refresh_handler(
             },
         )?;
 
-    Ok(Json(AuthResponse {
-        access_token,
-        refresh_token: new_refresh_token,
-        token_type: "bearer".to_string(),
-    }))
+    Ok((
+        AppendHeaders([(header::SET_COOKIE, refresh_cookie(&new_refresh_token))]),
+        Json(json!({
+            "token": access_token,
+            "refresh_token": new_refresh_token,
+        })),
+    ))
 }
 
 /// Генерация 2FA TOTP ключа и QR кода для пользователя
