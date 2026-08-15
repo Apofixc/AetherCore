@@ -1,4 +1,7 @@
-//! # Эндпоинты журнала событий (/api/v1/events)
+//! # Эндпоинты надежного журнала событий (`/api/v1/events`)
+//!
+//! Предоставляет HTTP эндпоинты для выборки исторических событий из журнала SQLite WAL
+//! с поддержкой фильтрации по топикам и постраничной пагинации по ID.
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
@@ -18,15 +21,17 @@ pub fn router() -> Router<AppState> {
 /// Параметры фильтрации и пагинации журнала событий
 #[derive(Debug, Deserialize)]
 pub struct EventsQuery {
-    /// Фильтр по префиксу или точному имени топика
+    /// Опциональный фильтр по префиксу топика (например, `"users."` или `"system.started"`)
     pub topic: Option<String>,
-    /// ID последнего прочитанного события (для пагинации)
+    /// ID последней прочитанной записи (курсор) для постраничной пагинации
     pub after_id: Option<i64>,
-    /// Максимальное количество записей в ответе (по умолчанию 100)
+    /// Максимальное количество записей в ответе (по умолчанию 100, максимум 1000)
     pub limit: Option<u32>,
 }
 
 /// GET /api/v1/events
+///
+/// Извлекает исторические записи системных событий из таблицы `event_journal` SQLite WAL.
 async fn query_events_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

@@ -2,6 +2,15 @@
 //!
 //! Является единым декларативным контрактом между модулем (плагином)
 //! и микроядром платформы (Universal Core).
+//!
+//! Манифест описывает:
+//! - Метаданные плагина ([`ModuleManifest`]): `id`, `name`, `version`, `type`.
+//! - Запрашиваемые системные права песочницы WASI ([`ModuleCapabilities`]).
+//! - Публикуемые и прослушиваемые топики шины ([`ModuleEvents`]).
+//! - Маршруты Vue Router для веб-интерфейса ([`ModuleRoute`]).
+//! - Структуру навигационного меню ([`ModuleMenu`]) и виджеты Dashboard ([`ModuleWidget`]).
+//! - Гранулярные права доступа RBAC ([`Permission`]).
+//! - Схему конфигурации в формате JSON Schema.
 
 use crate::error::{AppError, Result};
 use crate::models::user::Permission;
@@ -9,26 +18,28 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Категория и назначение модуля
+/// Категория и архитектурное назначение модуля в платформе
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleType {
-    /// Системный модуль платформы (ядро, инфраструктура)
+    /// Системный модуль платформы (базовая инфраструктура ядра)
     System,
-    /// Прикладной функциональный модуль (бизнес-логика)
+    /// Прикладной функциональный модуль (бизнес-логика, дашборды, отчеты)
     #[default]
     Feature,
-    /// Драйвер опроса / интеграции сетевых устройств
+    /// Драйвер опроса / интеграции сетевых устройств (SNMP, Netconf, SSH, ICMP)
     Driver,
 }
 
 /// Запрашиваемые системные права песочницы Wasmtime (WASI Capabilities)
+///
+/// Плагин объявляет минимально необходимые права доступа к хосту для безопасной изоляции.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleCapabilities {
-    /// Сетевой доступ WASI
+    /// Сетевой доступ WASI (сокеты, разрешенные хосты)
     #[serde(default)]
     pub network: NetworkCapability,
-    /// Доступ к файловой системе хоста
+    /// Доступ к файловой системе хоста (маппинг директорий)
     #[serde(default)]
     pub filesystem: FilesystemCapability,
     /// Доступ к переменным окружения хоста
@@ -36,21 +47,21 @@ pub struct ModuleCapabilities {
     pub environment: EnvironmentCapability,
 }
 
-/// Сетевые права WASI
+/// Сетевые права гостевого Wasm-модуля (WASI Sockets)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct NetworkCapability {
-    /// Разрешение на создание WASI сокетов
+    /// Разрешение на создание raw/низкоуровневых WASI сокетов
     #[serde(default)]
     pub allow_raw_sockets: bool,
-    /// Белый список разрешенных хостов
+    /// Белый список разрешенных хостов и подсетей (например, `["192.168.1.0/24", "api.example.com"]`)
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
 }
 
-/// Файловые права WASI
+/// Файловые права гостевого Wasm-модуля
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct FilesystemCapability {
-    /// Пробрасываемые директории хоста
+    /// Пробрасываемые директории хоста с указанием режима доступа
     #[serde(default)]
     pub allow_host_dirs: Vec<HostDirMapping>,
 }
@@ -58,13 +69,13 @@ pub struct FilesystemCapability {
 /// Маппинг пробрасываемой директории хоста в песочницу Wasm
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HostDirMapping {
-    /// Путь к директории на хосте
+    /// Абсолютный или относительный путь к директории на хосте
     pub path: String,
     /// Режим доступа: `"read_only"` или `"read_write"`
     pub mode: String,
 }
 
-/// Права доступа к переменным окружения WASI
+/// Права доступа к переменным окружения хоста WASI
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct EnvironmentCapability {
     /// Список разрешенных к чтению имен переменных окружения
@@ -75,43 +86,43 @@ pub struct EnvironmentCapability {
 /// Декларация контрактов шины событий плагина
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleEvents {
-    /// Топики, которые модуль имеет право публиковать (обязан быть префикс `{id}.*`)
+    /// Топики, которые модуль имеет право публиковать (обязан быть префикс `{id}.*` для защиты от спуфинга)
     #[serde(default)]
     pub publishes: Vec<String>,
-    /// Топики, на которые модуль подписывается
+    /// Топики системной шины, на которые модуль подписывается
     #[serde(default)]
     pub subscribes: Vec<String>,
 }
 
-/// Декларация маршрута пользовательского интерфейса (Vue Router)
+/// Декларация маршрута пользовательского веб-интерфейса (Vue Router)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleRoute {
-    /// URL-путь маршрута (например, `"/network/topology"`)
+    /// URL-путь маршрута (например, `"/network/topology"` или `"/settings/snmp"`)
     pub path: String,
-    /// Уникальное имя маршрута
+    /// Уникальное имя маршрута во Vue Router
     pub name: String,
-    /// Относительный путь к файлу Vue-компонента в `frontend/`
+    /// Относительный путь к файлу Vue-компонента в директории `frontend/` плагина
     pub component: Option<String>,
-    /// Метаданные страницы (заголовок, иконка, права)
+    /// Метаданные страницы (заголовок, иконка, RBAC права)
     #[serde(default)]
     pub meta: ModuleRouteMeta,
 }
 
-/// Метаданные страницы маршрута UI
+/// Метаданные страницы маршрута веб-интерфейса
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleRouteMeta {
-    /// Заголовок страницы в меню и вкладке браузера
+    /// Заголовок страницы в меню и вкладке браузера (или i18n ключ)
     pub title: String,
-    /// Имя иконки (Lucide icon name)
+    /// Имя иконки интерфейса (например, имя иконки из библиотеки Lucide)
     #[serde(default)]
     pub icon: Option<String>,
-    /// Группа меню навигации
+    /// Имя группы меню для иерархической группировки
     #[serde(default)]
     pub group: Option<String>,
-    /// Требуется ли аутентификация (по умолчанию `true`)
+    /// Требуется ли аутентификация пользователя для доступа к странице (по умолчанию `true`)
     #[serde(default = "default_true")]
     pub requires_auth: bool,
-    /// Список требуемых прав доступа RBAC
+    /// Список требуемых прав доступа RBAC (например, `["devices.view"]`)
     #[serde(default)]
     pub permissions: Vec<String>,
 }
@@ -123,12 +134,12 @@ fn default_true() -> bool {
 /// Декларация структуры меню навигации плагина
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleMenu {
-    /// Расположение меню (`"sidebar"` или `"footer"`)
+    /// Расположение меню (`"sidebar"`, `"header"` или `"footer"`)
     #[serde(default = "default_sidebar")]
     pub location: String,
     /// Группа меню для категоризации
     pub group: String,
-    /// Элементы меню
+    /// Элементы меню ([`ModuleMenuItem`])
     #[serde(default)]
     pub items: Vec<ModuleMenuItem>,
 }
@@ -140,31 +151,31 @@ fn default_sidebar() -> String {
 /// Пункт навигационного меню
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleMenuItem {
-    /// Целевой URL-путь
+    /// Целевой URL-путь страницы
     pub path: String,
-    /// Название пункта меню
+    /// Отображаемое название пункта меню (или i18n ключ)
     pub label: String,
-    /// Опциональная иконка пункта
+    /// Опциональная иконка пункта меню
     #[serde(default)]
     pub icon: Option<String>,
 }
 
-/// Виджет для Dashboard рабочего стола
+/// Виджет для Dashboard рабочего стола платформы
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleWidget {
     /// Уникальный идентификатор виджета
     pub id: String,
-    /// Заголовок виджета
+    /// Заголовок виджета в интерфейсе
     pub title: String,
-    /// Путь к Vue-компоненту виджета
+    /// Относительный путь к Vue-компоненту виджета
     pub component: Option<String>,
-    /// Размер виджета (`"small"`, `"medium"`, `"large"`)
+    /// Размер карточки виджета (`"small"`, `"medium"`, `"large"`)
     #[serde(default = "default_widget_size")]
     pub size: String,
     /// Интервал автообновления данных в секундах
     #[serde(default = "default_refresh_interval")]
     pub refresh_interval: u32,
-    /// Опциональный REST эндпоинт данных виджета
+    /// Опциональный REST эндпоинт поставщика данных виджета
     #[serde(default)]
     pub endpoint: Option<String>,
     /// Требуемое право доступа для просмотра виджета
@@ -183,7 +194,7 @@ fn default_refresh_interval() -> u32 {
     30
 }
 
-/// Конфигурация изолированных директорий ассетов модуля
+/// Конфигурация изолированных директорий файловых ассетов модуля
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModuleAssets {
     /// Пути к каталогам временного кэша
@@ -195,9 +206,27 @@ pub struct ModuleAssets {
 }
 
 /// Полная структура декларативного манифеста плагина `manifest.yaml`
+///
+/// Является центральным контрактом модуля.
+///
+/// # Примеры
+/// ```rust
+/// use nms_common::manifest::ModuleManifest;
+///
+/// let yaml = r#"
+/// manifest_version: 1
+/// id: ping-collector
+/// name: ICMP Ping Collector
+/// version: 1.0.0
+/// description: Сетевой мониторинг доступности хостов через ICMP Ping
+/// "#;
+///
+/// let manifest = ModuleManifest::from_yaml(yaml).unwrap();
+/// assert_eq!(manifest.id, "ping-collector");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModuleManifest {
-    /// Версия спецификации манифеста (по умолчанию 1)
+    /// Версия спецификации манифеста (по умолчанию `1`)
     #[serde(default = "default_manifest_version")]
     pub manifest_version: u32,
     /// Уникальный идентификатор плагина в формате kebab-case (например, `"snmp-collector"`)
@@ -211,15 +240,15 @@ pub struct ModuleManifest {
     /// Тип модуля ([`ModuleType`])
     #[serde(default)]
     pub r#type: ModuleType,
-    /// Флаг включения плагина по умолчанию при установке
+    /// Флаг включения плагина по умолчанию при первой установке
     #[serde(default = "default_true")]
     pub enabled_by_default: bool,
-    /// Минимально совместимая версия ядра платформы
+    /// Минимально совместимая версия ядра платформы (SemVer)
     pub min_core_version: Option<String>,
-    /// Максимально совместимая версия ядра платформы
+    /// Максимально совместимая версия ядра платформы (SemVer)
     pub max_core_version: Option<String>,
 
-    /// Обязательные зависимости от других модулей (список ID)
+    /// Обязательные зависимости от других модулей (список строковых ID)
     #[serde(default)]
     pub deps: Vec<String>,
     /// Опциональные зависимости от других модулей
@@ -228,21 +257,21 @@ pub struct ModuleManifest {
     /// Родительский модуль для группировки в иерархии
     pub parent: Option<String>,
 
-    /// Запрашиваемые системные права песочницы WASI
+    /// Запрашиваемые системные права песочницы WASI ([`ModuleCapabilities`])
     #[serde(default)]
     pub capabilities: ModuleCapabilities,
-    /// Декларация публикуемых и прослушиваемых топиков шины событий
+    /// Декларация публикуемых и прослушиваемых топиков шины событий ([`ModuleEvents`])
     #[serde(default)]
     pub events: ModuleEvents,
-    /// Маршруты пользовательского интерфейса
+    /// Маршруты пользовательского интерфейса ([`ModuleRoute`])
     #[serde(default)]
     pub routes: Vec<ModuleRoute>,
-    /// Меню навигации
+    /// Меню навигации ([`ModuleMenu`])
     pub menu: Option<ModuleMenu>,
-    /// Виджеты для дашборда
+    /// Виджеты для дашборда ([`ModuleWidget`])
     #[serde(default)]
     pub widgets: Vec<ModuleWidget>,
-    /// Регистрируемые плагином гранулярные права доступа RBAC
+    /// Регистрируемые плагином гранулярные права доступа RBAC ([`Permission`])
     #[serde(default)]
     pub permissions: Vec<Permission>,
     /// Схема валидации настроек в формате JSON Schema Draft 7
@@ -250,7 +279,7 @@ pub struct ModuleManifest {
     /// Хуки жизненного цикла
     #[serde(default)]
     pub hooks: HashMap<String, String>,
-    /// Директории статических и кэшируемых ассетов
+    /// Директории статических и кэшируемых ассетов ([`ModuleAssets`])
     pub assets: Option<ModuleAssets>,
 }
 

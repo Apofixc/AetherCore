@@ -1,7 +1,7 @@
-//! # Исполняемый файл nms и CLI утилита nms-cli
+//! # Исполняемый файл nms и CLI утилита платформы (nms-cli)
 //!
 //! Точка входа для запуска ядра в режимах Server, Dev и Safe-Mode,
-//! а также сборки и упаковки плагинов.
+//! а также сборки и упаковки плагинов (`nms plugin pack <dir> -o <output>`).
 
 use clap::{Parser, Subcommand};
 use nms_common::config::AppConfig;
@@ -18,55 +18,60 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::info;
 
+/// Параметры командной строки ядра NMSNext-Gen
 #[derive(Parser, Debug)]
 #[command(name = "nms", version, about = "Next-Gen Universal Core Platform")]
 struct Cli {
-    /// Запуск в режиме Headless сервера
+    /// Запуск в режиме Headless сервера (по умолчанию true)
     #[arg(long)]
     server: bool,
 
-    /// Хост привязки сервера
+    /// Хост привязки HTTP/WebSocket сервера (например, 127.0.0.1 или 0.0.0.0)
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
 
-    /// Порт сервера
+    /// TCP порт HTTP/WebSocket сервера
     #[arg(long, default_value = "8080")]
     port: u16,
 
-    /// Режим разработки (разрешение неподписанных плагинов)
+    /// Режим разработки (разрешение неподписанных плагинов и детальный лог)
     #[arg(long)]
     dev: bool,
 
-    /// Аварийный режим Safe-Mode (старт без загрузки сторонних плагинов)
+    /// Аварийный режим Safe-Mode (старт ядра без загрузки сторонних модулей)
     #[arg(long)]
     safe_mode: bool,
 
-    /// Путь к базе данных
+    /// Путь к файлу базы данных SQLite
     #[arg(long, default_value = "data/nms.db")]
     db: PathBuf,
 
-    /// Каталог плагинов
+    /// Каталог хранения и сканирования плагинов (.nms-plugin)
     #[arg(long, default_value = "modules")]
     modules_dir: PathBuf,
 
+    /// Опциональная подкоманда CLI
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
+/// Набор поддерживаемых подкоманд CLI
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Управление плагинами (.nms-plugin)
+    /// Управление модулями и плагинами (.nms-plugin)
     Plugin {
+        /// Действие с плагином
         #[command(subcommand)]
         action: PluginCommands,
     },
 }
 
+/// Подкоманды управления пакетами плагинов
 #[derive(Subcommand, Debug)]
 enum PluginCommands {
-    /// Упаковка каталога в архив .nms-plugin
+    /// Упаковка каталога разработки в ZIP архив .nms-plugin
     Pack {
-        /// Путь к каталогу плагина
+        /// Путь к каталогу исходных файлов плагина
         dir: String,
         /// Путь к выходному файлу .nms-plugin
         #[arg(short, long)]

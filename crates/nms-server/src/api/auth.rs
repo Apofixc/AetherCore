@@ -1,4 +1,7 @@
 //! # Маршруты и обработчики аутентификации API (`/api/v1/auth`)
+//!
+//! Предоставляет HTTP эндпоинты для входа в систему (`POST /login`)
+//! и получения профиля текущего аутентифицированного пользователя (`GET /me`).
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
@@ -9,7 +12,7 @@ use axum::{Json, Router};
 use nms_common::models::user::UserResponseDto;
 use serde::{Deserialize, Serialize};
 
-/// Создать вложенный роутер аутентификации `/auth` (`/login`, `/me`)
+/// Создать вложенный роутер аутентификации `/auth` (`POST /login`, `GET /me`)
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login_handler))
@@ -19,24 +22,27 @@ pub fn router() -> Router<AppState> {
 /// Запрос на аутентификацию по логину и паролю
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    /// Логин пользователя
+    /// Имя пользователя (логин)
     pub username: String,
-    /// Пароль пользователя
+    /// Пароль в открытом виде
     pub password: String,
 }
 
-/// Ответ успешной аутентификации с выпуском токена
+/// Ответ успешной аутентификации с выпуском токена доступа
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
-    /// Флаг успеха
+    /// Флаг успеха операции
     pub success: bool,
-    /// Выпущенный JWT токен
+    /// Выпущенный JWT токен доступа
     pub token: String,
-    /// Данные профиля авторизованного пользователя
+    /// Данные профиля авторизованного пользователя ([`UserResponseDto`])
     pub user: UserResponseDto,
 }
 
 /// POST /api/v1/auth/login
+///
+/// Обработчик входа пользователя. Проверяет учетные данные через [`nms_core::users::UserService::authenticate`],
+/// выпускает JWT токен через [`nms_core::auth::JwtManager`] и записывает действие в журнал аудита.
 async fn login_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -85,6 +91,8 @@ async fn login_handler(
 }
 
 /// GET /api/v1/auth/me
+///
+/// Обработчик получения профиля текущего пользователя по JWT токену из заголовка `Authorization: Bearer <token>`.
 async fn me_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

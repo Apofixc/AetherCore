@@ -1,25 +1,41 @@
 //! # Конфигурация платформы (AppConfig)
+//!
+//! Модуль содержит структуры конфигурации для всех компонентов NMSNext-Gen:
+//! сетевого сервера ([`ServerConfig`]), базы данных SQLite ([`DatabaseConfig`]),
+//! подсистемы безопасности и JWT ([`SecurityConfig`]), песочницы Wasm-плагинов ([`PluginsConfig`])
+//! и интернационализации ([`I18nConfig`]).
 
 use crate::i18n::Locale;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Общая конфигурация ядра и сервисов платформы
+///
+/// Объединяет настройки всех подсистем и поддерживает сериализацию/десериализацию в JSON/YAML/TOML.
+///
+/// # Примеры
+/// ```rust
+/// use nms_common::config::AppConfig;
+///
+/// let config = AppConfig::default();
+/// assert_eq!(config.server.port, 8080);
+/// assert_eq!(config.server.host, "127.0.0.1");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// Сетевые настройки сервера
+    /// Сетевые настройки HTTP/WebSocket сервера ([`ServerConfig`])
     #[serde(default)]
     pub server: ServerConfig,
-    /// Настройки базы данных
+    /// Настройки пула соединений и файла базы данных SQLite ([`DatabaseConfig`])
     #[serde(default)]
     pub database: DatabaseConfig,
-    /// Настройки безопасности и аутентификации
+    /// Настройки безопасности, ключей JWT и верификации подписей ([`SecurityConfig`])
     #[serde(default)]
     pub security: SecurityConfig,
-    /// Настройки плагинов и песочницы
+    /// Настройки каталогов, лимитов памяти и таймаутов плагинов ([`PluginsConfig`])
     #[serde(default)]
     pub plugins: PluginsConfig,
-    /// Настройки интернационализации
+    /// Настройки интернационализации и языка по умолчанию ([`I18nConfig`])
     #[serde(default)]
     pub i18n: I18nConfig,
 }
@@ -36,19 +52,19 @@ impl Default for AppConfig {
     }
 }
 
-/// Конфигурация HTTP/WS сервера
+/// Конфигурация HTTP/WS сервера платформы
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
-    /// Адрес привязки сокета
+    /// Адрес привязки TCP-сокета (по умолчанию `"127.0.0.1"`)
     #[serde(default = "default_host")]
     pub host: String,
-    /// Порт сервера
+    /// Сетевой порт сервера (по умолчанию `8080`)
     #[serde(default = "default_port")]
     pub port: u16,
-    /// Разрешить запуск в dev-режиме
+    /// Разрешить запуск в dev-режиме с ослабленными проверками подписей
     #[serde(default)]
     pub dev_mode: bool,
-    /// Режим Safe-Mode (аварийный старт без плагинов)
+    /// Режим Safe-Mode (аварийный старт без загрузки пользовательских плагинов)
     #[serde(default)]
     pub safe_mode: bool,
 }
@@ -72,16 +88,16 @@ impl Default for ServerConfig {
     }
 }
 
-/// Конфигурация базы данных SQLite
+/// Конфигурация базы данных SQLite (Single-Writer / Multi-Reader)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
-    /// Путь к файлу базы данных SQLite
+    /// Путь к файлу базы данных SQLite на диске (по умолчанию `"data/nms.db"`)
     #[serde(default = "default_db_path")]
     pub path: PathBuf,
-    /// Максимальный размер пула соединений на чтение
+    /// Максимальный размер пула соединений на параллельное чтение (по умолчанию `10`)
     #[serde(default = "default_max_read_connections")]
     pub max_read_connections: u32,
-    /// Таймаут ожидания освобождения блокировки (мс)
+    /// Таймаут ожидания освобождения блокировки SQLite в миллисекундах (`busy_timeout`, по умолчанию `5000` мс)
     #[serde(default = "default_busy_timeout")]
     pub busy_timeout_ms: u64,
 }
@@ -108,19 +124,19 @@ impl Default for DatabaseConfig {
     }
 }
 
-/// Конфигурация безопасности
+/// Конфигурация подсистемы безопасности и аутентификации
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
-    /// Секретный ключ для подписи JWT токенов (генерируется при первом старте)
+    /// Секретный ключ для криптографической подписи JWT токенов (HMAC-SHA256)
     #[serde(default = "default_jwt_secret")]
     pub jwt_secret: String,
-    /// Время жизни токена доступа в секундах (по умолчанию 24 часа)
+    /// Время жизни токена доступа в секундах (по умолчанию `86400` — 24 часа)
     #[serde(default = "default_jwt_ttl")]
     pub jwt_ttl_seconds: i64,
-    /// Разрешить неподписанные плагины (для dev-режима)
+    /// Разрешить установку и запуск неподписанных плагинов (для локальной разработки)
     #[serde(default)]
     pub allow_unsigned_plugins: bool,
-    /// Список доверенных публичных Ed25519 ключей для проверки подписи плагинов
+    /// Список доверенных публичных Ed25519 ключей (в hex/base64 формате) для проверки подписей модулей
     #[serde(default)]
     pub trusted_public_keys: Vec<String>,
 }
@@ -144,19 +160,19 @@ impl Default for SecurityConfig {
     }
 }
 
-/// Конфигурация каталогов и песочницы плагинов
+/// Конфигурация каталогов и песочницы WebAssembly плагинов
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginsConfig {
-    /// Каталог для хранения установленных плагинов
+    /// Каталог для хранения установленных плагинов (по умолчанию `"modules"`)
     #[serde(default = "default_plugins_dir")]
     pub dir: PathBuf,
-    /// Каталог для AOT кэша скомпилированных .cwasm модулей
+    /// Каталог для AOT кэша скомпилированных `.cwasm` модулей (по умолчанию `"cache/modules"`)
     #[serde(default = "default_cache_dir")]
     pub cache_dir: PathBuf,
-    /// Лимит памяти песочницы на модуль в мегабайтах
+    /// Лимит оперативной памяти песочницы на модуль в мегабайтах (по умолчанию `128` МБ)
     #[serde(default = "default_memory_limit_mb")]
     pub memory_limit_mb: usize,
-    /// Таймаут выполнения гостевого кода в секундах (Epoch interruption)
+    /// Таймаут выполнения гостевого кода в секундах (Epoch interruption, по умолчанию `5` сек)
     #[serde(default = "default_execution_timeout_sec")]
     pub execution_timeout_sec: u64,
 }
@@ -188,10 +204,10 @@ impl Default for PluginsConfig {
     }
 }
 
-/// Конфигурация локализации
+/// Конфигурация интернационализации платформы
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct I18nConfig {
-    /// Язык по умолчанию
+    /// Языковая локаль по умолчанию ([`Locale`])
     #[serde(default)]
     pub default_locale: Locale,
 }

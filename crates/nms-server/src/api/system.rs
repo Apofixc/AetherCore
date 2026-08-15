@@ -1,4 +1,12 @@
-//! # Системные эндпоинты ядра (/api/v1/system)
+//! # Системные эндпоинты ядра (`/api/v1/system`)
+//!
+//! Предоставляет HTTP эндпоинты для:
+//! - Получения статуса и версии ядра (`GET /api/v1/system/info`).
+//! - Экспорта словарей локализации (`GET /api/v1/system/i18n/{locale}`).
+//! - Чтения журнала аудита (`GET /api/v1/system/audit`).
+//! - Получения списка лог-провайдеров (`GET /api/v1/system/logs/providers`).
+//! - Поиска и фильтрации системных логов (`GET /api/v1/system/logs`).
+//! - Скачивания файла системного журнала (`GET /api/v1/system/logs/download`).
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
@@ -25,7 +33,7 @@ pub fn router() -> Router<AppState> {
         .route("/logs/download", get(logs_download_handler))
 }
 
-/// Ответ с метаинформацией о запущенном экземпляре ядра
+/// Ответ REST API с метаинформацией о запущенном экземпляре ядра платформы
 #[derive(Debug, Serialize)]
 pub struct SystemInfoResponse {
     /// Имя платформы
@@ -34,9 +42,9 @@ pub struct SystemInfoResponse {
     pub version: &'static str,
     /// Время непрерывной работы в секундах
     pub uptime_seconds: u64,
-    /// Флаг режима разработки
+    /// Флаг режима разработки (`dev_mode`)
     pub dev_mode: bool,
-    /// Флаг безопасного режима
+    /// Флаг аварийного безопасного режима (`safe_mode`)
     pub safe_mode: bool,
 }
 

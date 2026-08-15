@@ -36,7 +36,20 @@ impl fmt::Display for AppError {
 impl std::error::Error for AppError {}
 
 impl AppError {
-    /// Создать произвольную базовую ошибку
+    /// Создать произвольную базовую ошибку с указанным кодом, сообщением и HTTP-статусом
+    ///
+    /// # Аргументы
+    /// * `code` — Машиночитаемый код ошибки (например, `"CUSTOM_ERROR"`).
+    /// * `message` — Человекочитаемое описание проблемы.
+    /// * `status_code` — Соответствующий HTTP статус-код (например, 400, 500).
+    ///
+    /// # Примеры
+    /// ```rust
+    /// use nms_common::error::AppError;
+    ///
+    /// let err = AppError::new("SERVICE_UNAVAILABLE", "Сервис временно недоступен", 503);
+    /// assert_eq!(err.status_code(), 503);
+    /// ```
     pub fn new(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -53,7 +66,15 @@ impl AppError {
         }
     }
 
-    /// Залогировать ошибку в трассировку с указанием целевого модуля/компонента
+    /// Залогировать ошибку в трассировку (tracing) с указанием целевого компонента
+    ///
+    /// Ошибки со статусом 5xx логируются на уровне `error!`, ошибки 4xx — на уровне `warn!`.
+    ///
+    /// # Аргументы
+    /// * `target` — Имя компонента/подсистемы (например, `"bus"`, `"db"`, `"auth"`).
+    ///
+    /// # Возвращаемое значение
+    /// Возвращает ссылку на текущую ошибку (`&Self`) для удобного связывания вызовов.
     pub fn log(&self, target: &str) -> &Self {
         if self.status_code >= 500 {
             error!(component = target, code = %self.code, status = self.status_code, "{}", self.message);
@@ -63,19 +84,30 @@ impl AppError {
         self
     }
 
-    /// Залогировать ошибку и вернуть self (для удобного чейнинга `return Err(err.logged("bus"))`)
+    /// Залогировать ошибку и вернуть `self` по значению
+    ///
+    /// Удобно для использования в выражениях возврата: `return Err(err.logged("bus"))`.
+    ///
+    /// # Аргументы
+    /// * `target` — Имя компонента/подсистемы.
     pub fn logged(self, target: &str) -> Self {
         self.log(target);
         self
     }
 
-    /// Добавить структурированные детали к ошибке
+    /// Добавить структурированные метаданные (JSON) к объекту ошибки
+    ///
+    /// # Аргументы
+    /// * `details` — JSON-значение с контекстом ошибки (параметры, идентификаторы).
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = details;
         self
     }
 
-    /// Задать ключ локализации
+    /// Установить ключ словаря интернационализации (i18n) для локализации сообщения
+    ///
+    /// # Аргументы
+    /// * `key` — Ключ перевода (например, `"core.error.not_found"`).
     pub fn with_i18n_key(mut self, key: impl Into<String>) -> Self {
         self.i18n_key = key.into();
         self
@@ -83,7 +115,19 @@ impl AppError {
 
     // --- Стандартные конструкторы ошибок ядра ---
 
-    /// 401 Unauthorized
+    /// 401 Unauthorized — Ошибка аутентификации (требуется вход в систему или валидный токен)
+    ///
+    /// # Аргументы
+    /// * `details` — Описание причины отказа в доступе (например, `"Invalid token"`).
+    ///
+    /// # Примеры
+    /// ```rust
+    /// use nms_common::error::AppError;
+    ///
+    /// let err = AppError::unauthorized("Token expired");
+    /// assert_eq!(err.status_code(), 401);
+    /// assert_eq!(err.code(), "AUTH_REQUIRED");
+    /// ```
     pub fn unauthorized(details: impl Into<String>) -> Self {
         let d = details.into();
         Self {
@@ -95,7 +139,18 @@ impl AppError {
         }
     }
 
-    /// 403 Forbidden
+    /// 403 Forbidden — Недостаточно прав доступа (RBAC)
+    ///
+    /// # Аргументы
+    /// * `permission` — Название отсутствующего права доступа (например, `"users.manage"`).
+    ///
+    /// # Примеры
+    /// ```rust
+    /// use nms_common::error::AppError;
+    ///
+    /// let err = AppError::forbidden("system.manage");
+    /// assert_eq!(err.status_code(), 403);
+    /// ```
     pub fn forbidden(permission: impl Into<String>) -> Self {
         let p = permission.into();
         Self {
@@ -107,7 +162,18 @@ impl AppError {
         }
     }
 
-    /// 404 Not Found
+    /// 404 Not Found — Запрашиваемый ресурс не найден
+    ///
+    /// # Аргументы
+    /// * `resource` — Наименование или идентификатор отсутствующего ресурса.
+    ///
+    /// # Примеры
+    /// ```rust
+    /// use nms_common::error::AppError;
+    ///
+    /// let err = AppError::not_found("User with id '42'");
+    /// assert_eq!(err.status_code(), 404);
+    /// ```
     pub fn not_found(resource: impl Into<String>) -> Self {
         let r = resource.into();
         Self {
@@ -119,7 +185,10 @@ impl AppError {
         }
     }
 
-    /// 404 Module Not Found
+    /// 404 Module Not Found — Запрашиваемый плагин/модуль не зарегистрирован в системе
+    ///
+    /// # Аргументы
+    /// * `module_id` — Идентификатор модуля (например, `"snmp-collector"`).
     pub fn module_not_found(module_id: impl Into<String>) -> Self {
         let id = module_id.into();
         Self {
@@ -131,7 +200,10 @@ impl AppError {
         }
     }
 
-    /// 403 Module Disabled
+    /// 403 Module Disabled — Модуль отключен в конфигурации платформы
+    ///
+    /// # Аргументы
+    /// * `module_id` — Идентификатор отключенного модуля.
     pub fn module_disabled(module_id: impl Into<String>) -> Self {
         let id = module_id.into();
         Self {
@@ -143,7 +215,10 @@ impl AppError {
         }
     }
 
-    /// 400 Bad Request
+    /// 400 Bad Request — Некорректный запрос клиента
+    ///
+    /// # Аргументы
+    /// * `details` — Описание некорректного параметра или условия запроса.
     pub fn bad_request(details: impl Into<String>) -> Self {
         let d = details.into();
         Self {
@@ -155,7 +230,11 @@ impl AppError {
         }
     }
 
-    /// 422 Validation Error
+    /// 422 Unprocessable Entity — Ошибка валидации переданных данных
+    ///
+    /// # Аргументы
+    /// * `field` — Имя некорректного поля или параметра (например, `"username"`, `"port"`).
+    /// * `details` — Пояснение ошибки валидации.
     pub fn validation(field: impl Into<String>, details: impl Into<String>) -> Self {
         let f = field.into();
         let d = details.into();
@@ -168,7 +247,10 @@ impl AppError {
         }
     }
 
-    /// 409 Conflict
+    /// 409 Conflict — Конфликт состояния ресурсов (например, дублирование уникального имени)
+    ///
+    /// # Аргументы
+    /// * `details` — Описание возникшего конфликта.
     pub fn conflict(details: impl Into<String>) -> Self {
         let d = details.into();
         Self {
@@ -180,7 +262,10 @@ impl AppError {
         }
     }
 
-    /// 500 Database Error
+    /// 500 Database Error — Внутренняя ошибка выполнения запроса к базе данных SQLite
+    ///
+    /// # Аргументы
+    /// * `details` — Сообщение об ошибке базы данных.
     pub fn database(details: impl Into<String>) -> Self {
         let d = details.into();
         Self {
@@ -192,7 +277,11 @@ impl AppError {
         }
     }
 
-    /// 500 Plugin Error
+    /// 500 Plugin Error — Ошибка выполнения гостевого кода плагина
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор упавшего плагина.
+    /// * `details` — Описание ошибки или текст паники.
     pub fn plugin(plugin_id: impl Into<String>, details: impl Into<String>) -> Self {
         let id = plugin_id.into();
         let d = details.into();
@@ -205,7 +294,10 @@ impl AppError {
         }
     }
 
-    /// 504 Plugin Timeout
+    /// 504 Plugin Timeout — Превышен лимит времени выполнения операции в гостевом Wasm-модуле
+    ///
+    /// # Аргументы
+    /// * `plugin_id` — Идентификатор плагина, превысившего таймаут.
     pub fn plugin_timeout(plugin_id: impl Into<String>) -> Self {
         let id = plugin_id.into();
         Self {
@@ -217,7 +309,10 @@ impl AppError {
         }
     }
 
-    /// 429 Rate Limited
+    /// 429 Rate Limited — Превышен лимит частоты запросов
+    ///
+    /// # Аргументы
+    /// * `retry_after` — Время в секундах, через которое разрешено повторить запрос.
     pub fn rate_limited(retry_after: u64) -> Self {
         Self {
             code: "RATE_LIMITED".into(),
@@ -228,7 +323,10 @@ impl AppError {
         }
     }
 
-    /// 500 Internal Server Error
+    /// 500 Internal Server Error — Непредвиденная внутренняя ошибка платформы
+    ///
+    /// # Аргументы
+    /// * `details` — Описание внутренней ошибки.
     pub fn internal(details: impl Into<String>) -> Self {
         let d = details.into();
         Self {
@@ -240,7 +338,12 @@ impl AppError {
         }
     }
 
-    /// Произвольная кастомная ошибка
+    /// Создать произвольную кастомную ошибку
+    ///
+    /// # Аргументы
+    /// * `code` — Код ошибки.
+    /// * `message` — Сообщение об ошибке.
+    /// * `status_code` — HTTP статус-код.
     pub fn custom(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -249,7 +352,14 @@ impl AppError {
         Self::new(code, message, status_code)
     }
 
-    /// Произвольная кастомная ошибка с метаданными и i18n
+    /// Создать произвольную кастомную ошибку с метаданными и ключом локализации
+    ///
+    /// # Аргументы
+    /// * `code` — Код ошибки.
+    /// * `message` — Сообщение об ошибке.
+    /// * `status_code` — HTTP статус-код.
+    /// * `i18n_key` — Опциональный ключ локализации.
+    /// * `details` — JSON-объект с деталями ошибки.
     pub fn custom_with_details(
         code: impl Into<String>,
         message: impl Into<String>,
@@ -281,7 +391,16 @@ impl AppError {
         &self.i18n_key
     }
 
-    /// Локализовать сообщение об ошибке для заданной локали
+    /// Локализовать сообщение об ошибке для заданной языковой локали
+    ///
+    /// Если задан `i18n_key`, выполняет поиск в словаре переводов с подстановкой параметров из `details`.
+    /// При отсутствии ключа возвращает исходное сообщение `message`.
+    ///
+    /// # Аргументы
+    /// * `locale` — Целевая языковая локаль ([`Locale`]).
+    ///
+    /// # Возвращаемое значение
+    /// Локализованная строка сообщения.
     pub fn localized_message(&self, locale: Locale) -> String {
         if self.i18n_key.is_empty() {
             return self.message.clone();
@@ -309,7 +428,13 @@ impl AppError {
         }
     }
 
-    /// Преобразовать ошибку в стандартизированный JSON ответ API
+    /// Преобразовать ошибку в стандартизированный JSON ответ REST API ([`ErrorResponse`])
+    ///
+    /// # Аргументы
+    /// * `locale` — Языковая локаль клиента для перевода текста ошибки.
+    ///
+    /// # Возвращаемое значение
+    /// Структура [`ErrorResponse`], готовая для сериализации в HTTP-ответ.
     pub fn to_api_response(&self, locale: Locale) -> ErrorResponse {
         ErrorResponse {
             success: false,
@@ -324,16 +449,16 @@ impl AppError {
     }
 }
 
-/// Стандартизированная структура информации об ошибке
+/// Стандартизированная структура информации об ошибке для API
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorDetail {
-    /// Машиночитаемый код ошибки
+    /// Машиночитаемый код ошибки (например, `"VALIDATION_ERROR"`)
     pub code: String,
     /// Человекопонятный локализованный текст ошибки
     pub message: String,
-    /// HTTP статус-код
+    /// HTTP статус-код ошибки (например, 400, 404, 500)
     pub status_code: u16,
-    /// Ключ словаря i18n
+    /// Ключ словаря i18n (например, `"core.error.validation"`)
     pub i18n_key: String,
     /// Структурированные детали и контекст ошибки
     #[serde(default)]
@@ -343,7 +468,7 @@ pub struct ErrorDetail {
 /// Стандартный единый формат JSON ответа с ошибкой в REST API платформы
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ErrorResponse {
-    /// Флаг успешности выполнения запроса (всегда `false` для ошибок)
+    /// Флаг успешности выполнения запроса (всегда `false` для ответов с ошибками)
     pub success: bool,
     /// Вложенный объект с подробностями ошибки ([`ErrorDetail`])
     pub error: ErrorDetail,

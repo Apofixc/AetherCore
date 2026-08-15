@@ -1,7 +1,7 @@
 //! # Сервис журнала аудита действий (AuditService)
 //!
 //! Фиксирует все важные действия пользователей и системных процессов (вход, создание/удаление устройств,
-//! смена конфигураций) для соответствия требованиям безопасности.
+//! смена конфигураций, изменение прав) для соответствия требованиям безопасности и расследования инцидентов.
 
 use crate::db::Db;
 use chrono::{DateTime, Utc};
@@ -15,13 +15,13 @@ pub struct AuditLogRecord {
     pub id: i64,
     /// ID пользователя, совершившего действие (если применимо)
     pub user_id: Option<String>,
-    /// Имя пользователя
+    /// Имя пользователя (логин)
     pub username: Option<String>,
-    /// Выполненное действие (например, `"user.login"`, `"device.create"`)
+    /// Выполненное действие (например, `"auth.login"`, `"users.create"`, `"modules.enable"`)
     pub action: String,
-    /// Целевой ресурс (например, `"auth"`, `"device:192.168.1.1"`)
+    /// Целевой ресурс (например, `"auth"`, `"users/42"`, `"modules/snmp"`)
     pub resource: String,
-    /// Статус операции (`"success"`, `"failed"`)
+    /// Статус операции (`"success"`, `"failed"`, `"forbidden"`)
     pub status: String,
     /// Дополнительные детали в свободном формате или JSON
     pub details: Option<String>,
@@ -31,14 +31,14 @@ pub struct AuditLogRecord {
     pub created_at: DateTime<Utc>,
 }
 
-/// Сервис для работы с журналом аудита
+/// Сервис для персистентной фиксации и чтения журнала аудита безопасности
 #[derive(Debug, Clone)]
 pub struct AuditService {
     db: Db,
 }
 
 impl AuditService {
-    /// Создать новый экземпляр AuditService
+    /// Создать новый экземпляр [`AuditService`]
     ///
     /// # Аргументы
     /// * `db` — Экземпляр базы данных платформы ([`Db`]).

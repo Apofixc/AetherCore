@@ -7,39 +7,52 @@ use nms_common::error::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-/// Категория важности аварийного уведомления
+/// Категория важности аварийного уведомления / алерта
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertSeverity {
-    /// Информационное сообщение (нормальное функционирование, восстановление линка)
+    /// Информационное сообщение (нормальное функционирование, восстановление доступности линка)
     Info,
-    /// Предупреждение (деградация сервиса, высокий RTT, потеря части пакетов)
+    /// Предупреждение (деградация сервиса, высокий RTT, потеря части сетевых пакетов)
     Warning,
-    /// Критическая авария (устройство недоступно, отказ сервиса)
+    /// Критическая авария (устройство недоступно, отказ сервиса, сбой электропитания)
     Critical,
 }
 
 /// Модель системного уведомления/алерта
+///
+/// # Примеры
+/// ```rust
+/// use nms_core::services::notify::{AlertMessage, AlertSeverity};
+///
+/// let alert = AlertMessage {
+///     title: "Хост 192.168.1.1 недоступен".into(),
+///     body: "Потеряно 100% пакетов за последние 60 секунд".into(),
+///     severity: AlertSeverity::Critical,
+///     source: "ping-collector".into(),
+/// };
+/// assert_eq!(alert.severity, AlertSeverity::Critical);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertMessage {
-    /// Заголовок уведомления
+    /// Краткий заголовок уведомления
     pub title: String,
     /// Подробный текст оповещения
     pub body: String,
     /// Уровень важности события ([`AlertSeverity`])
     pub severity: AlertSeverity,
-    /// Источник оповещения (например, `"plugin.snmp"` или `"system.ping"`)
+    /// Идентификатор подсистемы или плагина-источника (например, `"plugin.snmp"` или `"system.ping"`)
     pub source: String,
 }
 
-/// Сервис отправки и маршрутизации уведомлений
+/// Сервис отправки и маршрутизации системных уведомлений и алертов
 #[derive(Debug, Clone, Default)]
 pub struct NotifyService {
     http_client: reqwest::Client,
 }
 
 impl NotifyService {
-    /// Создать новый экземпляр NotifyService с настроенным HTTP-клиентом
+    /// Создать новый экземпляр [`NotifyService`] с настроенным HTTP-клиентом (таймаут 5 сек)
     pub fn new() -> Self {
         Self {
             http_client: reqwest::Client::builder()
@@ -51,9 +64,15 @@ impl NotifyService {
 
     /// Отправить уведомление через системный журнал и внешний Webhook
     ///
+    /// В зависимости от важности алерта выполняет логирование с соответствующим уровнем (`info!`, `warn!`, `error!`).
+    /// Если передан `webhook_url`, выполняет неблокирующую асинхронную отправку HTTP POST с JSON полезной нагрузкой.
+    ///
     /// # Аргументы
     /// * `alert` — Сообщение оповещения ([`AlertMessage`]).
-    /// * `webhook_url` — Опциональный HTTP/HTTPS URL вебхука для доставки алерта.
+    /// * `webhook_url` — Опциональный HTTP/HTTPS URL вебхука для доставки алерта во внешнюю систему.
+    ///
+    /// # Возвращаемое значение
+    /// `Ok(())` при успешной постановке в обработку.
     pub async fn send_alert(&self, alert: AlertMessage, webhook_url: Option<&str>) -> Result<()> {
         match alert.severity {
             AlertSeverity::Info => {

@@ -1,4 +1,7 @@
-//! # Глобальное состояние веб-сервера (AppState)
+//! # Разделяемое состояние веб-сервера (AppState)
+//!
+//! Инкапсулирует все ключевые подсистемы ядра платформы для безопасного совместного
+//! использования между HTTP-обработчиками Axum и WebSocket-шлюзом.
 
 use crate::middleware::HasJwtManager;
 use nms_common::config::AppConfig;
@@ -11,27 +14,29 @@ use nms_core::users::UserService;
 use std::time::Instant;
 
 /// Общее разделяемое состояние HTTP-сервера и обработчиков Axum
+///
+/// Клонируется для каждого входящего HTTP запроса (содержит атомарные Arc-указатели внутри сервисов).
 #[derive(Clone)]
 pub struct AppState {
-    /// Конфигурация платформы
+    /// Полная конфигурация платформы ([`AppConfig`])
     pub config: AppConfig,
-    /// Пул базы данных SQLite
+    /// Пул соединений с базой данных SQLite WAL ([`Db`])
     pub db: Db,
-    /// Гибридная шина событий
+    /// Гибридная шина событий реального времени ([`EventBus`])
     pub bus: EventBus,
-    /// Менеджер JWT токенов аутентификации
+    /// Менеджер JWT токенов аутентификации ([`JwtManager`])
     pub jwt_manager: JwtManager,
-    /// Сервис управления пользователями и RBAC
+    /// Сервис управления пользователями и RBAC ([`UserService`])
     pub user_service: UserService,
-    /// Сервис журнала аудита
+    /// Сервис персистентного журнала аудита ([`AuditService`])
     pub audit_service: AuditService,
-    /// Сервис системного логирования
+    /// Сервис системного логирования ([`LoggerService`])
     pub logger_service: LoggerService,
-    /// Сервис рассылки уведомлений и алертов
+    /// Сервис рассылки уведомлений и алертов ([`NotifyService`])
     pub notify_service: NotifyService,
-    /// Менеджер Wasm-плагинов
+    /// Менеджер Wasm-плагинов ([`PluginManager`])
     pub plugin_manager: PluginManager,
-    /// Момент запуска сервера для расчета uptime
+    /// Точный момент времени запуска ядра для расчета `uptime`
     pub start_time: Instant,
 }
 

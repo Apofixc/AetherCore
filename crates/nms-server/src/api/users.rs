@@ -1,4 +1,11 @@
-//! # Эндпоинты управления пользователями (/api/v1/users)
+//! # Эндпоинты управления пользователями (`/api/v1/users`)
+//!
+//! Предоставляет HTTP CRUD API для:
+//! - Получения списка всех пользователей (`GET /api/v1/users`).
+//! - Создания нового пользователя (`POST /api/v1/users`).
+//! - Получения профиля пользователя по ID (`GET /api/v1/users/{id}`).
+//! - Обновления данных пользователя (`PUT /api/v1/users/{id}`).
+//! - Удаления пользователя (`DELETE /api/v1/users/{id}`).
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;

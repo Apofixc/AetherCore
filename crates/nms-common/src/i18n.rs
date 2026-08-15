@@ -1,9 +1,9 @@
 //! # Подсистема интернационализации и локализации (i18n)
 //!
 //! Обеспечивает сквозную локализацию сообщений об ошибках, системных событий,
-//! аудит-логов и интерфейсов на русском и английском языках.
+//! аудит-логов и интерфейсов на русском ([`Locale::Ru`]) и английском ([`Locale::En`]) языках.
 //! Загружает базовые системные словари из каталога `locales/` и поддерживает
-//! динамическую регистрацию словарей плагинов (модулей) с префиксами `module_id.key`.
+//! динамическую регистрацию словарей плагинов (модулей) с префиксами `{module_id}.{key}`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ const BUILTIN_EN_JSON: &str = include_str!("../locales/en.json");
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Locale {
-    /// Русский язык (по умолчанию)
+    /// Русский язык (локаль по умолчанию)
     #[default]
     Ru,
     /// Английский язык
@@ -26,7 +26,7 @@ pub enum Locale {
 }
 
 impl Locale {
-    /// Получить строковый код локали
+    /// Получить канонический двухбуквенный строковый код локали (`"ru"` или `"en"`)
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Ru => "ru",
@@ -34,7 +34,13 @@ impl Locale {
         }
     }
 
-    /// Парсинг локали из заголовков (например, Accept-Language) или строки
+    /// Безопасный парсинг локали из HTTP-заголовков (например, `Accept-Language: ru-RU,ru;q=0.9`) или произвольной строки
+    ///
+    /// # Аргументы
+    /// * `s` — Входная строка локали или заголовка.
+    ///
+    /// # Возвращаемое значение
+    /// Возвращает [`Locale::En`], если строка начинается с `"en"`, иначе по умолчанию [`Locale::Ru`].
     pub fn from_str_relaxed(s: &str) -> Self {
         let s = s.to_lowercase();
         if s.starts_with("en") {
@@ -45,7 +51,7 @@ impl Locale {
     }
 }
 
-/// Потокобезопасный реестр словарей переводов
+/// Потокобезопасный реестр словарей переводов платформы
 #[derive(Debug, Clone)]
 pub struct I18nRegistry {
     /// Хранилище: Locale -> (Key -> Translation Template)
@@ -63,27 +69,27 @@ impl Default for I18nRegistry {
 }
 
 impl I18nRegistry {
-    /// Создать новый реестр с предзагруженными системными переводами
+    /// Создать новый экземпляр реестра с предзагруженными встроенными системными переводами ядра
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Загрузить встроенные системные словари ядра из файлов locales/
+    /// Загрузить встроенные системные словари ядра из скомпилированных JSON файлов `locales/`
     fn load_builtin_translations(&self) {
         let _ = self.register_json(Locale::Ru, None, BUILTIN_RU_JSON);
         let _ = self.register_json(Locale::En, None, BUILTIN_EN_JSON);
     }
 
-    /// Зарегистрировать внешний JSON-словарь (например, из архива плагина)
+    /// Зарегистрировать внешний JSON-словарь (например, из архива установленного плагина)
     /// с опциональным префиксом модуля (`"{prefix}.{key}"`)
     ///
     /// # Аргументы
     /// * `locale` — Целевой язык ([`Locale`]).
-    /// * `prefix` — Опциональный префикс пространства имен плагина.
-    /// * `json_content` — Содержимое JSON словаря перевода.
+    /// * `prefix` — Опциональный префикс пространства имен плагина (например, `"snmp"`).
+    /// * `json_content` — Содержимое JSON словаря перевода в виде ключ-значение.
     ///
     /// # Возвращаемое значение
-    /// Количество зарегистрированных пар ключ-значение.
+    /// Количество успешно зарегистрированных пар ключ-значение.
     ///
     /// # Ошибки
     /// Возвращает [`serde_json::Error`], если JSON синтаксически некорректен.
@@ -112,11 +118,15 @@ impl I18nRegistry {
     /// Выполнить перевод ключа для указанной локали с интерполяцией именованных параметров `{param}`
     ///
     /// При отсутствии ключа в указанной локали автоматически выполняется fallback в русский язык (`Locale::Ru`).
+    /// Если перевод не найден ни в одной локали, возвращается форматированная строка вида `key[param1=val1]`.
     ///
     /// # Аргументы
     /// * `locale` — Запрошенная локаль ([`Locale`]).
-    /// * `key` — Ключ перевода (например, `"auth.invalid_password"`).
-    /// * `params` — Срез кортежей `(имя_параметра, значение)` для подстановки.
+    /// * `key` — Ключ перевода (например, `"core.error.unauthorized"`).
+    /// * `params` — Срез кортежей `(имя_параметра, значение)` для шаблонной подстановки.
+    ///
+    /// # Возвращаемое значение
+    /// Результирующий локализованный текст.
     pub fn translate(&self, locale: Locale, key: &str, params: &[(&str, &str)]) -> String {
         let dicts = self.dictionaries.read().expect("Lock poisoned");
 
@@ -141,10 +151,13 @@ impl I18nRegistry {
         }
     }
 
-    /// Экспортировать все ключи для указанной локали (для передачи на фронтенд / REST API)
+    /// Экспортировать полную карту переводов для указанной локали (для передачи на фронтенд / REST API)
     ///
     /// # Аргументы
-    /// * `locale` — Запрашиваемый язык.
+    /// * `locale` — Запрашиваемый язык ([`Locale`]).
+    ///
+    /// # Возвращаемое значение
+    /// Словарь `HashMap<String, String>` всех зарегистрированных ключей и шаблонов.
     pub fn export_locale(&self, locale: Locale) -> HashMap<String, String> {
         let dicts = self.dictionaries.read().expect("Lock poisoned");
         dicts.get(&locale).cloned().unwrap_or_default()
@@ -164,7 +177,7 @@ fn interpolate(template: &str, params: &[(&str, &str)]) -> String {
 /// Глобальный инстанс реестра локализации
 static GLOBAL_REGISTRY: OnceLock<I18nRegistry> = OnceLock::new();
 
-/// Получить ссылку на глобальный синглтон реестра переводов [`I18nRegistry`]
+/// Получить ссылку на глобальный синглтон реестра переводов платформы [`I18nRegistry`]
 pub fn global() -> &'static I18nRegistry {
     GLOBAL_REGISTRY.get_or_init(I18nRegistry::new)
 }
@@ -175,7 +188,7 @@ pub fn global() -> &'static I18nRegistry {
 /// ```rust
 /// use nms_common::i18n::{tr, Locale};
 ///
-/// let msg = tr(Locale::Ru, "system.started", &[("version", "2.0.0")]);
+/// let msg = tr(Locale::Ru, "core.error.unauthorized", &[("details", "Неверный пароль")]);
 /// ```
 pub fn tr(locale: Locale, key: &str, params: &[(&str, &str)]) -> String {
     global().translate(locale, key, params)

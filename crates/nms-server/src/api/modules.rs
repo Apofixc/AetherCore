@@ -1,4 +1,12 @@
-//! # Эндпоинты управления плагинами (/api/v1/modules)
+//! # Эндпоинты управления плагинами (`/api/v1/modules`)
+//!
+//! Предоставляет HTTP API для:
+//! - Получения списка установленных модулей (`GET /api/v1/modules`).
+//! - Получения детальной информации о модуле (`GET /api/v1/modules/{id}`).
+//! - Включения модуля (`POST /api/v1/modules/{id}/enable`).
+//! - Отключения модуля (`POST /api/v1/modules/{id}/disable`).
+//! - Чтения конфигурации модуля (`GET /api/v1/modules/{id}/config`).
+//! - Изменения конфигурации модуля (`PUT /api/v1/modules/{id}/config`).
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
@@ -31,17 +39,17 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 /// DTO сводной информации об установленном плагине
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModuleSummaryDto {
-    /// Идентификатор плагина
+    /// Уникальный идентификатор плагина (например, `"snmp-collector"`)
     pub id: String,
     /// Отображаемое название плагина
     pub name: String,
-    /// Версия плагина
+    /// Версия плагина по SemVer
     pub version: String,
-    /// Описание функционала
+    /// Описание функционала и назначения плагина
     pub description: String,
-    /// Активен ли плагин в рантайме
+    /// Активен ли плагин в текущий момент
     pub is_enabled: bool,
-    /// Декларативный манифест плагина
+    /// Полный декларативный манифест плагина ([`ModuleManifest`])
     pub manifest: ModuleManifest,
 }
 

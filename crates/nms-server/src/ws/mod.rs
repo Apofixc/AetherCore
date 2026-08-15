@@ -1,4 +1,7 @@
-//! # WebSocket Gateway трансляции событий шины реального времени
+//! # WebSocket Gateway трансляции событий шины реального времени (`/ws/events`)
+//!
+//! Обеспечивает двунаправленное подключение браузеров и внешних систем для
+//! получения событий шины (`EventMessage`) в реальном времени с низкой задержкой.
 
 use crate::state::AppState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -18,6 +21,7 @@ pub struct WsAuthQuery {
 /// WebSocket обработчик подключения клиентов (`/ws/events`)
 ///
 /// Транслирует все события системной шины в реальном времени в формате JSON.
+/// Если в запросе передан параметр `?token=<jwt>`, выполняет проверку прав доступа.
 pub async fn ws_events_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
