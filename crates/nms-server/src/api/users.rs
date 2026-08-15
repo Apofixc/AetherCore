@@ -31,6 +31,22 @@ pub fn router() -> Router<AppState> {
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 /// GET /api/v1/users
+///
+/// Получить список всех пользователей системы с их назначенными ролями и агрегированными правами доступа.
+///
+/// # Требуемые права RBAC
+/// * `users.view` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+///
+/// # Возвращаемое значение
+/// Список DTO пользователей [`UserResponseDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
 async fn list_users_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -52,6 +68,25 @@ async fn list_users_handler(
 }
 
 /// POST /api/v1/users
+///
+/// Создать нового пользователя системы с хэшированием пароля Argon2id и привязкой ролей.
+///
+/// # Требуемые права RBAC
+/// * `users.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `dto` — Тело JSON-запроса с данными создаваемого пользователя [`CreateUserDto`].
+///
+/// # Возвращаемое значение
+/// Профиль созданного пользователя [`UserResponseDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::BAD_REQUEST`] — невалидный логин или пароль.
+/// * [`StatusCode::CONFLICT`] — пользователь с таким логином уже существует.
 async fn create_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -86,6 +121,24 @@ async fn create_user_handler(
 }
 
 /// GET /api/v1/users/{id}
+///
+/// Получить профиль пользователя по его уникальному идентификатору (UUID).
+///
+/// # Требуемые права RBAC
+/// * `users.view` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — UUID пользователя.
+///
+/// # Возвращаемое значение
+/// Профиль пользователя [`UserResponseDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
 async fn get_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -107,6 +160,26 @@ async fn get_user_handler(
 }
 
 /// PUT /api/v1/users/{id}
+///
+/// Обновить параметры пользователя (ФИО, email, пароль, статус активности, флаг суперпользователя, роли).
+///
+/// # Требуемые права RBAC
+/// * `users.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — UUID обновляемого пользователя.
+/// * `dto` — Тело JSON-запроса с обновляемыми полями [`UpdateUserDto`].
+///
+/// # Возвращаемое значение
+/// Обновленный профиль пользователя [`UserResponseDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
+/// * [`StatusCode::BAD_REQUEST`] — ошибка валидации полей.
 async fn update_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -146,6 +219,25 @@ async fn update_user_handler(
 }
 
 /// DELETE /api/v1/users/{id}
+///
+/// Удалить учетную запись пользователя из системы. Запрещено удалять собственный аккаунт.
+///
+/// # Требуемые права RBAC
+/// * `users.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — UUID удаляемого пользователя.
+///
+/// # Возвращаемое значение
+/// `{"success": true}` при успешном удалении.
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::BAD_REQUEST`] — попытка удалить самого себя.
+/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
 async fn delete_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

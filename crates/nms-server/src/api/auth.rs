@@ -43,6 +43,18 @@ pub struct LoginResponse {
 ///
 /// Обработчик входа пользователя. Проверяет учетные данные через [`nms_core::users::UserService::authenticate`],
 /// выпускает JWT токен через [`nms_core::auth::JwtManager`] и записывает действие в журнал аудита.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `req` — JSON тело с логином и паролем [`LoginRequest`].
+///
+/// # Возвращаемое значение
+/// Структура [`LoginResponse`] с выпущенным JWT токеном и профилем пользователя.
+///
+/// # Ошибки
+/// * [`StatusCode::UNAUTHORIZED`] — неверный логин или пароль, либо аккаунт заблокирован.
+/// * [`StatusCode::INTERNAL_SERVER_ERROR`] — сбой генерации токена.
 async fn login_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -93,6 +105,18 @@ async fn login_handler(
 /// GET /api/v1/auth/me
 ///
 /// Обработчик получения профиля текущего пользователя по JWT токену из заголовка `Authorization: Bearer <token>`.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+///
+/// # Возвращаемое значение
+/// Профиль текущего пользователя [`UserResponseDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::UNAUTHORIZED`] — токен отсутствует, просрочен или поврежден.
+/// * [`StatusCode::NOT_FOUND`] — пользователь не найден в базе данных.
 async fn me_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

@@ -54,6 +54,22 @@ pub struct ModuleSummaryDto {
 }
 
 /// GET /api/v1/modules
+///
+/// Получить список всех установленных в платформе модулей с их метаданными и статусом активности.
+///
+/// # Требуемые права RBAC
+/// * `modules.view` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+///
+/// # Возвращаемое значение
+/// Список DTO установленных модулей [`ModuleSummaryDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — отсутствие права `modules.view`.
 async fn list_modules_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -80,6 +96,24 @@ async fn list_modules_handler(
 }
 
 /// GET /api/v1/modules/{id}
+///
+/// Получить подробную информацию и декларативный манифест конкретного модуля по его ID.
+///
+/// # Требуемые права RBAC
+/// * `modules.view` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — Строковый идентификатор модуля.
+///
+/// # Возвращаемое значение
+/// Информация о модуле [`ModuleSummaryDto`].
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — модуль с указанным ID не установлен.
 async fn get_module_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -111,6 +145,24 @@ async fn get_module_handler(
 }
 
 /// POST /api/v1/modules/{id}/enable
+///
+/// Активировать (включить) установленный модуль и зафиксировать событие в журнале аудита.
+///
+/// # Требуемые права RBAC
+/// * `modules.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — Строковый идентификатор модуля.
+///
+/// # Возвращаемое значение
+/// `{"success": true}` при успешном включении.
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — модуль не найден.
 async fn enable_module_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -149,6 +201,24 @@ async fn enable_module_handler(
 }
 
 /// POST /api/v1/modules/{id}/disable
+///
+/// Деактивировать (отключить) установленный модуль и зафиксировать событие в журнале аудита.
+///
+/// # Требуемые права RBAC
+/// * `modules.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — Строковый идентификатор модуля.
+///
+/// # Возвращаемое значение
+/// `{"success": true}` при успешном отключении.
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — модуль не найден.
 async fn disable_module_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -187,6 +257,24 @@ async fn disable_module_handler(
 }
 
 /// GET /api/v1/modules/{id}/config
+///
+/// Получить текущие настройки модуля из изолированного пространства `module:{id}`.
+///
+/// # Требуемые права RBAC
+/// * `modules.view` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — Строковый идентификатор модуля.
+///
+/// # Возвращаемое значение
+/// JSON-объект сохраненных настроек модуля.
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::NOT_FOUND`] — модуль не найден.
 async fn get_module_config_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -212,6 +300,26 @@ async fn get_module_config_handler(
 }
 
 /// PUT /api/v1/modules/{id}/config
+///
+/// Валидировать по JSON-схеме манифеста, сохранить новые настройки модуля и уведомить подписчиков через шину событий.
+///
+/// # Требуемые права RBAC
+/// * `modules.manage` (или права суперпользователя).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
+/// * `id` — Строковый идентификатор модуля.
+/// * `config_val` — Тело JSON-запроса с новыми настройками.
+///
+/// # Возвращаемое значение
+/// `{"success": true}` при успешном сохранении.
+///
+/// # Ошибки
+/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
+/// * [`StatusCode::BAD_REQUEST`] — переданные настройки не соответствуют схеме `config_schema`.
+/// * [`StatusCode::NOT_FOUND`] — модуль не найден.
 async fn set_module_config_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

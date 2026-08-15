@@ -32,6 +32,18 @@ pub struct EventsQuery {
 /// GET /api/v1/events
 ///
 /// Извлекает исторические записи системных событий из таблицы `event_journal` SQLite WAL.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `_auth` — Авторизованный пользователь [`AuthUser`].
+/// * `query` — Параметры фильтрации и пагинации [`EventsQuery`].
+///
+/// # Возвращаемое значение
+/// Список записей событий платформы [`ReliableEventRecord`].
+///
+/// # Ошибки
+/// * [`StatusCode::INTERNAL_SERVER_ERROR`] — при сбое выборки из базы данных.
 async fn query_events_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,

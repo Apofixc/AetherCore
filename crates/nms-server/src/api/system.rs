@@ -49,6 +49,14 @@ pub struct SystemInfoResponse {
 }
 
 /// GET /api/v1/system/info
+///
+/// Получить информацию о версии ядра, времени непрерывной работы (uptime) и активных режимах работы (`dev_mode`, `safe_mode`).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+///
+/// # Возвращаемое значение
+/// Структура [`SystemInfoResponse`].
 async fn system_info_handler(State(state): State<AppState>) -> Json<SystemInfoResponse> {
     let uptime = state.start_time.elapsed().as_secs();
     Json(SystemInfoResponse {
@@ -61,22 +69,41 @@ async fn system_info_handler(State(state): State<AppState>) -> Json<SystemInfoRe
 }
 
 /// GET /api/v1/system/i18n/:locale
+///
+/// Экспортировать полный словарь локализации для указанного языка (например, `"ru"` или `"en"`).
+///
+/// # Аргументы
+/// * `locale_str` — Строковый код языка (`"ru"`, `"en"`).
+///
+/// # Возвращаемое значение
+/// JSON-словарь пар `ключ -> шаблон_перевода`.
 async fn i18n_export_handler(Path(locale_str): Path<String>) -> Json<HashMap<String, String>> {
     let locale = Locale::from_str_relaxed(&locale_str);
     let dict = global().export_locale(locale);
     Json(dict)
 }
 
-/// Параметры запроса журнала аудита
+/// Параметры постраничной пагинации журнала аудита
 #[derive(Debug, Deserialize)]
 pub struct AuditQuery {
-    /// Лимит возвращаемых записей
+    /// Максимальное число возвращаемых записей (по умолчанию 50, макс 500)
     pub limit: Option<u32>,
-    /// ID последней прочитанной записи для пагинации
+    /// Идентификатор последнего прочитанного события (курсор пагинации)
     pub after_id: Option<i64>,
 }
 
 /// GET /api/v1/system/audit
+///
+/// Получить записи журнала аудита безопасности и действий пользователей.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `_auth` — Авторизованный пользователь [`AuthUser`].
+/// * `query` — Параметры пагинации [`AuditQuery`].
+///
+/// # Возвращаемое значение
+/// Список записей аудита [`AuditLogRecord`].
 async fn audit_logs_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -99,6 +126,16 @@ async fn audit_logs_handler(
 }
 
 /// GET /api/v1/system/logs/providers
+///
+/// Получить список доступных источников логов (ядро, модули, системные файлы).
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `_auth` — Авторизованный пользователь [`AuthUser`].
+///
+/// # Возвращаемое значение
+/// Список доступных провайдеров логов [`LogProvider`].
 async fn log_providers_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -114,20 +151,31 @@ async fn log_providers_handler(
     Ok(Json(providers))
 }
 
-/// Параметры выборки системных логов
+/// Параметры фильтрации и поиска системных логов
 #[derive(Debug, Deserialize)]
 pub struct LogQueryParams {
     /// Идентификатор провайдера логов (по умолчанию `"system"`)
     pub provider: Option<String>,
     /// Максимальное число возвращаемых строк
     pub limit: Option<usize>,
-    /// Минимальный уровень логирования для фильтрации
+    /// Минимальный уровень логирования для фильтрации (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`)
     pub level: Option<String>,
-    /// Подстрока полнотекстового поиска
+    /// Подстрока полнотекстового поиска по содержимому сообщения
     pub search: Option<String>,
 }
 
 /// GET /api/v1/system/logs
+///
+/// Выполнить поиск и выборку записей логов по источнику, уровню и ключевым словам.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `_auth` — Авторизованный пользователь [`AuthUser`].
+/// * `params` — Параметры поиска [`LogQueryParams`].
+///
+/// # Возвращаемое значение
+/// Результаты поиска логов [`LogQueryResult`].
 async fn logs_query_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -154,11 +202,19 @@ async fn logs_query_handler(
 /// Параметры скачивания файла логов
 #[derive(Debug, Deserialize)]
 pub struct LogDownloadParams {
-    /// Идентификатор источника логов
+    /// Идентификатор источника логов (по умолчанию `"system"`)
     pub provider: Option<String>,
 }
 
 /// GET /api/v1/system/logs/download
+///
+/// Скачать полный файл логов указанного провайдера в виде бинарного потока `text/plain` с заголовком `Content-Disposition: attachment`.
+///
+/// # Аргументы
+/// * `state` — Разделяемое состояние сервера [`AppState`].
+/// * `locale` — Локаль запроса [`RequestLocale`].
+/// * `_auth` — Авторизованный пользователь [`AuthUser`].
+/// * `params` — Параметры скачивания [`LogDownloadParams`].
 async fn logs_download_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
