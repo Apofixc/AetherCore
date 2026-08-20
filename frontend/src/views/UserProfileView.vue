@@ -121,7 +121,7 @@ function handleAutoDetectTimezone() {
                 </p>
               </div>
 
-              <div class="flex items-center justify-between w-full mt-2 px-md py-2 border border-outline-variant/30 rounded-lg bg-surface-container-lowest">
+              <div class="flex items-center justify-between w-full mt-2 px-md py-2 border border-outline-variant/40 rounded-lg bg-surface-container">
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] text-on-surface-variant uppercase font-bold">Status:</span>
                   <span class="text-[10px] text-tertiary-fixed-dim uppercase font-bold">{{ t('profile.activeStatus') }}</span>
@@ -462,7 +462,7 @@ function handleAutoDetectTimezone() {
                 </div>
                 <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-center justify-between flex-wrap gap-md">
                   <div class="flex items-center gap-3 shrink-0">
-                    <input checked class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-primary-fixed-dim cursor-pointer" type="checkbox">
+                    <input checked class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-primary-fixed-dim cursor-pointer" type="checkbox">
                     <div>
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-bold text-on-surface">{{ t('profile.systemCore') }}</span>
