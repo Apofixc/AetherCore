@@ -64,6 +64,7 @@ export const ru = {
     theme: 'Тема:',
     themeDark: 'Тёмная',
     themeLight: 'Светлая',
+    themeSystem: 'Авто',
     language: 'Язык:',
   },
   nav: {

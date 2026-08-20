@@ -442,6 +442,7 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                     >
                       <option value="dark">{{ t('profile.themeDark') }}</option>
                       <option value="light">{{ t('profile.themeLight') }}</option>
+                      <option value="system">{{ t('profile.themeSystem') }}</option>
                     </select>
                     <span class="material-symbols-outlined text-base text-on-surface-variant absolute right-2.5 pointer-events-none">
                       expand_more

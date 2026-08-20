@@ -64,6 +64,7 @@ export const en = {
     theme: 'Theme:',
     themeDark: 'Dark',
     themeLight: 'Light',
+    themeSystem: 'Auto',
     language: 'Language:',
   },
   nav: {
