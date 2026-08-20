@@ -338,19 +338,19 @@ function confirmToggleLock() {
           <div class="flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              class="h-8 px-3 bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 cursor-pointer"
+              class="h-8 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 flex items-center justify-center transition-colors cursor-pointer active:scale-95 font-body-mono text-[11px] font-bold tracking-wider"
+              :title="t('users.exportCsv')"
               @click="handleExportCsv"
             >
-              <span class="material-symbols-outlined text-[16px]">csv</span>
-              <span>{{ t('users.exportCsv') }}</span>
+              CSV
             </button>
             <button
               type="button"
-              class="h-8 px-3 bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 cursor-pointer"
+              class="h-8 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 flex items-center justify-center transition-colors cursor-pointer active:scale-95 font-body-mono text-[11px] font-bold tracking-wider"
+              :title="t('users.exportJson')"
               @click="handleExportJson"
             >
-              <span class="material-symbols-outlined text-[16px]">javascript</span>
-              <span>{{ t('users.exportJson') }}</span>
+              JSON
             </button>
             <button
               type="button"
