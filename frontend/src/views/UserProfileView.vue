@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import { useI18n, type Locale } from '@/i18n'
 import { useTheme, type ThemeMode } from '@/theme'
@@ -15,6 +15,34 @@ const department = ref('Network Operations')
 const role = ref('Superuser')
 const email = ref(authStore.user?.email || 'root@nms.local')
 const timezone = ref('Europe/Minsk')
+
+// Live Local Clock State
+const currentTimeString = ref('')
+let clockTimer: number | null = null
+
+function updateClock() {
+  try {
+    const now = new Date()
+    currentTimeString.value = now.toLocaleTimeString('en-US', {
+      timeZone: timezone.value.includes('/') ? timezone.value : undefined,
+      hour12: true,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }) + ` (${timezone.value})`
+  } catch {
+    currentTimeString.value = new Date().toLocaleTimeString('en-US', { hour12: true }) + ` (${timezone.value})`
+  }
+}
+
+onMounted(() => {
+  updateClock()
+  clockTimer = window.setInterval(updateClock, 1000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
+})
 
 // Password Form State
 const currentPassword = ref('')
@@ -111,6 +139,7 @@ function handleChangePassword() {
 
 function handleAutoDetectTimezone() {
   timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Minsk'
+  updateClock()
 }
 
 // Web Audio API Sound Synthesizer for live preview
@@ -203,36 +232,36 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                 <h2 class="font-display-lg text-display-lg text-on-surface font-bold">
                   {{ fullName }}
                 </h2>
-                <p class="text-xs text-on-surface-variant font-body-mono uppercase tracking-widest mt-1">
+                <p class="text-xs text-primary-fixed-dim font-medium tracking-wide mt-1">
                   {{ t('profile.superuserRole') }}
                 </p>
-                <p class="text-[10px] text-on-surface-variant font-body-mono mt-1">
+                <p class="text-[11px] text-on-surface-variant font-body-mono mt-0.5">
                   {{ t('profile.uid') }}
                 </p>
               </div>
 
               <div class="flex items-center justify-between w-full mt-2 px-md py-2 border border-outline-variant/40 rounded-lg bg-surface-container">
-                <div class="flex items-center gap-2">
-                  <span class="text-[10px] text-on-surface-variant uppercase font-bold">Status:</span>
-                  <span class="text-[10px] text-tertiary-fixed-dim uppercase font-bold">{{ t('profile.activeStatus') }}</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse"></span>
+                  <span class="text-xs text-tertiary-fixed-dim font-bold">{{ t('profile.activeStatus') }}</span>
                 </div>
-                <span class="text-[10px] text-on-surface-variant font-body-mono">12:39:58 AM (Europe/Minsk)</span>
+                <span class="text-xs text-on-surface-variant font-body-mono font-medium">{{ currentTimeString }}</span>
               </div>
 
               <div class="grid grid-cols-2 gap-sm w-full">
                 <button
                   type="button"
-                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                 >
-                  <span class="material-symbols-outlined text-base">upload</span>
-                  {{ t('profile.uploadPhoto') }}
+                  <span class="material-symbols-outlined text-base text-primary-fixed-dim">upload</span>
+                  <span>{{ t('profile.uploadPhoto') }}</span>
                 </button>
                 <button
                   type="button"
-                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                 >
-                  <span class="material-symbols-outlined text-base">restart_alt</span>
-                  {{ t('profile.resetPhoto') }}
+                  <span class="material-symbols-outlined text-base text-on-surface-variant">restart_alt</span>
+                  <span>{{ t('profile.resetPhoto') }}</span>
                 </button>
               </div>
             </div>
@@ -255,7 +284,7 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
 
               <form class="flex flex-col gap-sm" @submit.prevent="handleChangePassword">
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">
+                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
                     {{ t('profile.currentPassword') }}
                   </label>
                   <input
@@ -266,7 +295,7 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                   />
                 </div>
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">
+                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
                     {{ t('profile.newPassword') }}
                   </label>
                   <input
@@ -277,7 +306,7 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                   />
                 </div>
                 <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">
+                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
                     {{ t('profile.confirmNewPassword') }}
                   </label>
                   <input
@@ -293,13 +322,13 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                     class="h-8 px-4 bg-primary-fixed-dim text-on-primary-fixed font-bold shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 rounded-lg text-xs uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                   >
                     <span class="material-symbols-outlined text-base">lock_reset</span>
-                    {{ t('profile.changePassword') }}
+                    <span>{{ t('profile.changePassword') }}</span>
                   </button>
                 </div>
               </form>
             </div>
 
-            <!-- 2FA Card -->
+            <!-- Two-Factor Auth Card -->
             <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-sm text-on-surface">
@@ -311,19 +340,19 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                     <p class="text-xs text-on-surface-variant mt-0.5">TOTP</p>
                   </div>
                 </div>
-                <span class="px-2 py-0.5 bg-surface-variant text-[10px] font-bold text-outline-variant rounded uppercase font-body-mono">
+                <span class="px-2 py-0.5 bg-surface-variant text-[10px] font-bold text-on-surface-variant rounded uppercase font-body-mono border border-outline-variant/40">
                   Disabled
                 </span>
               </div>
-              <p class="text-xs text-on-surface-variant">
+              <p class="text-xs text-on-surface-variant leading-relaxed">
                 {{ t('profile.twoFactorDesc') }}
               </p>
               <button
                 type="button"
                 class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
               >
-                <span class="material-symbols-outlined text-base">qr_code_2</span>
-                {{ t('profile.setup2fa') }}
+                <span class="material-symbols-outlined text-base text-primary-fixed-dim">qr_code_2</span>
+                <span>{{ t('profile.setup2fa') }}</span>
               </button>
             </div>
           </div>
