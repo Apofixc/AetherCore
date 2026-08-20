@@ -53,7 +53,7 @@ function selectSubItem(item: string) {
       </div>
       <div>
         <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider group-hover:text-primary transition-colors">AetherCore</h1>
-        <p class="font-body-mono text-body-mono text-on-surface-variant">Version 1.0.4</p>
+        <p class="font-body-mono text-body-mono text-on-surface-variant">{{ t('common.version') }}</p>
       </div>
     </div>
 
@@ -62,7 +62,7 @@ function selectSubItem(item: string) {
       <!-- CORE MODULES -->
       <div class="mb-md">
         <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider px-md mb-sm">
-          CORE MODULES
+          {{ t('nav.coreModules') }}
         </h3>
         <router-link
           to="/dashboard"
@@ -77,14 +77,14 @@ function selectSubItem(item: string) {
           >
             dashboard
           </span>
-          Dashboard
+          {{ t('nav.dashboard') }}
         </router-link>
       </div>
 
       <!-- DYNAMIC MODULES -->
       <div class="flex flex-col gap-xs">
         <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider px-md mb-sm mt-md">
-          DYNAMIC MODULES
+          {{ t('nav.dynamicModules') }}
         </h3>
 
         <!-- Data Processor Accordion -->
@@ -96,7 +96,7 @@ function selectSubItem(item: string) {
           >
             <div class="flex items-center gap-md">
               <span class="material-symbols-outlined">analytics</span>
-              Data Processor
+              {{ t('nav.dataProcessor') }}
             </div>
             <span
               class="material-symbols-outlined text-sm transition-transform duration-300"
@@ -115,7 +115,7 @@ function selectSubItem(item: string) {
               :class="activeSubItem === 'overview' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
               @click.prevent="selectSubItem('overview')"
             >
-              Overview
+              {{ t('nav.overview') }}
             </a>
             <a
               href="#"
@@ -123,7 +123,7 @@ function selectSubItem(item: string) {
               :class="activeSubItem === 'transform' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
               @click.prevent="selectSubItem('transform')"
             >
-              Transform
+              {{ t('nav.transform') }}
             </a>
             <a
               href="#"
@@ -131,7 +131,7 @@ function selectSubItem(item: string) {
               :class="activeSubItem === 'export' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
               @click.prevent="selectSubItem('export')"
             >
-              Export
+              {{ t('nav.export') }}
             </a>
           </div>
         </div>
@@ -145,7 +145,7 @@ function selectSubItem(item: string) {
           >
             <div class="flex items-center gap-md">
               <span class="material-symbols-outlined">folder</span>
-              File Explorer
+              {{ t('nav.fileExplorer') }}
             </div>
             <span
               class="material-symbols-outlined text-sm transition-transform duration-300"
@@ -164,7 +164,7 @@ function selectSubItem(item: string) {
               :class="activeSubItem === 'local' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
               @click.prevent="selectSubItem('local')"
             >
-              Local Storage
+              {{ t('nav.localStorage') }}
             </a>
             <a
               href="#"
@@ -172,7 +172,7 @@ function selectSubItem(item: string) {
               :class="activeSubItem === 'vault' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
               @click.prevent="selectSubItem('vault')"
             >
-              Vault
+              {{ t('nav.vault') }}
             </a>
           </div>
         </div>
@@ -184,7 +184,7 @@ function selectSubItem(item: string) {
           @click="router.push('/modules')"
         >
           <span class="material-symbols-outlined">add</span>
-          Add Module
+          {{ t('nav.addModule') }}
         </button>
       </div>
     </div>
@@ -204,7 +204,7 @@ function selectSubItem(item: string) {
         >
           settings
         </span>
-        Settings
+        {{ t('nav.settings') }}
       </router-link>
     </div>
   </nav>

@@ -121,7 +121,7 @@ async function handleRefresh() {
                 <span class="font-body-base text-sm text-on-surface">{{ t('dashboard.moduleSummary') }}</span>
               </div>
               <span class="px-2 py-0.5 rounded text-[10px] font-label-caps uppercase tracking-wider bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim border border-tertiary-fixed-dim/20 flex items-center gap-1">
-                {{ modulesStore.activeCount }} / {{ modulesStore.totalCount }} Loaded
+                {{ t('dashboard.loadedCount', { active: modulesStore.activeCount, total: modulesStore.totalCount }) }}
               </span>
             </div>
 
@@ -144,7 +144,7 @@ async function handleRefresh() {
                   class="px-2 py-0.5 rounded text-[10px] font-label-caps uppercase tracking-wider"
                   :class="mod.is_active ? 'bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim border border-tertiary-fixed-dim/20' : 'bg-surface-variant text-on-surface-variant border border-outline-variant/40'"
                 >
-                  {{ mod.is_active ? 'Active' : 'Disabled' }}
+                  {{ mod.is_active ? t('common.active') : t('common.disabled') }}
                 </span>
               </div>
             </div>
@@ -157,7 +157,7 @@ async function handleRefresh() {
 
           <!-- Widget Footer -->
           <div class="px-md py-2 border-t border-outline-variant flex items-center justify-between bg-surface-container-low/50">
-            <span class="text-xs font-body-mono text-outline">Updated: {{ lastUpdated }}</span>
+            <span class="text-xs font-body-mono text-outline">{{ t('common.updatedAt') }}: {{ lastUpdated }}</span>
             <button
               type="button"
               class="flex items-center gap-xs text-xs font-title-sm text-primary-fixed-dim hover:text-primary-fixed-dim/80 transition-colors rounded-lg cursor-pointer"

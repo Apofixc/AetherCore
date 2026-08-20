@@ -69,7 +69,7 @@ const permissionCategories = ref<PermissionCategory[]>([
     name: 'Demo Plugin',
     icon: 'extension',
     items: [
-      { id: 'dp_view', name: 'Просмотр модуля Demo Plugin', code: 'module.demo_plugin.view', description: 'Разрешает доступ к модулю Demo Plugin', admin: false, operator: false, viewer: false }
+      { id: 'dp_view', name: 'Demo Plugin View', code: 'module.demo_plugin.view', description: 'Allows access to Demo Plugin module', admin: false, operator: false, viewer: false }
     ]
   },
   {
@@ -97,34 +97,6 @@ const permissionCategories = ref<PermissionCategory[]>([
     items: [
       { id: 'modules_manage', name: 'Manage Modules', code: 'modules.manage', description: 'Install, update, enable/disable, and remove dynamic modules', admin: true, operator: false, viewer: false },
       { id: 'modules_view', name: 'View Modules', code: 'modules.view', description: 'View installed modules and runtime state', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'ui_test',
-    name: 'Module UI Test',
-    icon: 'widgets',
-    items: [
-      { id: 'ui_test_create', name: 'Создание элементов UI Test', code: 'module.ui_test.create', description: 'Разрешает создание новых сущностей в модуле UI Test', admin: false, operator: false, viewer: false },
-      { id: 'ui_test_delete', name: 'Удаление элементов UI Test', code: 'module.ui_test.delete', description: 'Разрешает удаление сущностей в модуле UI Test', admin: false, operator: false, viewer: false },
-      { id: 'ui_test_view', name: 'Просмотр модуля UI Test', code: 'module.ui_test.view', description: 'Разрешает доступ к модулю UI Test', admin: false, operator: false, viewer: false }
-    ]
-  },
-  {
-    id: 'module_a',
-    name: 'Module Module A',
-    icon: 'view_in_ar',
-    items: [
-      { id: 'mod_a_create', name: 'Создание элементов Module A', code: 'module.module_a.create', description: 'Разрешает создание новых сущностей в модуле Module A', admin: false, operator: false, viewer: false },
-      { id: 'mod_a_view', name: 'Просмотр модуля Module A', code: 'module.module_a.view', description: 'Разрешает доступ к модулю Module A', admin: false, operator: false, viewer: false }
-    ]
-  },
-  {
-    id: 'sub_mod',
-    name: 'Module sub_mod',
-    icon: 'view_in_ar',
-    items: [
-      { id: 'sub_mod_create', name: 'Создание элементов sub_mod', code: 'module.sub_mod.create', description: 'Разрешает создание новых сущностей в модуле sub_mod', admin: false, operator: false, viewer: false },
-      { id: 'sub_mod_view', name: 'Просмотр модуля sub_mod', code: 'module.sub_mod.view', description: 'Разрешает доступ к модулю sub_mod', admin: false, operator: false, viewer: false }
     ]
   },
   {
@@ -278,13 +250,13 @@ const filteredAuditLogs = computed(() => {
         <!-- Top Page Header with Title & Action Button -->
         <div class="flex items-center justify-between flex-wrap gap-md">
           <div>
-            <h1 class="font-display-lg text-display-lg text-on-surface font-bold">Access &amp; Identity</h1>
-            <p class="text-sm text-on-surface-variant mt-1">Manage global authentication policies and monitor security events.</p>
+            <h1 class="font-display-lg text-display-lg text-on-surface font-bold">{{ t('accessIdentity.title') }}</h1>
+            <p class="text-sm text-on-surface-variant mt-1">{{ t('accessIdentity.subtitle') }}</p>
           </div>
           <div class="flex items-center gap-3">
             <span v-if="saveSuccess" class="text-xs text-tertiary-fixed-dim font-bold flex items-center gap-1 animate-fade-in">
               <span class="material-symbols-outlined text-[16px]">check_circle</span>
-              Changes Applied!
+              {{ t('common.changesApplied') }}
             </span>
             <button
               type="button"
@@ -292,7 +264,7 @@ const filteredAuditLogs = computed(() => {
               @click="applyChanges"
             >
               <span class="material-symbols-outlined text-[18px]">save</span>
-              Apply Changes
+              {{ t('accessIdentity.applyChanges') }}
             </button>
           </div>
         </div>
@@ -305,8 +277,8 @@ const filteredAuditLogs = computed(() => {
               <span class="material-symbols-outlined text-xl">security</span>
             </div>
             <div>
-              <h2 class="font-title-sm font-bold text-on-surface">Security Policies</h2>
-              <p class="text-xs text-on-surface-variant mt-0.5">Authentication gates, session lifecycles, and network access restrictions</p>
+              <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.securityPolicies') }}</h2>
+              <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityPoliciesDesc') }}</p>
             </div>
           </div>
 
@@ -315,8 +287,8 @@ const filteredAuditLogs = computed(() => {
             <!-- Web UI Authorization Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
               <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">Web UI Authorization</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">Disabling this option removes the requirement to log in. Access to the web interface will automatically be granted with Superuser privileges.</p>
+                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.webUiAuth') }}</h3>
+                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.webUiAuthDesc') }}</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="webUiAuth">
@@ -327,8 +299,8 @@ const filteredAuditLogs = computed(() => {
             <!-- Mandatory Password Change Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
               <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">Mandatory Password Change</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">Forces all new Users to update credentials upon initial entry.</p>
+                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.mandatoryPasswordChange') }}</h3>
+                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.mandatoryPasswordChangeDesc') }}</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="mandatoryPasswordChange">
@@ -339,8 +311,8 @@ const filteredAuditLogs = computed(() => {
             <!-- Force 2FA (MFA) Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
               <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">Force 2FA (MFA)</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">Enforce multi-factor auth for all users.</p>
+                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.force2FA') }}</h3>
+                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.force2FADesc') }}</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="force2FA">
@@ -355,11 +327,11 @@ const filteredAuditLogs = computed(() => {
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
               <div class="flex items-center gap-2 text-primary-fixed-dim">
                 <span class="material-symbols-outlined text-lg">lock_clock</span>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">Rate Limiting &amp; Lockout</h3>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.rateLimitingLockout') }}</h3>
               </div>
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-on-surface-variant">Max Login Attempts</span>
+                  <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.maxLoginAttempts') }}</span>
                   <input
                     class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
                     type="number"
@@ -367,7 +339,7 @@ const filteredAuditLogs = computed(() => {
                   >
                 </div>
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-on-surface-variant">Lockout Duration (min)</span>
+                  <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.lockoutDuration') }}</span>
                   <input
                     class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
                     type="number"
@@ -381,11 +353,11 @@ const filteredAuditLogs = computed(() => {
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
               <div class="flex items-center gap-2 text-primary-fixed-dim">
                 <span class="material-symbols-outlined text-lg">schedule</span>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">Session Lifecycle</h3>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.sessionLifecycle') }}</h3>
               </div>
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-on-surface-variant">Session TTL (hrs)</span>
+                  <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.sessionTTL') }}</span>
                   <input
                     class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
                     type="number"
@@ -393,7 +365,7 @@ const filteredAuditLogs = computed(() => {
                   >
                 </div>
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-on-surface-variant">Inactivity Timeout (mins)</span>
+                  <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.inactivityTimeout') }}</span>
                   <input
                     class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
                     type="number"
@@ -408,11 +380,11 @@ const filteredAuditLogs = computed(() => {
           <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
             <div class="flex items-center gap-2 text-primary-fixed-dim">
               <span class="material-symbols-outlined text-lg">vpn_key</span>
-              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">Password Complexity Policy</h3>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.passwordComplexity') }}</h3>
             </div>
             <div class="flex flex-wrap items-center gap-xl">
               <div class="flex items-center gap-3">
-                <span class="text-xs text-on-surface-variant">Min length</span>
+                <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.minLength') }}</span>
                 <input
                   class="w-16 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
                   type="number"
@@ -421,15 +393,15 @@ const filteredAuditLogs = computed(() => {
               </div>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0" type="checkbox" v-model="requireUppercase">
-                <span class="text-xs text-on-surface-variant">Uppercase (A-Z)</span>
+                <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.uppercase') }}</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0" type="checkbox" v-model="requireDigits">
-                <span class="text-xs text-on-surface-variant">Digits (0-9)</span>
+                <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.digits') }}</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0" type="checkbox" v-model="requireSpecial">
-                <span class="text-xs text-on-surface-variant">Special (!@#$)</span>
+                <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.specialChars') }}</span>
               </label>
             </div>
           </div>
@@ -438,14 +410,14 @@ const filteredAuditLogs = computed(() => {
           <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-sm">
             <div class="flex items-center gap-2 text-primary-fixed-dim">
               <span class="material-symbols-outlined text-lg">lan</span>
-              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">Allowed IPs / Subnets (IP Whitelist)</h3>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.ipWhitelist') }}</h3>
             </div>
             <input
               class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
               type="text"
               v-model="ipWhitelist"
             >
-            <p class="text-[10px] text-on-surface-variant">Enter IPs or CIDR subnets separated by comma or space. Leave empty to allow access from any IP.</p>
+            <p class="text-[10px] text-on-surface-variant">{{ t('accessIdentity.ipWhitelistDesc') }}</p>
           </div>
         </div>
 
@@ -457,8 +429,8 @@ const filteredAuditLogs = computed(() => {
               <span class="material-symbols-outlined text-xl">admin_panel_settings</span>
             </div>
             <div>
-              <h2 class="font-title-sm font-bold text-on-surface">Roles &amp; Permissions</h2>
-              <p class="text-xs text-on-surface-variant mt-0.5">Define custom access roles and configure granular system permissions</p>
+              <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.rolesManagement') }}</h2>
+              <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.rolesManagementDesc') }}</p>
             </div>
           </div>
 
@@ -469,8 +441,8 @@ const filteredAuditLogs = computed(() => {
               <div class="flex items-center gap-2.5">
                 <span class="material-symbols-outlined text-primary-fixed-dim text-lg">admin_panel_settings</span>
                 <div>
-                  <h3 class="text-sm font-bold text-on-surface">Roles Management</h3>
-                  <p class="text-[11px] text-on-surface-variant">Define and manage custom access roles.</p>
+                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.rolesManagement') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant">{{ t('accessIdentity.rolesManagementDesc') }}</p>
                 </div>
               </div>
               <button
@@ -478,7 +450,7 @@ const filteredAuditLogs = computed(() => {
                 class="bg-primary-fixed-dim text-on-primary hover:bg-primary-fixed-dim/90 px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
               >
                 <span class="material-symbols-outlined text-sm">add</span>
-                Add New Role
+                {{ t('accessIdentity.addNewRole') }}
               </button>
             </div>
 
@@ -487,10 +459,10 @@ const filteredAuditLogs = computed(() => {
               <table class="w-full text-left border-collapse">
                 <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
                   <tr>
-                    <th class="py-3 px-lg w-1/4">Role Name</th>
-                    <th class="py-3 px-lg w-1/2">Description</th>
-                    <th class="py-3 px-lg text-center w-28">Users</th>
-                    <th class="py-3 px-lg text-right w-24">Actions</th>
+                    <th class="py-3 px-lg w-1/4">{{ t('accessIdentity.roleName') }}</th>
+                    <th class="py-3 px-lg w-1/2">{{ t('accessIdentity.description') }}</th>
+                    <th class="py-3 px-lg text-center w-28">{{ t('accessIdentity.users') }}</th>
+                    <th class="py-3 px-lg text-right w-24">{{ t('accessIdentity.actions') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/30 text-xs">
@@ -529,8 +501,8 @@ const filteredAuditLogs = computed(() => {
               <div class="flex items-center gap-2.5">
                 <span class="material-symbols-outlined text-primary-fixed-dim text-lg">grid_view</span>
                 <div>
-                  <h3 class="text-sm font-bold text-on-surface">Permissions Matrix</h3>
-                  <p class="text-[11px] text-on-surface-variant">Granular role-based access control for system resources.</p>
+                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.permissionsMatrix') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant">{{ t('accessIdentity.permissionsMatrixDesc') }}</p>
                 </div>
               </div>
               <!-- Search input -->
@@ -539,7 +511,7 @@ const filteredAuditLogs = computed(() => {
                 <input
                   v-model="permissionsSearch"
                   class="bg-surface-container-highest border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface font-body-mono w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
-                  placeholder="Search permissions..."
+                  :placeholder="t('accessIdentity.searchPermissions')"
                   type="text"
                 >
               </div>
@@ -550,11 +522,11 @@ const filteredAuditLogs = computed(() => {
               <table class="w-full text-left border-collapse">
                 <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
                   <tr>
-                    <th class="py-3 px-lg min-w-[340px]">Permission</th>
-                    <th class="py-3 px-lg text-center w-36">Superuser</th>
-                    <th class="py-3 px-lg text-center w-36">Administrator</th>
-                    <th class="py-3 px-lg text-center w-36">Operator</th>
-                    <th class="py-3 px-lg text-center w-36">Viewer</th>
+                    <th class="py-3 px-lg min-w-[340px]">{{ t('accessIdentity.permission') }}</th>
+                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.superuser') }}</th>
+                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.administrator') }}</th>
+                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.operator') }}</th>
+                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.viewer') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/30 text-xs">
@@ -565,14 +537,14 @@ const filteredAuditLogs = computed(() => {
                         <span class="material-symbols-outlined text-base">{{ cat.icon }}</span>
                         <span>{{ cat.name }} <span class="text-xs font-normal opacity-80">({{ cat.items.length }})</span></span>
                       </td>
-                      <td class="py-2.5 px-lg text-center text-[10px] text-on-surface-variant font-body-mono uppercase">All</td>
+                      <td class="py-2.5 px-lg text-center text-[10px] text-on-surface-variant font-body-mono uppercase">{{ t('common.all') }}</td>
                       <td class="py-2.5 px-lg text-center">
                         <button
                           type="button"
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'admin')"
                         >
-                          {{ isCategoryRoleAll(cat.id, 'admin') ? 'Clear all' : 'Select all' }}
+                          {{ isCategoryRoleAll(cat.id, 'admin') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
                       </td>
                       <td class="py-2.5 px-lg text-center">
@@ -581,7 +553,7 @@ const filteredAuditLogs = computed(() => {
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'operator')"
                         >
-                          {{ isCategoryRoleAll(cat.id, 'operator') ? 'Clear all' : 'Select all' }}
+                          {{ isCategoryRoleAll(cat.id, 'operator') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
                       </td>
                       <td class="py-2.5 px-lg text-center">
@@ -590,7 +562,7 @@ const filteredAuditLogs = computed(() => {
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'viewer')"
                         >
-                          {{ isCategoryRoleAll(cat.id, 'viewer') ? 'Clear all' : 'Select all' }}
+                          {{ isCategoryRoleAll(cat.id, 'viewer') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
                       </td>
                     </tr>
@@ -653,8 +625,8 @@ const filteredAuditLogs = computed(() => {
                 <span class="material-symbols-outlined text-xl">verified_user</span>
               </div>
               <div>
-                <h2 class="font-title-sm font-bold text-on-surface">Security Audit Log</h2>
-                <p class="text-xs text-on-surface-variant mt-0.5">Immutable audit trail of authentication events and privileged changes.</p>
+                <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.securityAuditLog') }}</h2>
+                <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>
               </div>
             </div>
             <!-- Action Group: Search, Filter, Export -->
@@ -664,7 +636,7 @@ const filteredAuditLogs = computed(() => {
                 <input
                   v-model="auditSearch"
                   class="bg-surface-container-highest border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface font-body-mono w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
-                  placeholder="Search event, user, IP..."
+                  :placeholder="t('accessIdentity.searchAuditPlaceholder')"
                   type="text"
                 >
               </div>
@@ -680,7 +652,7 @@ const filteredAuditLogs = computed(() => {
                 class="bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
               >
                 <span class="material-symbols-outlined text-[16px]">download</span>
-                Export Logs
+                {{ t('accessIdentity.exportLogs') }}
               </button>
             </div>
           </div>
@@ -690,13 +662,13 @@ const filteredAuditLogs = computed(() => {
             <table class="w-full text-left border-collapse">
               <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
                 <tr>
-                  <th class="py-3 px-lg"># ID</th>
-                  <th class="py-3 px-lg">Timestamp</th>
-                  <th class="py-3 px-lg">User</th>
-                  <th class="py-3 px-lg">Action</th>
-                  <th class="py-3 px-lg">Resource</th>
-                  <th class="py-3 px-lg">Details</th>
-                  <th class="py-3 px-lg text-right">IP Address</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.id') }}</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.timestamp') }}</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.user') }}</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.action') }}</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.resource') }}</th>
+                  <th class="py-3 px-lg">{{ t('accessIdentity.details') }}</th>
+                  <th class="py-3 px-lg text-right">{{ t('accessIdentity.ipAddress') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-outline-variant/30 text-xs">
@@ -749,7 +721,7 @@ const filteredAuditLogs = computed(() => {
           <!-- Pagination Footer -->
           <div class="p-md border-t border-outline-variant bg-surface-container flex items-center justify-between flex-wrap gap-md">
             <div class="text-xs text-on-surface-variant font-body-mono">
-              Total events: <span class="font-bold text-on-surface">{{ filteredAuditLogs.length }}</span> | Showing recent {{ Math.min(filteredAuditLogs.length, 5) }}
+              {{ t('common.totalEvents', { total: filteredAuditLogs.length, count: Math.min(filteredAuditLogs.length, 5) }) }}
             </div>
             <div class="flex items-center gap-2">
               <button
@@ -757,14 +729,14 @@ const filteredAuditLogs = computed(() => {
                 class="px-3 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40 cursor-pointer"
                 disabled
               >
-                Previous
+                {{ t('common.previous') }}
               </button>
-              <span class="text-xs text-on-surface-variant font-body-mono px-2">Page 1 of 1</span>
+              <span class="text-xs text-on-surface-variant font-body-mono px-2">{{ t('common.pageOf', { page: 1, total: 1 }) }}</span>
               <button
                 type="button"
                 class="px-3 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
               >
-                Next
+                {{ t('common.next') }}
               </button>
             </div>
           </div>

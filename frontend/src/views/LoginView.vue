@@ -90,8 +90,8 @@ async function handleLogin() {
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
           <img src="/logo.png" alt="AetherCore Logo" class="w-full h-full object-cover" />
         </div>
-        <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">AETHERCORE</h1>
-        <p class="font-body-mono text-body-mono text-on-surface-variant">Command Center v1.0.4</p>
+        <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">{{ t('auth.title') }}</h1>
+        <p class="font-body-mono text-body-mono text-on-surface-variant">{{ t('auth.subtitle') }}</p>
       </div>
 
       <!-- Login Card -->
@@ -108,7 +108,7 @@ async function handleLogin() {
           <!-- Operator ID Field -->
           <div>
             <label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="operator_id">
-              OPERATOR ID
+              {{ t('auth.operatorId') }}
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-sm flex items-center pointer-events-none">
@@ -121,7 +121,7 @@ async function handleLogin() {
                 required
                 autocomplete="username"
                 class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
-                placeholder="Enter ID"
+                :placeholder="t('auth.operatorIdPlaceholder')"
               />
             </div>
           </div>
@@ -129,7 +129,7 @@ async function handleLogin() {
           <!-- Access Code Field -->
           <div>
             <label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="access_code">
-              ACCESS CODE
+              {{ t('auth.accessCode') }}
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-sm flex items-center pointer-events-none">
@@ -142,7 +142,7 @@ async function handleLogin() {
                 required
                 autocomplete="current-password"
                 class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
-                placeholder="••••••••••••"
+                :placeholder="t('auth.accessCodePlaceholder')"
               />
             </div>
           </div>
@@ -157,11 +157,11 @@ async function handleLogin() {
                 class="h-4 w-4 rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-primary-fixed-dim"
               />
               <label class="ml-sm block font-body-base text-body-base text-on-surface-variant cursor-pointer" for="remember-me">
-                Remember Me
+                {{ t('auth.rememberMe') }}
               </label>
             </div>
             <a href="#" class="font-body-base text-body-base text-primary-fixed-dim hover:underline transition-colors" @click.prevent>
-              Forgot Code?
+              {{ t('auth.forgotCode') }}
             </a>
           </div>
 
@@ -172,7 +172,7 @@ async function handleLogin() {
             class="w-full flex items-center justify-center gap-sm py-2.5 px-md bg-primary-fixed-dim text-on-primary-fixed rounded-lg font-title-sm text-title-sm shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 transition-all duration-200 active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             <span class="material-symbols-outlined" style="font-size: 20px;">login</span>
-            <span>{{ isSubmitting ? 'Establishing Connection...' : 'Establish Connection' }}</span>
+            <span>{{ isSubmitting ? t('auth.establishingConnection') : t('auth.establishConnection') }}</span>
           </button>
         </form>
       </div>
@@ -181,17 +181,17 @@ async function handleLogin() {
     <!-- Footer -->
     <footer class="fixed bottom-0 w-full h-8 bg-surface-container-lowest/80 backdrop-blur-sm border-t border-outline-variant flex items-center justify-between px-lg z-50 font-body-mono text-[10px] tracking-wider">
       <div class="flex items-center gap-md">
-        <span class="text-primary-fixed-dim">Built with Tauri &amp; Rust</span>
+        <span class="text-primary-fixed-dim">{{ t('common.builtWith') }}</span>
         <span class="text-outline-variant">|</span>
         <div class="flex items-center gap-xs text-tertiary-fixed-dim">
           <span class="material-symbols-outlined text-[14px]">check_circle</span>
-          <span>System OK</span>
+          <span>{{ t('common.systemOk') }}</span>
         </div>
       </div>
       <div class="flex items-center gap-lg text-on-surface-variant">
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">API Docs</a>
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">GitHub</a>
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">Discord</a>
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.apiDocs') }}</a>
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.github') }}</a>
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.discord') }}</a>
       </div>
     </footer>
   </div>

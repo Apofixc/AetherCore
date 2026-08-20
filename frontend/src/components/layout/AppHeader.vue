@@ -16,13 +16,13 @@ const userMenuOpen = ref(false)
 defineEmits(['toggleSidebar'])
 
 const pageTitle = computed(() => {
-  if (route.path === '/dashboard' || route.path === '/') return 'Dashboard'
-  if (route.path === '/settings/access-identity') return 'Access & Identity'
-  if (route.path === '/modules') return 'Module Management'
-  if (route.path === '/users') return 'Users Management'
-  if (route.path === '/system') return 'System Administration'
-  if (route.path === '/profile') return 'User Profile'
-  return 'AetherCore NMS'
+  if (route.path === '/dashboard' || route.path === '/') return t('nav.dashboard')
+  if (route.path === '/settings/access-identity' || route.path === '/settings/access') return t('nav.accessIdentity')
+  if (route.path === '/modules') return t('nav.moduleManagement')
+  if (route.path === '/users') return t('nav.usersManagement')
+  if (route.path === '/system' || route.path === '/settings/system') return t('nav.systemAdmin')
+  if (route.path === '/profile') return t('nav.userProfile')
+  return t('common.appName')
 })
 
 function handleLogout() {
@@ -100,10 +100,10 @@ function handleLogout() {
           >
             <div class="flex flex-col items-end hidden lg:flex">
               <span class="text-sm font-bold text-on-surface leading-none font-title-sm tracking-tight">
-                {{ authStore.user?.full_name || 'Admin User' }}
+                {{ authStore.user?.full_name || t('auth.adminUser') }}
               </span>
               <span class="text-[10px] text-primary-fixed-dim font-body-mono uppercase tracking-widest opacity-80 mt-0.5">
-                {{ authStore.isSuperuser ? 'SUPERUSER' : 'OPERATOR' }}
+                {{ authStore.isSuperuser ? t('auth.superuser') : 'OPERATOR' }}
               </span>
             </div>
 
@@ -130,7 +130,7 @@ function handleLogout() {
             class="absolute right-0 mt-2 w-56 bg-surface-container-low border border-outline-variant rounded-lg shadow-card-dark py-2 z-50 animate-fade-in"
           >
             <div class="px-4 py-2 border-b border-outline-variant/50">
-              <p class="text-xs font-bold text-on-surface">{{ authStore.user?.full_name || 'Admin User' }}</p>
+              <p class="text-xs font-bold text-on-surface">{{ authStore.user?.full_name || t('auth.adminUser') }}</p>
               <p class="text-[10px] font-body-mono text-on-surface-variant">{{ authStore.user?.email || 'root@nms.local' }}</p>
             </div>
             <router-link
@@ -138,14 +138,14 @@ function handleLogout() {
               class="flex items-center gap-2 px-4 py-2 text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-colors"
               @click="userMenuOpen = false"
             >
-              <span class="material-symbols-outlined text-sm">person</span> User Profile
+              <span class="material-symbols-outlined text-sm">person</span> {{ t('auth.userProfile') }}
             </router-link>
             <router-link
               to="/settings/access-identity"
               class="flex items-center gap-2 px-4 py-2 text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-colors"
               @click="userMenuOpen = false"
             >
-              <span class="material-symbols-outlined text-sm">settings</span> System Settings
+              <span class="material-symbols-outlined text-sm">settings</span> {{ t('auth.systemSettings') }}
             </router-link>
             <div class="border-t border-outline-variant/50 my-1"></div>
             <button
@@ -153,7 +153,7 @@ function handleLogout() {
               class="w-full flex items-center gap-2 px-4 py-2 text-xs text-error hover:bg-error-container/20 transition-colors text-left cursor-pointer"
               @click="handleLogout"
             >
-              <span class="material-symbols-outlined text-sm">logout</span> Sign Out
+              <span class="material-symbols-outlined text-sm">logout</span> {{ t('auth.logout') }}
             </button>
           </div>
         </div>

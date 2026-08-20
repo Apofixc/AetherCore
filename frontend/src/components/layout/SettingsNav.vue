@@ -6,11 +6,11 @@ const route = useRoute()
 const { t } = useI18n()
 
 const navItems = [
-  { path: '/modules', title: 'Module Management', key: 'nav.moduleManagement' },
-  { path: '/settings/access-identity', title: 'Access & Identity', key: 'nav.accessIdentity' },
-  { path: '/users', title: 'Users Management', key: 'nav.usersManagement' },
-  { path: '/system', title: 'System Administration', key: 'nav.systemAdmin' },
-  { path: '/profile', title: 'User Profile', key: 'nav.userProfile' }
+  { path: '/modules', key: 'nav.moduleManagement' },
+  { path: '/settings/access-identity', key: 'nav.accessIdentity' },
+  { path: '/users', key: 'nav.usersManagement' },
+  { path: '/system', key: 'nav.systemAdmin' },
+  { path: '/profile', key: 'nav.userProfile' }
 ]
 
 function isActive(path: string) {
@@ -31,7 +31,7 @@ function isActive(path: string) {
           ? 'border-primary-fixed-dim text-primary-fixed-dim font-bold hover:text-primary'
           : 'border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant'"
       >
-        {{ item.title }}
+        {{ t(item.key) }}
       </router-link>
     </div>
   </nav>
