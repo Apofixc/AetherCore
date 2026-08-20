@@ -126,6 +126,7 @@ export const en = {
     topologyTitle: 'WASM Module Mesh Topology',
     topologyDesc: 'Interactive Node Graph displaying intra-process WASM message bus connections and channels.',
     selectModulePrompt: 'Select a module from the list to view details',
+    selectModuleHint: 'Click on any module from the table or graph to inspect manifest and configuration.',
     description: 'Description',
     author: 'Author',
     permissions: 'Permissions',

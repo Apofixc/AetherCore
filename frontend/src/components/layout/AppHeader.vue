@@ -15,14 +15,34 @@ const userMenuOpen = ref(false)
 
 defineEmits(['toggleSidebar'])
 
-const pageTitle = computed(() => {
-  if (route.path === '/dashboard' || route.path === '/') return t('nav.dashboard')
-  if (route.path === '/settings/access-identity' || route.path === '/settings/access') return t('nav.accessIdentity')
-  if (route.path === '/modules') return t('nav.moduleManagement')
-  if (route.path === '/users') return t('nav.usersManagement')
-  if (route.path === '/system' || route.path === '/settings/system') return t('nav.systemAdmin')
-  if (route.path === '/profile') return t('nav.userProfile')
-  return t('common.appName')
+interface BreadcrumbItem {
+  label: string
+  to?: string
+}
+
+const breadcrumbs = computed<BreadcrumbItem[]>(() => {
+  const path = route.path
+  if (path === '/dashboard' || path === '/') {
+    return [{ label: t('nav.dashboard') }]
+  }
+  if (path.startsWith('/settings') || path === '/modules' || path === '/users' || path === '/profile' || path === '/system') {
+    const items: BreadcrumbItem[] = [
+      { label: t('nav.settings'), to: '/settings/modules' }
+    ]
+    if (path.includes('/modules')) {
+      items.push({ label: t('nav.moduleManagement') })
+    } else if (path.includes('/access')) {
+      items.push({ label: t('nav.accessIdentity') })
+    } else if (path.includes('/users')) {
+      items.push({ label: t('nav.usersManagement') })
+    } else if (path.includes('/system')) {
+      items.push({ label: t('nav.systemAdmin') })
+    } else if (path.includes('/profile')) {
+      items.push({ label: t('nav.userProfile') })
+    }
+    return items
+  }
+  return [{ label: t('nav.dashboard') }]
 })
 
 function handleLogout() {
@@ -36,17 +56,36 @@ function handleLogout() {
   <header
     class="bg-surface-container-lowest backdrop-blur-sm text-primary font-title-sm text-title-sm h-16 sticky top-0 z-40 border-b border-outline-variant flex items-center px-lg justify-between w-full shrink-0 select-none"
   >
-    <!-- Left: Menu Toggle & Title -->
-    <div class="flex items-center gap-md">
+    <!-- Left: Menu Toggle & Breadcrumbs -->
+    <div class="flex items-center gap-sm">
       <button
         type="button"
-        class="p-sm text-on-surface-variant hover:text-primary-fixed-dim transition-colors cursor-pointer active:opacity-70 rounded-lg hover:bg-surface-variant/50 flex items-center justify-center"
+        class="p-sm text-on-surface-variant hover:text-primary-fixed-dim transition-colors cursor-pointer active:opacity-70 rounded-lg hover:bg-surface-variant/50 flex items-center justify-center mr-1"
         @click="$emit('toggleSidebar')"
         title="Toggle Menu"
       >
         <span class="material-symbols-outlined">menu</span>
       </button>
-      <h2 class="font-title-sm text-title-sm text-on-surface">{{ pageTitle }}</h2>
+
+      <!-- Breadcrumbs Component -->
+      <nav class="flex items-center gap-2 text-xs" aria-label="Breadcrumb">
+        <template v-for="(crumb, idx) in breadcrumbs" :key="crumb.label">
+          <span v-if="idx > 0" class="text-outline-variant/60 font-body-mono select-none">/</span>
+          <router-link
+            v-if="crumb.to && idx < breadcrumbs.length - 1"
+            :to="crumb.to"
+            class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors font-medium"
+          >
+            {{ crumb.label }}
+          </router-link>
+          <span
+            v-else
+            class="font-bold text-on-surface"
+          >
+            {{ crumb.label }}
+          </span>
+        </template>
+      </nav>
     </div>
 
     <!-- Right: Controls & User Profile -->

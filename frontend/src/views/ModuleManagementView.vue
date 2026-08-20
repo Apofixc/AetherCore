@@ -500,7 +500,7 @@ function getPermissionTitle(p: any): string {
                   {{ t('modules.selectModulePrompt') }}
                 </p>
                 <p class="text-[11px] text-on-surface-variant max-w-[200px]">
-                  Click on any module from the table or graph to inspect manifest and configuration.
+                  {{ t('modules.selectModuleHint') }}
                 </p>
               </div>
             </div>
