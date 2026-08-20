@@ -61,6 +61,10 @@ export const ru = {
     adminUser: 'Администратор',
     userProfile: 'Профиль пользователя',
     systemSettings: 'Системные настройки',
+    theme: 'Тема:',
+    themeDark: 'Тёмная',
+    themeLight: 'Светлая',
+    language: 'Язык:',
   },
   nav: {
     coreModules: 'БАЗОВЫЕ МОДУЛИ',

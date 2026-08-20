@@ -429,7 +429,11 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                       @change="handleLocaleChange"
                     >
                       <option value="en">English (EN)</option>
-                      <option value="ru">Russian (RU)</option>
+                      <option value="ru">Русский (RU)</option>
+                      <option value="de" disabled>Deutsch (DE) — скоро</option>
+                      <option value="es" disabled>Español (ES) — скоро</option>
+                      <option value="fr" disabled>Français (FR) — скоро</option>
+                      <option value="zh" disabled>中文 (ZH) — скоро</option>
                     </select>
                     <span class="material-symbols-outlined text-base text-on-surface-variant absolute right-2.5 pointer-events-none">
                       expand_more

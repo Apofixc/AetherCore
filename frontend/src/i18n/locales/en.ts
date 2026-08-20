@@ -61,6 +61,10 @@ export const en = {
     adminUser: 'Admin User',
     userProfile: 'User Profile',
     systemSettings: 'System Settings',
+    theme: 'Theme:',
+    themeDark: 'Dark',
+    themeLight: 'Light',
+    language: 'Language:',
   },
   nav: {
     coreModules: 'CORE MODULES',
