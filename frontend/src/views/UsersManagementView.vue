@@ -282,13 +282,18 @@ function confirmToggleLock() {
       <div class="p-lg flex flex-col gap-lg w-full">
         <!-- Top Page Header with Title -->
         <div class="flex items-center justify-between flex-wrap gap-md">
-          <div>
-            <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-              {{ t('users.title') }}
-            </h1>
-            <p class="text-sm text-on-surface-variant mt-1">
-              {{ t('users.subtitle') }}
-            </p>
+          <div class="flex items-center gap-sm text-on-surface">
+            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+              <span class="material-symbols-outlined text-xl">manage_accounts</span>
+            </div>
+            <div>
+              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
+                {{ t('users.title') }}
+              </h1>
+              <p class="text-xs text-on-surface-variant mt-0.5">
+                {{ t('users.subtitle') }}
+              </p>
+            </div>
           </div>
         </div>
 

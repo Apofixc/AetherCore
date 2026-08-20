@@ -127,13 +127,18 @@ function getPermissionTitle(p: any): string {
         <div class="flex-1 flex flex-col gap-lg w-full pb-xl">
           <!-- Header Actions -->
           <div class="flex items-center justify-between flex-wrap gap-md">
-            <div>
-              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-                {{ t('modules.title') }}
-              </h1>
-              <p class="text-sm text-on-surface-variant mt-1">
-                {{ t('modules.subtitle') }}
-              </p>
+            <div class="flex items-center gap-sm text-on-surface">
+              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                <span class="material-symbols-outlined text-xl">view_module</span>
+              </div>
+              <div>
+                <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
+                  {{ t('modules.title') }}
+                </h1>
+                <p class="text-xs text-on-surface-variant mt-0.5">
+                  {{ t('modules.subtitle') }}
+                </p>
+              </div>
             </div>
             <div class="flex items-center gap-3">
               <button

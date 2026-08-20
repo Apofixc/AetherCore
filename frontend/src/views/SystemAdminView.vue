@@ -234,13 +234,18 @@ onUnmounted(() => {
 
         <!-- Top Page Header -->
         <div class="flex items-center justify-between flex-wrap gap-md">
-          <div>
-            <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-              {{ t('system.title') }}
-            </h1>
-            <p class="text-sm text-on-surface-variant mt-1">
-              {{ t('system.subtitle') }}
-            </p>
+          <div class="flex items-center gap-sm text-on-surface">
+            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+              <span class="material-symbols-outlined text-xl">admin_panel_settings</span>
+            </div>
+            <div>
+              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
+                {{ t('system.title') }}
+              </h1>
+              <p class="text-xs text-on-surface-variant mt-0.5">
+                {{ t('system.subtitle') }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -248,15 +253,19 @@ onUnmounted(() => {
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-lg">
           <!-- Card 1: Backup & Restore -->
           <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-            <div class="flex items-center gap-sm text-primary-fixed-dim">
-              <span class="material-symbols-outlined">cloud_sync</span>
-              <h2 class="font-title-sm text-title-sm font-bold text-on-surface">
-                {{ t('system.backupRestoreTitle') }}
-              </h2>
+            <div class="flex items-center gap-sm text-on-surface">
+              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                <span class="material-symbols-outlined text-xl">cloud_sync</span>
+              </div>
+              <div>
+                <h2 class="font-title-sm font-bold text-on-surface">
+                  {{ t('system.backupRestoreTitle') }}
+                </h2>
+                <p class="text-xs text-on-surface-variant mt-0.5">
+                  {{ t('system.backupDesc') }}
+                </p>
+              </div>
             </div>
-            <p class="text-xs text-on-surface-variant leading-relaxed">
-              {{ t('system.backupDesc') }}
-            </p>
 
             <input
               ref="fileInputRef"
@@ -297,11 +306,18 @@ onUnmounted(() => {
           <!-- Card 2: Active Sessions -->
           <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
             <div class="flex items-center justify-between flex-wrap gap-sm">
-              <div class="flex items-center gap-sm text-tertiary-fixed-dim">
-                <span class="material-symbols-outlined">group</span>
-                <h2 class="font-title-sm text-title-sm font-bold text-on-surface">
-                  {{ t('system.activeSessionsTitle') }}
-                </h2>
+              <div class="flex items-center gap-sm text-on-surface">
+                <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                  <span class="material-symbols-outlined text-xl">group</span>
+                </div>
+                <div>
+                  <h2 class="font-title-sm font-bold text-on-surface">
+                    {{ t('system.activeSessionsTitle') }}
+                  </h2>
+                  <p class="text-xs text-on-surface-variant mt-0.5">
+                    {{ t('profile.activeSessionsDesc') }}
+                  </p>
+                </div>
               </div>
               <div class="flex items-center gap-2">
                 <button
@@ -366,13 +382,15 @@ onUnmounted(() => {
         <div class="bg-surface-container-low border border-outline-variant rounded-lg shadow-card-dark flex flex-col overflow-hidden">
           <!-- Log Toolbar -->
           <div class="p-md border-b border-outline-variant flex items-center justify-between bg-surface-container flex-wrap gap-md">
-            <div class="flex items-center gap-sm">
-              <span class="material-symbols-outlined text-primary-fixed-dim">terminal</span>
+            <div class="flex items-center gap-sm text-on-surface">
+              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                <span class="material-symbols-outlined text-xl">terminal</span>
+              </div>
               <div>
-                <h2 class="font-title-sm text-title-sm text-on-surface font-bold">
+                <h2 class="font-title-sm font-bold text-on-surface">
                   {{ t('system.systemLogsViewerTitle') }}
                 </h2>
-                <p class="text-[10px] text-on-surface-variant uppercase tracking-widest">
+                <p class="text-xs text-on-surface-variant mt-0.5">
                   {{ t('system.systemLogsViewerSubtitle') }}
                 </p>
               </div>
