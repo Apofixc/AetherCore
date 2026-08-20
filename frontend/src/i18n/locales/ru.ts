@@ -86,6 +86,8 @@ export const ru = {
     systemAdmin: 'Системное администрирование',
     userProfile: 'Профиль пользователя',
     healthStatus: 'Состояние NMS: Оптимальное',
+    collapseSidebar: 'Скрыть боковую панель',
+    expandSidebar: 'Показать боковую панель',
   },
   dashboard: {
     title: 'Дашборд',

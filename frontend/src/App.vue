@@ -41,7 +41,7 @@ onMounted(async () => {
       :class="sidebarCollapsed ? '!ml-0 !w-full' : ''"
     >
       <!-- Top App Bar -->
-      <AppHeader @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed" />
+      <AppHeader :sidebar-collapsed="sidebarCollapsed" @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed" />
 
       <!-- View Canvas -->
       <router-view />

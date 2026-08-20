@@ -86,6 +86,8 @@ export const en = {
     systemAdmin: 'System Administration',
     userProfile: 'User Profile',
     healthStatus: 'NMS Health: Optimal',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
   },
   dashboard: {
     title: 'Dashboard',

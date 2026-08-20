@@ -14,6 +14,15 @@ const route = useRoute()
 const userMenuOpen = ref(false)
 const userDropdownRef = ref<HTMLElement | null>(null)
 
+const props = withDefaults(
+  defineProps<{
+    sidebarCollapsed?: boolean
+  }>(),
+  {
+    sidebarCollapsed: false
+  }
+)
+
 defineEmits(['toggleSidebar'])
 
 interface BreadcrumbItem {
@@ -71,16 +80,42 @@ function handleLogout() {
   <header
     class="bg-surface-container-lowest backdrop-blur-sm text-primary font-title-sm text-title-sm h-16 sticky top-0 z-40 border-b border-outline-variant flex items-center px-lg justify-between w-full shrink-0 select-none"
   >
-    <!-- Left: Menu Toggle & Breadcrumbs -->
+    <!-- Left: Menu Toggle, Brand (when sidebar collapsed) & Breadcrumbs -->
     <div class="flex items-center gap-sm">
+      <!-- Toggle button with intuitive icon and title -->
       <button
         type="button"
         class="p-sm hover:text-primary-fixed-dim transition-colors cursor-pointer active:opacity-70 rounded-full hover:bg-surface-variant/50 flex items-center justify-center mr-xs"
         @click="$emit('toggleSidebar')"
-        title="Toggle Sidebar"
+        :title="props.sidebarCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
+        :aria-label="props.sidebarCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
       >
-        <span class="material-symbols-outlined" data-icon="menu">menu</span>
+        <span
+          class="material-symbols-outlined transition-transform duration-200 inline-block"
+          :class="{ 'scale-x-[-1]': props.sidebarCollapsed }"
+        >
+          menu_open
+        </span>
       </button>
+
+      <!-- App Brand when sidebar is collapsed -->
+      <div
+        v-if="props.sidebarCollapsed"
+        class="flex items-center gap-2 cursor-pointer pr-3 border-r border-outline-variant/60 mr-1 animate-fade-in group select-none"
+        @click="router.push('/dashboard')"
+        title="AetherCore"
+      >
+        <div class="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-outline-variant group-hover:border-primary-fixed-dim/60 transition-colors">
+          <img
+            alt="AetherCore Logo"
+            class="w-full h-full object-cover"
+            src="/logo.png"
+          />
+        </div>
+        <span class="font-display-lg font-bold text-sm text-primary-fixed-dim tracking-wider group-hover:text-primary transition-colors">
+          AetherCore
+        </span>
+      </div>
 
       <!-- Breadcrumbs Component -->
       <nav class="flex items-center gap-2 text-xs" aria-label="Breadcrumb">
