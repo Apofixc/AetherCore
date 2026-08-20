@@ -495,59 +495,73 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                         <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.doNotDisturbDesc') }}</p>
                       </div>
                     </div>
-                    <span
-                      class="text-[10px] font-bold uppercase px-2 py-0.5 rounded border shrink-0"
+                    <div
+                      class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase shrink-0"
                       :class="activeMuteDuration !== 'none'
                         ? 'bg-warning-yellow/10 border-warning-yellow/30 text-warning-yellow'
                         : 'bg-tertiary-fixed-dim/10 border-tertiary-fixed-dim/30 text-tertiary-fixed-dim'"
                     >
-                      {{ activeMuteDuration !== 'none' ? 'Muted' : t('profile.notificationsActive') }}
-                    </span>
+                      <span
+                        class="w-1.5 h-1.5 rounded-full"
+                        :class="activeMuteDuration !== 'none' ? 'bg-warning-yellow' : 'bg-tertiary-fixed-dim animate-pulse'"
+                      ></span>
+                      <span>{{ activeMuteDuration !== 'none' ? `${t('profile.notificationsMuted')} (${activeMuteDuration})` : t('profile.notificationsActive') }}</span>
+                    </div>
                   </div>
 
-                  <div class="flex items-center gap-1.5 flex-wrap pt-2 border-t border-outline-variant/30">
-                    <span class="text-[10px] text-on-surface-variant uppercase font-bold mr-1">{{ t('profile.muteNotifications') }}</span>
-                    <button
-                      v-for="dur in (['15m', '1h', '8h', '24h'] as const)"
-                      :key="dur"
-                      type="button"
-                      class="h-7 px-2.5 border border-outline-variant rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                      :class="activeMuteDuration === dur
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                        : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
-                      @click="activeMuteDuration = activeMuteDuration === dur ? 'none' : dur"
-                    >
-                      {{ dur }}
-                    </button>
-                    <button
-                      type="button"
-                      class="h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 border border-outline-variant transition-all cursor-pointer"
-                      :class="activeMuteDuration === 'inf'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                        : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
-                      @click="activeMuteDuration = activeMuteDuration === 'inf' ? 'none' : 'inf'"
-                    >
-                      <span class="material-symbols-outlined text-xs">all_inclusive</span>
-                      {{ t('profile.untilTurnedOff') }}
-                    </button>
+                  <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
+                    <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.muteNotifications') }}</span>
+                    <div class="flex items-center gap-1">
+                      <button
+                        v-for="dur in (['15m', '1h', '8h', '24h'] as const)"
+                        :key="dur"
+                        type="button"
+                        class="h-7 px-2.5 border rounded-md text-xs font-semibold transition-all cursor-pointer"
+                        :class="activeMuteDuration === dur
+                          ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
+                          : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
+                        @click="activeMuteDuration = activeMuteDuration === dur ? 'none' : dur"
+                      >
+                        {{ dur }}
+                      </button>
+                      <button
+                        type="button"
+                        class="h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1 border transition-all cursor-pointer"
+                        :class="activeMuteDuration === 'inf'
+                          ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
+                          : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
+                        @click="activeMuteDuration = activeMuteDuration === 'inf' ? 'none' : 'inf'"
+                      >
+                        <span>{{ t('profile.untilTurnedOff') }}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Quiet Hours Card -->
-                <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-                  <div class="flex items-start gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0 mt-0.5">
-                      <span class="material-symbols-outlined text-base">schedule</span>
+                <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col justify-between gap-3">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                        <span class="material-symbols-outlined text-base">schedule</span>
+                      </div>
+                      <div>
+                        <h4 class="text-xs font-bold text-on-surface">{{ t('profile.quietHours') }}</h4>
+                        <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.quietHoursDesc') }}</p>
+                      </div>
                     </div>
-                    <div class="flex flex-col gap-1">
-                      <h4 class="text-xs font-bold text-on-surface">{{ t('profile.quietHours') }}</h4>
-                      <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('profile.quietHoursDesc') }}</p>
-                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                      <input class="sr-only peer" type="checkbox" v-model="quietHoursEnabled">
+                      <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
+                    </label>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
-                    <input class="sr-only peer" type="checkbox" v-model="quietHoursEnabled">
-                    <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
-                  </label>
+
+                  <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
+                    <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.quietScheduleLabel') }}</span>
+                    <span class="text-xs font-body-mono font-bold text-on-surface bg-surface-container-highest px-2.5 py-1 rounded-md border border-outline-variant/40">
+                      23:00 — 07:00 (GMT+3)
+                    </span>
+                  </div>
                 </div>
               </div>
 
