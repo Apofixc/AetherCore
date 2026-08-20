@@ -35,8 +35,8 @@ class ApiClient {
       headers
     })
 
-    if (response.status === 401) {
-      // Истек токен
+    if (response.status === 401 && endpoint.includes('/auth/me')) {
+      // Истек токен при проверке профиля
       if (window.location.pathname !== '/login') {
         this.setToken(null)
       }

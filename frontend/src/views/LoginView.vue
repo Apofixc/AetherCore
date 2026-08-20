@@ -11,7 +11,7 @@ const { t, locale, setLocale } = useI18n()
 const { isDark, toggleTheme } = useTheme()
 
 const operatorId = ref('admin')
-const accessCode = ref('admin123')
+const accessCode = ref('admin')
 const rememberMe = ref(true)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
