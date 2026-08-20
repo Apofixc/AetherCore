@@ -8,15 +8,31 @@ export const useModulesStore = defineStore('modules', () => {
   const error = ref<string | null>(null)
   const selectedModule = ref<ModuleDto | null>(null)
   const filter = ref<'all' | 'active' | 'disabled'>('all')
+  const searchQuery = ref('')
+  const togglingId = ref<string | null>(null)
 
   const totalCount = computed(() => modules.value.length)
   const activeCount = computed(() => modules.value.filter(m => m.is_active).length)
   const disabledCount = computed(() => modules.value.filter(m => !m.is_active).length)
 
   const filteredModules = computed(() => {
-    if (filter.value === 'active') return modules.value.filter(m => m.is_active)
-    if (filter.value === 'disabled') return modules.value.filter(m => !m.is_active)
-    return modules.value
+    let result = modules.value
+    if (filter.value === 'active') {
+      result = result.filter(m => m.is_active)
+    } else if (filter.value === 'disabled') {
+      result = result.filter(m => !m.is_active)
+    }
+
+    const query = searchQuery.value.trim().toLowerCase()
+    if (!query) return result
+
+    return result.filter(m => {
+      const nameMatch = m.name?.toLowerCase().includes(query)
+      const idMatch = m.id?.toLowerCase().includes(query)
+      const descMatch = m.manifest?.description?.toLowerCase().includes(query)
+      const authorMatch = m.manifest?.author?.toLowerCase().includes(query)
+      return nameMatch || idMatch || descMatch || authorMatch
+    })
   })
 
   async function fetchModules() {
@@ -33,6 +49,7 @@ export const useModulesStore = defineStore('modules', () => {
   }
 
   async function toggleModule(id: string, enable: boolean) {
+    togglingId.value = id
     loading.value = true
     try {
       if (enable) {
@@ -52,6 +69,7 @@ export const useModulesStore = defineStore('modules', () => {
       throw err
     } finally {
       loading.value = false
+      togglingId.value = null
     }
   }
 
@@ -63,12 +81,18 @@ export const useModulesStore = defineStore('modules', () => {
     filter.value = newFilter
   }
 
+  function setSearchQuery(query: string) {
+    searchQuery.value = query
+  }
+
   return {
     modules,
     loading,
     error,
     selectedModule,
     filter,
+    searchQuery,
+    togglingId,
     totalCount,
     activeCount,
     disabledCount,
@@ -76,6 +100,7 @@ export const useModulesStore = defineStore('modules', () => {
     fetchModules,
     toggleModule,
     selectModule,
-    setFilter
+    setFilter,
+    setSearchQuery
   }
 })

@@ -20,10 +20,31 @@ const isScanning = ref(false)
 const showInstallModal = ref(false)
 const selectedFile = ref<File | null>(null)
 const isInstalling = ref(false)
+const copiedId = ref(false)
 
 onMounted(() => {
   modulesStore.fetchModules()
 })
+
+async function copyModuleId(id: string) {
+  try {
+    await navigator.clipboard.writeText(id)
+    copiedId.value = true
+    setTimeout(() => {
+      copiedId.value = false
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy ID:', err)
+  }
+}
+
+function handleMetricClick(status: 'all' | 'active' | 'disabled') {
+  if (modulesStore.filter === status && status !== 'all') {
+    modulesStore.setFilter('all')
+  } else {
+    modulesStore.setFilter(status)
+  }
+}
 
 async function handleScan() {
   isScanning.value = true
@@ -168,7 +189,12 @@ const filterOptions = computed(() => [
 
           <!-- Metric Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
+            <!-- Total Modules Card (Clickable Filter) -->
+            <div
+              class="bg-surface-container-low border p-lg rounded-xl shadow-card-dark flex items-start justify-between cursor-pointer transition-all hover:border-outline-variant hover:bg-surface-container/80"
+              :class="modulesStore.filter === 'all' ? 'border-primary-fixed-dim/40 ring-1 ring-primary-fixed-dim/30' : 'border-outline-variant/60'"
+              @click="handleMetricClick('all')"
+            >
               <div>
                 <p class="text-[11px] font-mono text-on-surface-variant uppercase tracking-widest mb-sm">
                   {{ t('modules.totalModules') }}
@@ -182,7 +208,12 @@ const filterOptions = computed(() => [
               </div>
             </div>
 
-            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
+            <!-- Active Modules Card (Clickable Filter) -->
+            <div
+              class="bg-surface-container-low border p-lg rounded-xl shadow-card-dark flex items-start justify-between cursor-pointer transition-all hover:border-tertiary-fixed-dim/40 hover:bg-surface-container/80"
+              :class="modulesStore.filter === 'active' ? 'border-tertiary-fixed-dim/60 ring-1 ring-tertiary-fixed-dim/40' : 'border-outline-variant/60'"
+              @click="handleMetricClick('active')"
+            >
               <div>
                 <p class="text-[11px] font-mono text-tertiary-fixed-dim uppercase tracking-widest mb-sm">
                   {{ t('modules.active') }}
@@ -196,7 +227,12 @@ const filterOptions = computed(() => [
               </div>
             </div>
 
-            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
+            <!-- Disabled Modules Card (Clickable Filter) -->
+            <div
+              class="bg-surface-container-low border p-lg rounded-xl shadow-card-dark flex items-start justify-between cursor-pointer transition-all hover:border-outline-variant hover:bg-surface-container/80"
+              :class="modulesStore.filter === 'disabled' ? 'border-error/40 ring-1 ring-error/30' : 'border-outline-variant/60'"
+              @click="handleMetricClick('disabled')"
+            >
               <div>
                 <p class="text-[11px] font-mono text-on-surface-variant uppercase tracking-widest mb-sm">
                   {{ t('modules.disabled') }}
@@ -210,16 +246,18 @@ const filterOptions = computed(() => [
               </div>
             </div>
 
+            <!-- Runtime Info Card -->
             <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
               <div>
                 <p class="text-[11px] font-mono text-primary-fixed-dim uppercase tracking-widest mb-sm">
-                  {{ t('modules.moduleType') }}
+                  {{ t('modules.runtime') }}
                 </p>
-                <p class="text-[32px] leading-none font-mono font-bold text-primary-fixed-dim">
-                  {{ modulesStore.modules.length > 0 ? 'WASM' : '0' }}
+                <p class="text-xl leading-tight font-mono font-bold text-primary-fixed-dim">
+                  {{ t('modules.runtimeValue') }}
                 </p>
+                <span class="text-[10px] font-mono text-on-surface-variant/70 block mt-1">AetherCore IPC Engine</span>
               </div>
-              <div class="w-9 h-9 rounded-lg bg-primary-fixed-dim/10 flex items-center justify-center text-primary-fixed-dim border border-primary-fixed-dim/30">
+              <div class="w-9 h-9 rounded-lg bg-primary-fixed-dim/10 flex items-center justify-center text-primary-fixed-dim border border-primary-fixed-dim/30 shrink-0">
                 <span class="material-symbols-outlined text-lg">memory</span>
               </div>
             </div>
@@ -236,6 +274,27 @@ const filterOptions = computed(() => [
               class="flex-1"
             >
               <template #headerActions>
+                <!-- Search Input -->
+                <div class="relative w-44 sm:w-56">
+                  <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px] pointer-events-none">
+                    search
+                  </span>
+                  <input
+                    v-model="modulesStore.searchQuery"
+                    type="text"
+                    :placeholder="t('modules.searchPlaceholder')"
+                    class="w-full bg-surface-container-highest border border-outline-variant/60 rounded-lg pl-8 pr-7 py-1 text-xs text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary-fixed-dim transition-colors"
+                  />
+                  <button
+                    v-if="modulesStore.searchQuery"
+                    type="button"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+                    @click="modulesStore.setSearchQuery('')"
+                  >
+                    <span class="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                </div>
+
                 <!-- View Switcher -->
                 <div class="flex bg-surface-container-highest border border-outline-variant/60 rounded-lg p-0.5">
                   <button
@@ -300,7 +359,7 @@ const filterOptions = computed(() => [
                       v-for="mod in modulesStore.filteredModules"
                       :key="mod.id"
                       class="hover:bg-surface-variant/20 transition-colors cursor-pointer"
-                      :class="{ 'bg-surface-variant/40': modulesStore.selectedModule?.id === mod.id }"
+                      :class="{ 'bg-surface-variant/40 ring-1 ring-inset ring-primary-fixed-dim/30': modulesStore.selectedModule?.id === mod.id }"
                       @click="modulesStore.selectModule(mod)"
                     >
                       <td class="py-md px-md">
@@ -309,7 +368,7 @@ const filterOptions = computed(() => [
                             <span class="material-symbols-outlined text-[18px]">extension</span>
                           </div>
                           <div>
-                            <p class="font-bold text-on-surface text-sm">{{ mod.name }}</p>
+                            <p class="font-bold text-on-surface text-sm" :title="mod.name">{{ mod.name }}</p>
                             <p class="text-[11px] font-mono text-on-surface-variant">{{ mod.id }}</p>
                           </div>
                         </div>
@@ -332,8 +391,10 @@ const filterOptions = computed(() => [
                       </td>
                       <td class="py-md px-md text-right">
                         <AppButton
-                          :variant="mod.is_active ? 'danger' : 'outline'"
+                          :variant="mod.is_active ? 'danger' : 'tertiary'"
                           size="xs"
+                          :icon="mod.is_active ? 'power_off' : 'play_arrow'"
+                          :loading="modulesStore.togglingId === mod.id"
                           @click.stop="handleToggle(mod)"
                         >
                           {{ mod.is_active ? t('modules.disable') : t('modules.enable') }}
@@ -366,19 +427,28 @@ const filterOptions = computed(() => [
                   <!-- Connected Module Nodes -->
                   <div class="grid grid-cols-2 sm:grid-cols-3 gap-6 w-full">
                     <div
-                      v-for="mod in modulesStore.modules"
+                      v-for="mod in modulesStore.filteredModules"
                       :key="mod.id"
                       class="p-3 rounded-lg border flex flex-col items-center gap-2 cursor-pointer transition-all hover:scale-105"
-                      :class="mod.is_active
-                        ? 'bg-surface-container border-tertiary-fixed-dim/40 shadow-glow-tertiary-sm'
-                        : 'bg-surface-container/60 border-outline-variant opacity-60'"
+                      :class="[
+                        mod.is_active
+                          ? 'bg-surface-container border-tertiary-fixed-dim/40 shadow-glow-tertiary-sm'
+                          : 'bg-surface-container/60 border-outline-variant opacity-60',
+                        modulesStore.selectedModule?.id === mod.id ? 'ring-2 ring-primary-fixed-dim' : ''
+                      ]"
                       @click="modulesStore.selectModule(mod)"
                     >
                       <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="mod.is_active ? 'bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim' : 'bg-surface-variant text-on-surface-variant'">
                         <span class="material-symbols-outlined text-xl">extension</span>
                       </div>
                       <span class="text-xs font-bold text-on-surface">{{ mod.name }}</span>
-                      <span class="text-[10px] font-mono text-on-surface-variant">v{{ mod.version }}</span>
+                      <div class="flex items-center gap-1">
+                        <span class="text-[10px] font-mono text-on-surface-variant">v{{ mod.version }}</span>
+                        <span
+                          class="w-1.5 h-1.5 rounded-full inline-block"
+                          :class="mod.is_active ? 'bg-tertiary-fixed-dim' : 'bg-on-surface-variant/40'"
+                        />
+                      </div>
                     </div>
 
                     <!-- Host System Adapter Node -->
@@ -402,14 +472,58 @@ const filterOptions = computed(() => [
             </BaseCard>
 
             <!-- Right: Module Details Card -->
-            <div class="w-full lg:w-80 shrink-0">
+            <div class="w-full lg:w-96 shrink-0">
               <BaseCard
                 v-if="modulesStore.selectedModule"
-                :title="modulesStore.selectedModule.name"
-                :subtitle="modulesStore.selectedModule.id"
-                icon="extension"
-                :badge="`v${modulesStore.selectedModule.version}`"
+                :no-padding="false"
               >
+                <!-- Custom Header without Text Truncation Issues -->
+                <template #header>
+                  <div class="flex items-start gap-3 w-full min-w-0">
+                    <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0 mt-0.5">
+                      <span class="material-symbols-outlined text-xl">extension</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-start justify-between gap-2">
+                        <h2
+                          class="font-title-sm font-bold text-on-surface text-sm break-words leading-tight"
+                          :title="modulesStore.selectedModule.name"
+                        >
+                          {{ modulesStore.selectedModule.name }}
+                        </h2>
+                        <StatusBadge
+                          :variant="modulesStore.selectedModule.is_active ? 'success' : 'neutral'"
+                          :dot="true"
+                          :pulse="modulesStore.selectedModule.is_active"
+                          size="xs"
+                        >
+                          {{ modulesStore.selectedModule.is_active ? t('modules.activeStatus') : t('modules.disabledStatus') }}
+                        </StatusBadge>
+                      </div>
+
+                      <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span class="text-[11px] font-mono text-on-surface-variant/90">
+                          {{ modulesStore.selectedModule.id }}
+                        </span>
+                        <button
+                          type="button"
+                          class="inline-flex items-center gap-1 text-[10px] text-primary-fixed-dim hover:text-on-surface transition-colors cursor-pointer"
+                          :title="t('modules.copyId')"
+                          @click="copyModuleId(modulesStore.selectedModule.id)"
+                        >
+                          <span class="material-symbols-outlined text-[14px]">
+                            {{ copiedId ? 'check' : 'content_copy' }}
+                          </span>
+                          <span v-if="copiedId" class="text-[9px] text-tertiary-fixed-dim font-mono">{{ t('modules.copied') }}</span>
+                        </button>
+                        <span class="px-1.5 py-0.5 bg-surface-container-highest border border-outline-variant/60 rounded text-[10px] font-mono text-on-surface-variant ml-auto">
+                          v{{ modulesStore.selectedModule.version }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <div class="flex flex-col gap-md">
                   <div>
                     <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
@@ -420,13 +534,24 @@ const filterOptions = computed(() => [
                     </p>
                   </div>
 
-                  <div>
-                    <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
-                      {{ t('modules.author') }}
-                    </label>
-                    <p class="text-xs text-on-surface font-mono">
-                      {{ modulesStore.selectedModule.manifest?.author || 'AetherCore Team' }}
-                    </p>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
+                        {{ t('modules.author') }}
+                      </label>
+                      <p class="text-xs text-on-surface font-mono">
+                        {{ modulesStore.selectedModule.manifest?.author || 'AetherCore Team' }}
+                      </p>
+                    </div>
+
+                    <div v-if="modulesStore.selectedModule.manifest?.entrypoint">
+                      <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
+                        {{ t('modules.entrypoint') }}
+                      </label>
+                      <p class="text-xs text-on-surface font-mono truncate" :title="modulesStore.selectedModule.manifest.entrypoint">
+                        {{ modulesStore.selectedModule.manifest.entrypoint }}
+                      </p>
+                    </div>
                   </div>
 
                   <div>
@@ -448,9 +573,11 @@ const filterOptions = computed(() => [
 
                 <template #footer>
                   <AppButton
-                    :variant="modulesStore.selectedModule.is_active ? 'danger' : 'primary'"
-                    size="sm"
+                    :variant="modulesStore.selectedModule.is_active ? 'danger' : 'tertiary'"
+                    size="md"
                     :block="true"
+                    :loading="modulesStore.togglingId === modulesStore.selectedModule.id"
+                    :icon="modulesStore.selectedModule.is_active ? 'power_off' : 'play_arrow'"
                     @click="handleToggle(modulesStore.selectedModule)"
                   >
                     {{ modulesStore.selectedModule.is_active ? t('modules.disable') : t('modules.enable') }}
