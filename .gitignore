@@ -32,3 +32,4 @@ agent/
 .claude/
 .gemini/
 GEMINI.md
+.stitch/
