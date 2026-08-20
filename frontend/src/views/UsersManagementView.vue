@@ -9,7 +9,8 @@ import {
   StatusBadge,
   BaseModal,
   ConfirmModal,
-  BaseInput
+  BaseInput,
+  BaseSwitch
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
@@ -33,10 +34,20 @@ const loading = ref(false)
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const selectedUserIds = ref<string[]>([])
+const sortKey = ref<'full_name' | 'username' | 'role' | 'is_online'>('full_name')
+const sortOrder = ref<'asc' | 'desc'>('asc')
+
+// Modals state
 const showAddModal = ref(false)
+const showEditModal = ref(false)
 const showLockModal = ref(false)
+const showDeleteModal = ref(false)
+const showBulkDeleteModal = ref(false)
+
 const selectedUserForAction = ref<OperatorItem | null>(null)
+const userToDelete = ref<OperatorItem | null>(null)
 const isSubmitting = ref(false)
+const copiedKey = ref<string | null>(null)
 
 // Form for new user
 const newUserForm = ref({
@@ -47,11 +58,33 @@ const newUserForm = ref({
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer'
 })
 
+// Form for editing user
+const editUserForm = ref({
+  id: '',
+  full_name: '',
+  username: '',
+  email: '',
+  role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
+  is_active: true,
+  password: ''
+})
+
 // Operators list
 const operators = ref<OperatorItem[]>([
   {
     id: 'ROOT-001',
-    uid: 'UID: ROOT-001',
+    uid: '07d11e26-9f88-4966-9105-38df982b52e0',
+    username: 'admin',
+    full_name: 'System Administrator',
+    email: 'admin@nms.local',
+    role: 'admin',
+    is_online: true,
+    is_active: true,
+    initials: 'SA'
+  },
+  {
+    id: 'UID-D6A22E',
+    uid: 'a4b12c89-11ef-4230-9b34-8c7e43d1a890',
     username: 'root',
     full_name: 'Главный администратор (Root)',
     email: 'root@nms.local',
@@ -61,19 +94,8 @@ const operators = ref<OperatorItem[]>([
     initials: 'GA'
   },
   {
-    id: 'UID-D6A22E',
-    uid: 'UID: UID-D6A22E',
-    username: 'lockout_test_user',
-    full_name: 'Lockout Test',
-    email: 'lockout@nms.local',
-    role: 'superuser',
-    is_online: false,
-    is_active: true,
-    initials: 'LT'
-  },
-  {
     id: 'UID-A1B2C3',
-    uid: 'UID: UID-A1B2C3',
+    uid: '5e8f23d1-44ab-45c1-8d23-01a4f9b2c3d4',
     username: 's.jenkins',
     full_name: 'Sarah Jenkins',
     email: 's.jenkins@nms.local',
@@ -84,7 +106,7 @@ const operators = ref<OperatorItem[]>([
   },
   {
     id: 'UID-F4G5H6',
-    uid: 'UID: UID-F4G5H6',
+    uid: '6f9a34e2-55bc-46d2-9e34-12b5a0c3d4e5',
     username: 'm.vance',
     full_name: 'Marcus Vance',
     email: 'm.vance@nms.local',
@@ -95,7 +117,7 @@ const operators = ref<OperatorItem[]>([
   },
   {
     id: 'UID-J7K8L9',
-    uid: 'UID: UID-J7K8L9',
+    uid: '7a0b45f3-66cd-47e3-af45-23c6b1d4e5f6',
     username: 'e.rodriguez',
     full_name: 'Elena Rodriguez',
     email: 'e.rodriguez@nms.local',
@@ -106,13 +128,13 @@ const operators = ref<OperatorItem[]>([
   },
   {
     id: 'UID-M0N1P2',
-    uid: 'UID: UID-M0N1P2',
+    uid: '8b1c56a4-77de-48f4-b056-34d7c2e5f6a7',
     username: 'd.kim',
     full_name: 'David Kim',
     email: 'd.kim@nms.local',
     role: 'operator',
-    is_online: true,
-    is_active: true,
+    is_online: false,
+    is_active: false,
     initials: 'DK'
   }
 ])
@@ -131,7 +153,7 @@ onMounted(async () => {
           : u.username.slice(0, 2).toUpperCase()
         return {
           id: u.id,
-          uid: `UID: ${u.id}`,
+          uid: u.id,
           username: u.username,
           full_name: u.full_name || u.username,
           email: u.email || `${u.username}@nms.local`,
@@ -149,11 +171,17 @@ onMounted(async () => {
   }
 })
 
-// Filtered operators
+// KPI Statistics
+const totalCount = computed(() => operators.value.length)
+const onlineCount = computed(() => operators.value.filter((op) => op.is_online).length)
+const adminCount = computed(() => operators.value.filter((op) => op.role === 'superuser' || op.role === 'admin').length)
+const inactiveCount = computed(() => operators.value.filter((op) => !op.is_active).length)
+
+// Filtered and Sorted operators
 const filteredOperators = computed(() => {
-  return operators.value.filter((op) => {
-    // Search query
-    const q = searchQuery.value.toLowerCase().trim()
+  const q = searchQuery.value.toLowerCase().trim()
+
+  const list = operators.value.filter((op) => {
     const matchesSearch = !q ||
       op.full_name.toLowerCase().includes(q) ||
       op.username.toLowerCase().includes(q) ||
@@ -162,10 +190,10 @@ const filteredOperators = computed(() => {
 
     if (!matchesSearch) return false
 
-    // Status / Role filter
     if (statusFilter.value === 'all') return true
     if (statusFilter.value === 'online') return op.is_online
     if (statusFilter.value === 'offline') return !op.is_online
+    if (statusFilter.value === 'inactive') return !op.is_active
     if (statusFilter.value === 'superuser') return op.role === 'superuser'
     if (statusFilter.value === 'admin') return op.role === 'admin'
     if (statusFilter.value === 'operator') return op.role === 'operator'
@@ -173,11 +201,31 @@ const filteredOperators = computed(() => {
 
     return true
   })
+
+  // Sorting
+  return [...list].sort((a, b) => {
+    let aVal = a[sortKey.value]
+    let bVal = b[sortKey.value]
+
+    if (typeof aVal === 'boolean') {
+      return sortOrder.value === 'asc'
+        ? (aVal === bVal ? 0 : aVal ? -1 : 1)
+        : (aVal === bVal ? 0 : aVal ? 1 : -1)
+    }
+
+    const cmp = String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' })
+    return sortOrder.value === 'asc' ? cmp : -cmp
+  })
 })
 
-const activeCount = computed(() => {
-  return operators.value.filter((op) => op.is_online).length
-})
+function handleSort(key: 'full_name' | 'username' | 'role' | 'is_online') {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortOrder.value = 'asc'
+  }
+}
 
 const isAllSelected = computed(() => {
   return filteredOperators.value.length > 0 &&
@@ -201,15 +249,33 @@ function toggleSelectUser(id: string) {
   }
 }
 
-function handleExportCsv() {
-  const header = ['ID', 'Full Name', 'Username', 'Email', 'Role', 'Status']
-  const rows = filteredOperators.value.map((op) => [
-    op.id,
+function isProtectedUser(op: OperatorItem | null): boolean {
+  if (!op) return false
+  return op.username === 'root' || op.id === 'ROOT-001'
+}
+
+// Copy to clipboard helper
+function copyToClipboard(text: string, key: string) {
+  navigator.clipboard.writeText(text)
+  copiedKey.value = key
+  setTimeout(() => {
+    if (copiedKey.value === key) {
+      copiedKey.value = null
+    }
+  }, 2000)
+}
+
+// Export functions
+function handleExportCsv(targetList = filteredOperators.value) {
+  const header = ['ID', 'Full Name', 'Username', 'Email', 'Role', 'Status', 'Active']
+  const rows = targetList.map((op) => [
+    op.uid || op.id,
     `"${op.full_name}"`,
     op.username,
     op.email,
     op.role,
-    op.is_online ? 'Online' : 'Offline'
+    op.is_online ? 'Online' : 'Offline',
+    op.is_active ? 'Active' : 'Locked'
   ])
   const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows.map((r) => r.join(','))].join('\n')
   const link = document.createElement('a')
@@ -220,8 +286,8 @@ function handleExportCsv() {
   link.remove()
 }
 
-function handleExportJson() {
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(filteredOperators.value, null, 2))
+function handleExportJson(targetList = filteredOperators.value) {
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(targetList, null, 2))
   const link = document.createElement('a')
   link.setAttribute('href', dataStr)
   link.setAttribute('download', `operators_${new Date().toISOString().slice(0, 10)}.json`)
@@ -230,18 +296,20 @@ function handleExportJson() {
   link.remove()
 }
 
+// Create User
 function handleCreateUser() {
   if (!newUserForm.value.username.trim()) return
   isSubmitting.value = true
   setTimeout(() => {
     const id = `UID-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+    const rawUid = `${Math.random().toString(36).substring(2, 10)}-${Math.random().toString(36).substring(2, 6)}-4966-9105-${Math.random().toString(36).substring(2, 12)}`
     const initials = newUserForm.value.full_name
       ? newUserForm.value.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
       : newUserForm.value.username.slice(0, 2).toUpperCase()
 
     operators.value.unshift({
       id,
-      uid: `UID: ${id}`,
+      uid: rawUid,
       username: newUserForm.value.username.trim(),
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
@@ -260,15 +328,69 @@ function handleCreateUser() {
     }
     showAddModal.value = false
     isSubmitting.value = false
-  }, 400)
+  }, 300)
 }
 
-function handleDeleteUser(id: string) {
-  operators.value = operators.value.filter((op) => op.id !== id)
-  selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
+// Edit User
+function handleOpenEdit(op: OperatorItem) {
+  editUserForm.value = {
+    id: op.id,
+    full_name: op.full_name,
+    username: op.username,
+    email: op.email,
+    role: op.role,
+    is_active: op.is_active,
+    password: ''
+  }
+  showEditModal.value = true
 }
 
+function handleSaveEdit() {
+  if (!editUserForm.value.username.trim()) return
+  isSubmitting.value = true
+  setTimeout(() => {
+    const index = operators.value.findIndex((op) => op.id === editUserForm.value.id)
+    if (index >= 0) {
+      const initials = editUserForm.value.full_name
+        ? editUserForm.value.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+        : editUserForm.value.username.slice(0, 2).toUpperCase()
+
+      operators.value[index] = {
+        ...operators.value[index],
+        full_name: editUserForm.value.full_name.trim() || editUserForm.value.username.trim(),
+        username: editUserForm.value.username.trim(),
+        email: editUserForm.value.email.trim(),
+        role: editUserForm.value.role,
+        is_active: editUserForm.value.is_active,
+        is_online: editUserForm.value.is_active ? operators.value[index].is_online : false,
+        initials
+      }
+    }
+    showEditModal.value = false
+    isSubmitting.value = false
+  }, 300)
+}
+
+// Delete User
+function promptDeleteUser(op: OperatorItem) {
+  if (isProtectedUser(op)) return
+  userToDelete.value = op
+  showDeleteModal.value = true
+}
+
+function confirmDeleteUser() {
+  if (userToDelete.value) {
+    const id = userToDelete.value.id
+    operators.value = operators.value.filter((op) => op.id !== id)
+    selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
+  }
+  showDeleteModal.value = false
+  userToDelete.value = null
+}
+
+// Toggle Lock
 function handleToggleLock(op: OperatorItem) {
+  if (isProtectedUser(op)) return
   selectedUserForAction.value = op
   showLockModal.value = true
 }
@@ -281,10 +403,37 @@ function confirmToggleLock() {
   showLockModal.value = false
 }
 
+// Bulk Actions
+function handleBulkLock(lockState: boolean) {
+  operators.value.forEach((op) => {
+    if (selectedUserIds.value.includes(op.id) && !isProtectedUser(op)) {
+      op.is_active = lockState
+      if (!lockState) op.is_online = false
+    }
+  })
+}
+
+function handleBulkExport(format: 'csv' | 'json') {
+  const selectedList = operators.value.filter((op) => selectedUserIds.value.includes(op.id))
+  if (format === 'csv') handleExportCsv(selectedList)
+  else handleExportJson(selectedList)
+}
+
+function promptBulkDelete() {
+  showBulkDeleteModal.value = true
+}
+
+function confirmBulkDelete() {
+  operators.value = operators.value.filter((op) => !(selectedUserIds.value.includes(op.id) && !isProtectedUser(op)))
+  selectedUserIds.value = []
+  showBulkDeleteModal.value = false
+}
+
 const statusOptions = computed(() => [
   { value: 'all', label: t('users.allStatuses') },
   { value: 'online', label: t('users.onlineOnly') },
   { value: 'offline', label: t('users.offlineOnly') },
+  { value: 'inactive', label: t('users.inactiveStatus') },
   { value: 'superuser', label: t('users.superusers') },
   { value: 'admin', label: t('users.administrators') },
   { value: 'operator', label: t('users.operators') },
@@ -314,6 +463,61 @@ const roleOptions = computed(() => [
           icon="manage_accounts"
         />
 
+        <!-- KPI Summary Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-md">
+          <!-- Total Operators -->
+          <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4 flex items-center justify-between shadow-card-dark transition-all hover:border-outline-variant">
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsTotal') }}</span>
+              <span class="text-2xl font-bold font-mono text-on-surface">{{ totalCount }}</span>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-surface-variant/40 border border-outline-variant/60 flex items-center justify-center text-primary-fixed-dim">
+              <span class="material-symbols-outlined text-xl">group</span>
+            </div>
+          </div>
+
+          <!-- Online Now -->
+          <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4 flex items-center justify-between shadow-card-dark transition-all hover:border-outline-variant">
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsOnline') }}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-2xl font-bold font-mono text-emerald-400">{{ onlineCount }}</span>
+                <span class="relative flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+              </div>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <span class="material-symbols-outlined text-xl">wifi_tethering</span>
+            </div>
+          </div>
+
+          <!-- Admins & Superusers -->
+          <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4 flex items-center justify-between shadow-card-dark transition-all hover:border-outline-variant">
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsAdmins') }}</span>
+              <span class="text-2xl font-bold font-mono text-primary-fixed-dim">{{ adminCount }}</span>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim">
+              <span class="material-symbols-outlined text-xl">shield_person</span>
+            </div>
+          </div>
+
+          <!-- Locked / Inactive -->
+          <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4 flex items-center justify-between shadow-card-dark transition-all hover:border-outline-variant">
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsInactive') }}</span>
+              <span class="text-2xl font-bold font-mono" :class="inactiveCount > 0 ? 'text-amber-400' : 'text-on-surface-variant'">
+                {{ inactiveCount }}
+              </span>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-surface-variant/40 border border-outline-variant/60 flex items-center justify-center text-on-surface-variant">
+              <span class="material-symbols-outlined text-xl">person_off</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Action Bar: Search, Filters, Export, Add User -->
         <div class="flex items-center justify-between flex-wrap gap-md bg-surface-container-low p-md rounded-xl border border-outline-variant/60 shadow-card-dark">
           <div class="flex items-center gap-md flex-wrap">
@@ -333,30 +537,36 @@ const roleOptions = computed(() => [
               />
             </div>
 
-            <!-- Active Operators Counter -->
-            <span class="text-xs text-on-surface-variant font-mono hidden xl:inline-block">
-              {{ t('users.showingActiveOperators', { count: activeCount }) }}
-            </span>
+            <!-- Active Operators Counter Badge -->
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-variant/40 border border-outline-variant/40 text-[11px] font-mono text-on-surface-variant hidden xl:flex">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>{{ t('users.showingActiveOperators', { count: onlineCount }) }}</span>
+            </div>
           </div>
 
-          <!-- Actions: Export CSV, Export JSON, Add User -->
+          <!-- Actions: Export Dropdown / Add User -->
           <div class="flex items-center gap-2 flex-wrap">
-            <AppButton
-              variant="outline"
-              size="sm"
-              @click="handleExportCsv"
-              :title="t('users.exportCsv')"
-            >
-              CSV
-            </AppButton>
-            <AppButton
-              variant="outline"
-              size="sm"
-              @click="handleExportJson"
-              :title="t('users.exportJson')"
-            >
-              JSON
-            </AppButton>
+            <!-- Export Buttons -->
+            <div class="flex items-center bg-surface-container-lowest rounded-lg border border-outline-variant/60 overflow-hidden">
+              <button
+                type="button"
+                @click="handleExportCsv()"
+                class="px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-colors flex items-center gap-1 border-r border-outline-variant/60 cursor-pointer"
+                :title="t('users.exportCsv')"
+              >
+                <span class="material-symbols-outlined text-sm">download</span>
+                CSV
+              </button>
+              <button
+                type="button"
+                @click="handleExportJson()"
+                class="px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-colors flex items-center gap-1 cursor-pointer"
+                :title="t('users.exportJson')"
+              >
+                JSON
+              </button>
+            </div>
+
             <AppButton
               variant="primary"
               size="sm"
@@ -367,6 +577,70 @@ const roleOptions = computed(() => [
             </AppButton>
           </div>
         </div>
+
+        <!-- Floating Bulk Actions Bar (when >= 1 user selected) -->
+        <transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="transform -translate-y-2 opacity-0"
+          enter-to-class="transform translate-y-0 opacity-100"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="transform translate-y-0 opacity-100"
+          leave-to-class="transform -translate-y-2 opacity-0"
+        >
+          <div
+            v-if="selectedUserIds.length > 0"
+            class="flex items-center justify-between flex-wrap gap-md bg-surface-container-high border border-primary-fixed-dim/40 px-4 py-2.5 rounded-xl shadow-glow-primary-sm"
+          >
+            <div class="flex items-center gap-3">
+              <span class="flex h-2 w-2 rounded-full bg-primary-fixed-dim"></span>
+              <span class="text-xs font-bold text-on-surface font-mono">
+                {{ t('users.selectedCount', { count: selectedUserIds.length }) }}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="lock"
+                @click="handleBulkLock(false)"
+              >
+                {{ t('users.bulkLock') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="lock_open"
+                @click="handleBulkLock(true)"
+              >
+                {{ t('users.bulkUnlock') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="download"
+                @click="handleBulkExport('csv')"
+              >
+                {{ t('users.bulkExportCsv') }}
+              </AppButton>
+              <AppButton
+                variant="danger"
+                size="sm"
+                icon="delete"
+                @click="promptBulkDelete"
+              >
+                {{ t('users.bulkDelete') }}
+              </AppButton>
+              <button
+                type="button"
+                @click="selectedUserIds = []"
+                class="text-xs text-on-surface-variant hover:text-on-surface ml-2 underline cursor-pointer"
+              >
+                {{ t('users.clearSelection') }}
+              </button>
+            </div>
+          </div>
+        </transition>
 
         <!-- Users Table Card -->
         <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl overflow-hidden shadow-card-dark">
@@ -382,17 +656,49 @@ const roleOptions = computed(() => [
                       class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0 cursor-pointer"
                     />
                   </th>
-                  <th class="py-3 px-md">
-                    {{ t('users.userCol') }}
+                  <th
+                    class="py-3 px-md cursor-pointer hover:text-on-surface transition-colors select-none"
+                    @click="handleSort('full_name')"
+                  >
+                    <div class="flex items-center gap-1">
+                      <span>{{ t('users.userCol') }}</span>
+                      <span v-if="sortKey === 'full_name'" class="material-symbols-outlined text-xs">
+                        {{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}
+                      </span>
+                    </div>
                   </th>
-                  <th class="py-3 px-md">
-                    {{ t('users.usernameIdCol') }}
+                  <th
+                    class="py-3 px-md cursor-pointer hover:text-on-surface transition-colors select-none"
+                    @click="handleSort('username')"
+                  >
+                    <div class="flex items-center gap-1">
+                      <span>{{ t('users.usernameIdCol') }}</span>
+                      <span v-if="sortKey === 'username'" class="material-symbols-outlined text-xs">
+                        {{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}
+                      </span>
+                    </div>
                   </th>
-                  <th class="py-3 px-md">
-                    {{ t('users.roleCol') }}
+                  <th
+                    class="py-3 px-md cursor-pointer hover:text-on-surface transition-colors select-none"
+                    @click="handleSort('role')"
+                  >
+                    <div class="flex items-center gap-1">
+                      <span>{{ t('users.roleCol') }}</span>
+                      <span v-if="sortKey === 'role'" class="material-symbols-outlined text-xs">
+                        {{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}
+                      </span>
+                    </div>
                   </th>
-                  <th class="py-3 px-md">
-                    {{ t('users.statusCol') }}
+                  <th
+                    class="py-3 px-md cursor-pointer hover:text-on-surface transition-colors select-none"
+                    @click="handleSort('is_online')"
+                  >
+                    <div class="flex items-center gap-1">
+                      <span>{{ t('users.statusCol') }}</span>
+                      <span v-if="sortKey === 'is_online'" class="material-symbols-outlined text-xs">
+                        {{ sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward' }}
+                      </span>
+                    </div>
                   </th>
                   <th class="py-3 px-md text-right">
                     {{ t('users.actionsCol') }}
@@ -419,19 +725,46 @@ const roleOptions = computed(() => [
                   <!-- User Avatar & Full Name -->
                   <td class="py-3 px-md">
                     <div class="flex items-center gap-md">
-                      <div
-                        class="w-10 h-10 rounded-lg flex items-center justify-center font-bold font-mono shrink-0 border"
-                        :class="op.role === 'superuser'
-                          ? 'bg-tertiary-fixed-dim/20 border-tertiary-fixed-dim/40 text-tertiary-fixed-dim'
-                          : op.role === 'admin'
-                          ? 'bg-primary-fixed-dim/20 border-primary-fixed-dim/40 text-primary-fixed-dim'
-                          : 'bg-surface-variant border-outline-variant/60 text-on-surface'"
-                      >
-                        {{ op.initials }}
+                      <!-- Avatar with status indicator dot -->
+                      <div class="relative shrink-0">
+                        <div
+                          class="w-10 h-10 rounded-lg flex items-center justify-center font-bold font-mono border"
+                          :class="op.role === 'superuser'
+                            ? 'bg-tertiary-fixed-dim/20 border-tertiary-fixed-dim/40 text-tertiary-fixed-dim'
+                            : op.role === 'admin'
+                            ? 'bg-primary-fixed-dim/20 border-primary-fixed-dim/40 text-primary-fixed-dim'
+                            : 'bg-surface-variant border-outline-variant/60 text-on-surface'"
+                        >
+                          {{ op.initials }}
+                        </div>
+                        <span
+                          class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface-container-low"
+                          :class="op.is_online ? 'bg-emerald-500' : 'bg-outline-variant'"
+                        ></span>
                       </div>
-                      <div>
-                        <p class="font-bold text-on-surface text-sm">{{ op.full_name }}</p>
-                        <p class="text-[11px] text-on-surface-variant font-mono">{{ op.email }}</p>
+
+                      <div class="flex flex-col">
+                        <div class="flex items-center gap-2">
+                          <p class="font-bold text-on-surface text-sm">{{ op.full_name }}</p>
+                          <span
+                            v-if="!op.is_active"
+                            class="text-[10px] px-1.5 py-0.5 rounded bg-error-container/40 text-error font-medium"
+                          >
+                            {{ t('users.inactiveStatus') }}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          @click="copyToClipboard(op.email, `email-${op.id}`)"
+                          class="text-[11px] text-on-surface-variant font-mono hover:text-primary-fixed-dim transition-colors flex items-center gap-1 text-left cursor-pointer group"
+                          :title="t('users.copyEmail')"
+                        >
+                          <span>{{ op.email }}</span>
+                          <span class="material-symbols-outlined text-[12px] opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+                          <span v-if="copiedKey === `email-${op.id}`" class="text-[10px] text-emerald-400 font-bold ml-1">
+                            {{ t('users.copied') }}
+                          </span>
+                        </button>
                       </div>
                     </div>
                   </td>
@@ -439,7 +772,18 @@ const roleOptions = computed(() => [
                   <!-- Username / UID -->
                   <td class="py-3 px-md">
                     <p class="text-sm text-on-surface font-mono font-semibold">{{ op.username }}</p>
-                    <p class="text-[10px] font-mono text-on-surface-variant uppercase">{{ op.uid }}</p>
+                    <button
+                      type="button"
+                      @click="copyToClipboard(op.uid || op.id, `uid-${op.id}`)"
+                      class="text-[10px] font-mono text-on-surface-variant uppercase hover:text-primary-fixed-dim transition-colors flex items-center gap-1 cursor-pointer group"
+                      :title="t('users.copyUid')"
+                    >
+                      <span>UID: {{ (op.uid || op.id).slice(0, 18) }}...</span>
+                      <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+                      <span v-if="copiedKey === `uid-${op.id}`" class="text-[10px] text-emerald-400 font-bold ml-1">
+                        {{ t('users.copied') }}
+                      </span>
+                    </button>
                   </td>
 
                   <!-- Role Badge with Icon -->
@@ -468,26 +812,40 @@ const roleOptions = computed(() => [
                   <!-- Action Buttons -->
                   <td class="py-3 px-md text-right">
                     <div class="flex items-center justify-end gap-1.5 text-on-surface-variant">
+                      <!-- Edit User Button -->
                       <button
                         type="button"
-                        class="h-7 w-7 rounded-lg hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
+                        class="h-8 w-8 rounded-lg hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
                         :title="t('users.editUser')"
+                        @click="handleOpenEdit(op)"
                       >
                         <span class="material-symbols-outlined text-base">edit</span>
                       </button>
+
+                      <!-- Lock / Unlock Button -->
                       <button
                         type="button"
-                        class="h-7 w-7 rounded-lg hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                        :title="t('users.lockUser')"
+                        class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
+                        :class="isProtectedUser(op)
+                          ? 'opacity-30 cursor-not-allowed text-on-surface-variant'
+                          : 'hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer text-on-surface-variant'"
+                        :title="isProtectedUser(op) ? t('users.protectedRoot') : t('users.lockUser')"
+                        :disabled="isProtectedUser(op)"
                         @click="handleToggleLock(op)"
                       >
                         <span class="material-symbols-outlined text-base">{{ op.is_active ? 'lock' : 'lock_open' }}</span>
                       </button>
+
+                      <!-- Delete User Button -->
                       <button
                         type="button"
-                        class="h-7 w-7 rounded-lg hover:text-error hover:bg-error-container/20 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                        :title="t('users.deleteUser')"
-                        @click="handleDeleteUser(op.id)"
+                        class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
+                        :class="isProtectedUser(op)
+                          ? 'opacity-30 cursor-not-allowed text-on-surface-variant'
+                          : 'hover:text-error hover:bg-error-container/20 cursor-pointer text-on-surface-variant'"
+                        :title="isProtectedUser(op) ? t('users.protectedRoot') : t('users.deleteUser')"
+                        :disabled="isProtectedUser(op)"
+                        @click="promptDeleteUser(op)"
                       >
                         <span class="material-symbols-outlined text-base">delete</span>
                       </button>
@@ -497,7 +855,10 @@ const roleOptions = computed(() => [
 
                 <tr v-if="filteredOperators.length === 0">
                   <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="6">
-                    {{ t('users.noUsersFound') }}
+                    <div class="flex flex-col items-center justify-center gap-2 py-6">
+                      <span class="material-symbols-outlined text-3xl text-outline-variant">person_search</span>
+                      <p>{{ t('users.noUsersFound') }}</p>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -576,18 +937,129 @@ const roleOptions = computed(() => [
       </template>
     </BaseModal>
 
+    <!-- Modal: Edit User -->
+    <BaseModal
+      v-model="showEditModal"
+      :title="t('users.editUserModalTitle')"
+      icon="edit"
+      max-width="max-w-md"
+    >
+      <form id="editUserForm" @submit.prevent="handleSaveEdit" class="flex flex-col gap-3">
+        <BaseInput
+          v-model="editUserForm.full_name"
+          :label="t('users.fullName')"
+          placeholder="e.g. Alex Morgan"
+          size="sm"
+        />
+
+        <BaseInput
+          v-model="editUserForm.username"
+          :label="t('users.username')"
+          :disabled="editUserForm.username === 'root'"
+          size="sm"
+        />
+
+        <BaseInput
+          v-model="editUserForm.email"
+          :label="t('users.email')"
+          type="email"
+          size="sm"
+        />
+
+        <BaseSelect
+          v-model="editUserForm.role"
+          :label="t('users.role')"
+          :options="roleOptions"
+          :disabled="editUserForm.username === 'root'"
+          size="sm"
+        />
+
+        <BaseInput
+          v-model="editUserForm.password"
+          :label="t('users.newPasswordOptional')"
+          placeholder="••••••••"
+          type="password"
+          size="sm"
+        />
+
+        <!-- Active Switch -->
+        <div class="flex items-center justify-between p-2.5 rounded-lg bg-surface-container-lowest border border-outline-variant/40">
+          <div>
+            <p class="text-xs font-semibold text-on-surface">{{ t('users.accountStatus') }}</p>
+            <p class="text-[11px] text-on-surface-variant">
+              {{ editUserForm.is_active ? t('users.activeStatus') : t('users.inactiveStatus') }}
+            </p>
+          </div>
+          <BaseSwitch
+            v-model="editUserForm.is_active"
+            :disabled="editUserForm.username === 'root'"
+          />
+        </div>
+      </form>
+
+      <template #footer>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          @click="showEditModal = false"
+        >
+          {{ t('users.cancel') }}
+        </AppButton>
+        <AppButton
+          variant="primary"
+          size="sm"
+          type="submit"
+          form="editUserForm"
+          :loading="isSubmitting"
+          @click="handleSaveEdit"
+        >
+          {{ isSubmitting ? t('users.saving') : t('users.save') }}
+        </AppButton>
+      </template>
+    </BaseModal>
+
     <!-- Modal: Lock / Unlock User -->
     <ConfirmModal
       v-model="showLockModal"
       :title="selectedUserForAction?.is_active ? 'Блокировка пользователя' : 'Разблокировка пользователя'"
       :variant="selectedUserForAction?.is_active ? 'danger' : 'primary'"
       :confirm-text="selectedUserForAction?.is_active ? 'Заблокировать' : 'Разблокировать'"
-      :cancel-text="t('common.cancel')"
+      :cancel-text="t('users.cancel')"
       @confirm="confirmToggleLock"
     >
       <p v-if="selectedUserForAction">
         Вы действительно хотите {{ selectedUserForAction.is_active ? 'заблокировать' : 'разблокировать' }} оператора
         <strong class="text-primary-fixed-dim">{{ selectedUserForAction.full_name }}</strong> ({{ selectedUserForAction.username }})?
+      </p>
+    </ConfirmModal>
+
+    <!-- Modal: Delete Single User Confirmation -->
+    <ConfirmModal
+      v-model="showDeleteModal"
+      :title="t('users.deleteConfirmTitle')"
+      variant="danger"
+      :confirm-text="t('users.deleteUser')"
+      :cancel-text="t('users.cancel')"
+      icon="delete"
+      @confirm="confirmDeleteUser"
+    >
+      <p v-if="userToDelete">
+        {{ t('users.deleteConfirmMessage', { name: userToDelete.full_name || userToDelete.username }) }}
+      </p>
+    </ConfirmModal>
+
+    <!-- Modal: Bulk Delete Confirmation -->
+    <ConfirmModal
+      v-model="showBulkDeleteModal"
+      :title="t('users.deleteBulkConfirmTitle')"
+      variant="danger"
+      :confirm-text="t('users.bulkDelete')"
+      :cancel-text="t('users.cancel')"
+      icon="delete_forever"
+      @confirm="confirmBulkDelete"
+    >
+      <p>
+        {{ t('users.deleteBulkConfirmMessage', { count: selectedUserIds.length }) }}
       </p>
     </ConfirmModal>
   </div>
