@@ -308,14 +308,14 @@ onUnmounted(() => {
             <div class="flex items-center justify-between flex-wrap gap-sm">
               <div class="flex items-center gap-sm text-on-surface">
                 <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                  <span class="material-symbols-outlined text-xl">group</span>
+                  <span class="material-symbols-outlined text-xl">hub</span>
                 </div>
                 <div>
                   <h2 class="font-title-sm font-bold text-on-surface">
                     {{ t('system.activeSessionsTitle') }}
                   </h2>
                   <p class="text-xs text-on-surface-variant mt-0.5">
-                    {{ t('profile.activeSessionsDesc') }}
+                    {{ t('system.activeSessionsDesc') }}
                   </p>
                 </div>
               </div>

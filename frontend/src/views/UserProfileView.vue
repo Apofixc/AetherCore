@@ -843,30 +843,38 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
 
             <!-- Bottom: Active Sessions -->
             <div class="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden shadow-card-dark">
-              <div class="p-md border-b border-outline-variant bg-surface-container flex items-center justify-between flex-wrap gap-2">
+              <div class="p-md border-b border-outline-variant bg-surface-container flex items-center justify-between flex-wrap gap-3">
                 <div class="flex items-center gap-sm text-on-surface">
                   <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">devices</span>
+                    <span class="material-symbols-outlined text-xl">devices_other</span>
                   </div>
                   <div>
                     <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.activeSessions') }}</h3>
                     <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.activeSessionsDesc') }}</p>
                   </div>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex items-center gap-2">
                   <button
                     type="button"
                     class="h-8 bg-error-container/20 border border-error/30 text-error hover:bg-error-container/40 px-3 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                   >
-                    <span class="material-symbols-outlined text-base">security</span>
-                    {{ t('profile.terminateOthers') }}
+                    <span class="material-symbols-outlined text-base">shield</span>
+                    <span>{{ t('profile.terminateOthers') }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="h-8 bg-surface-container-highest hover:bg-surface-variant text-on-surface border border-outline-variant px-3 rounded-lg text-xs font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    @click="authStore.logout"
+                  >
+                    <span class="material-symbols-outlined text-base">logout</span>
+                    <span>{{ t('profile.allLogout') }}</span>
                   </button>
                 </div>
               </div>
 
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
-                  <thead class="bg-surface-container text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant">
+                  <thead class="bg-surface-container-high/70 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant">
                     <tr>
                       <th class="p-md">{{ t('profile.ipAddress') }}</th>
                       <th class="p-md">{{ t('profile.deviceBrowser') }}</th>
@@ -879,13 +887,14 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                       <td class="p-md">
                         <div class="flex items-center gap-2">
                           <span class="text-on-surface font-bold">127.0.0.1</span>
-                          <span class="bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30 text-[9px] px-1.5 py-0.2 rounded font-bold font-body-mono uppercase">
-                            {{ t('profile.currentSession') }}
+                          <span class="inline-flex items-center gap-1 bg-tertiary-fixed-dim/15 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
+                            <span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim animate-pulse"></span>
+                            <span>{{ t('profile.currentSession') }}</span>
                           </span>
                         </div>
                       </td>
                       <td class="p-md text-on-surface">Edge (Windows)</td>
-                      <td class="p-md text-on-surface-variant">8/19/2026, 12:25:30 AM</td>
+                      <td class="p-md text-on-surface-variant">8/20/2026, 9:30:32 PM</td>
                       <td class="p-md text-right">
                         <button
                           type="button"
