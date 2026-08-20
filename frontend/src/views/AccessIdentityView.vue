@@ -265,13 +265,18 @@ const filteredAuditLogs = computed(() => {
 
     <!-- BEGIN: MainDashboardCanvas -->
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
-      <div class="p-lg flex flex-col gap-lg mx-auto w-full max-w-[1600px]">
+      <div class="p-lg flex flex-col gap-lg w-full">
 
         <!-- Top Page Header with Title & Action Button -->
         <div class="flex items-center justify-between flex-wrap gap-md">
-          <div>
-            <h1 class="font-display-lg text-display-lg text-on-surface font-bold">{{ t('accessIdentity.title') }}</h1>
-            <p class="text-sm text-on-surface-variant mt-1">{{ t('accessIdentity.subtitle') }}</p>
+          <div class="flex items-center gap-sm text-on-surface">
+            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+              <span class="material-symbols-outlined text-xl">shield</span>
+            </div>
+            <div>
+              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">{{ t('accessIdentity.title') }}</h1>
+              <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.subtitle') }}</p>
+            </div>
           </div>
           <div class="flex items-center gap-3">
             <span v-if="saveSuccess" class="text-xs text-tertiary-fixed-dim font-bold flex items-center gap-1 animate-fade-in">
@@ -306,9 +311,12 @@ const filteredAuditLogs = computed(() => {
           <div class="grid grid-cols-1 md:grid-cols-3 gap-md">
             <!-- Web UI Authorization Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.webUiAuth') }}</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.webUiAuthDesc') }}</p>
+              <div class="flex items-start gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">login</span>
+                <div class="flex flex-col gap-1">
+                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.webUiAuth') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.webUiAuthDesc') }}</p>
+                </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="webUiAuth">
@@ -318,9 +326,12 @@ const filteredAuditLogs = computed(() => {
 
             <!-- Mandatory Password Change Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.mandatoryPasswordChange') }}</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.mandatoryPasswordChangeDesc') }}</p>
+              <div class="flex items-start gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">lock_reset</span>
+                <div class="flex flex-col gap-1">
+                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.mandatoryPasswordChange') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.mandatoryPasswordChangeDesc') }}</p>
+                </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="mandatoryPasswordChange">
@@ -330,9 +341,12 @@ const filteredAuditLogs = computed(() => {
 
             <!-- Force 2FA (MFA) Toggle Card -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex flex-col gap-1">
-                <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.force2FA') }}</h3>
-                <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.force2FADesc') }}</p>
+              <div class="flex items-start gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">phonelink_lock</span>
+                <div class="flex flex-col gap-1">
+                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.force2FA') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.force2FADesc') }}</p>
+                </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                 <input class="sr-only peer" type="checkbox" v-model="force2FA">
@@ -345,9 +359,12 @@ const filteredAuditLogs = computed(() => {
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-lg">
             <!-- Rate Limiting & Lockout -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
-              <div class="flex items-center gap-2 text-primary-fixed-dim">
-                <span class="material-symbols-outlined text-lg">lock_clock</span>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.rateLimitingLockout') }}</h3>
+              <div class="flex items-center gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg">lock_clock</span>
+                <div>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.rateLimitingLockout') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('accessIdentity.rateLimitingLockoutDesc') }}</p>
+                </div>
               </div>
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
@@ -373,9 +390,12 @@ const filteredAuditLogs = computed(() => {
 
             <!-- Session Lifecycle -->
             <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
-              <div class="flex items-center gap-2 text-primary-fixed-dim">
-                <span class="material-symbols-outlined text-lg">schedule</span>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.sessionLifecycle') }}</h3>
+              <div class="flex items-center gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg">schedule</span>
+                <div>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.sessionLifecycle') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('accessIdentity.sessionLifecycleDesc') }}</p>
+                </div>
               </div>
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
@@ -402,9 +422,12 @@ const filteredAuditLogs = computed(() => {
 
           <!-- Row 3: Password Complexity Policy -->
           <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
-            <div class="flex items-center gap-2 text-primary-fixed-dim">
-              <span class="material-symbols-outlined text-lg">vpn_key</span>
-              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.passwordComplexity') }}</h3>
+            <div class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-primary-fixed-dim text-lg">vpn_key</span>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.passwordComplexity') }}</h3>
+                <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('accessIdentity.passwordComplexityDesc') }}</p>
+              </div>
             </div>
             <div class="flex flex-wrap items-center gap-xl">
               <div class="flex items-center gap-3">
@@ -433,16 +456,18 @@ const filteredAuditLogs = computed(() => {
 
           <!-- Row 4: Allowed IPs / Subnets (IP Whitelist) -->
           <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-sm">
-            <div class="flex items-center gap-2 text-primary-fixed-dim">
-              <span class="material-symbols-outlined text-lg">lan</span>
-              <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.ipWhitelist') }}</h3>
+            <div class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-primary-fixed-dim text-lg">lan</span>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.ipWhitelist') }}</h3>
+                <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('accessIdentity.ipWhitelistDesc') }}</p>
+              </div>
             </div>
             <input
               class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-2 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
               type="text"
               v-model="ipWhitelist"
             >
-            <p class="text-[10px] text-on-surface-variant">{{ t('accessIdentity.ipWhitelistDesc') }}</p>
           </div>
         </div>
 
