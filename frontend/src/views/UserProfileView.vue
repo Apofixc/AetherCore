@@ -35,9 +35,9 @@ const soundError = ref('Alarm Tone')
 // Module Subscriptions State
 interface ModuleSub {
   id: string
-  name: string
+  nameKey: string
   code: string
-  description: string
+  descKey: string
   enabled: boolean
   mute: 'none' | '15m' | '1h' | '8h' | 'inf'
   sound: string
@@ -47,9 +47,9 @@ interface ModuleSub {
 const moduleSubscriptions = ref<ModuleSub[]>([
   {
     id: 'core',
-    name: 'profile.systemCore',
+    nameKey: 'profile.systemCore',
     code: 'core',
-    description: 'profile.systemCoreDesc',
+    descKey: 'profile.systemCoreDesc',
     enabled: true,
     mute: 'none',
     sound: 'Default (by severity)',
@@ -57,9 +57,9 @@ const moduleSubscriptions = ref<ModuleSub[]>([
   },
   {
     id: 'topology',
-    name: 'Topology & Link Discovery',
+    nameKey: 'profile.moduleTopology',
     code: 'wasm.topology',
-    description: 'Оповещения об изменении линков, flap-интервалах и перестроении графа',
+    descKey: 'profile.moduleTopologyDesc',
     enabled: true,
     mute: 'none',
     sound: 'Synth Chime',
@@ -485,28 +485,33 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
               <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
                 <!-- Do Not Disturb Card -->
                 <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col justify-between gap-3">
-                  <div class="flex items-start justify-between">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-primary-fixed-dim text-lg">do_not_disturb_on</span>
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                        <span class="material-symbols-outlined text-base">do_not_disturb_on</span>
+                      </div>
                       <div>
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('profile.doNotDisturb') }}</h4>
+                        <h4 class="text-xs font-bold text-on-surface">{{ t('profile.doNotDisturb') }}</h4>
                         <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.doNotDisturbDesc') }}</p>
                       </div>
                     </div>
                     <span
-                      class="text-[10px] font-bold uppercase px-2 py-0.5 rounded border bg-tertiary-fixed-dim/10 border-tertiary-fixed-dim/30 text-tertiary-fixed-dim font-body-mono shrink-0"
+                      class="text-[10px] font-bold uppercase px-2 py-0.5 rounded border shrink-0"
+                      :class="activeMuteDuration !== 'none'
+                        ? 'bg-warning-yellow/10 border-warning-yellow/30 text-warning-yellow'
+                        : 'bg-tertiary-fixed-dim/10 border-tertiary-fixed-dim/30 text-tertiary-fixed-dim'"
                     >
-                      Active
+                      {{ activeMuteDuration !== 'none' ? 'Muted' : t('profile.notificationsActive') }}
                     </span>
                   </div>
 
-                  <div class="flex items-center gap-1.5 flex-wrap pt-1 border-t border-outline-variant/30">
+                  <div class="flex items-center gap-1.5 flex-wrap pt-2 border-t border-outline-variant/30">
                     <span class="text-[10px] text-on-surface-variant uppercase font-bold mr-1">{{ t('profile.muteNotifications') }}</span>
                     <button
                       v-for="dur in (['15m', '1h', '8h', '24h'] as const)"
                       :key="dur"
                       type="button"
-                      class="h-7 px-2 border border-outline-variant rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                      class="h-7 px-2.5 border border-outline-variant rounded-lg text-xs font-semibold transition-all cursor-pointer"
                       :class="activeMuteDuration === dur
                         ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
                         : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
@@ -516,7 +521,7 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                     </button>
                     <button
                       type="button"
-                      class="h-7 px-2 rounded-lg text-[11px] font-bold flex items-center gap-1 border border-outline-variant transition-all cursor-pointer"
+                      class="h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 border border-outline-variant transition-all cursor-pointer"
                       :class="activeMuteDuration === 'inf'
                         ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
                         : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
@@ -531,9 +536,11 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                 <!-- Quiet Hours Card -->
                 <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
                   <div class="flex items-start gap-2.5">
-                    <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">schedule</span>
+                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0 mt-0.5">
+                      <span class="material-symbols-outlined text-base">schedule</span>
+                    </div>
                     <div class="flex flex-col gap-1">
-                      <h4 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('profile.quietHours') }}</h4>
+                      <h4 class="text-xs font-bold text-on-surface">{{ t('profile.quietHours') }}</h4>
                       <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('profile.quietHoursDesc') }}</p>
                     </div>
                   </div>
@@ -544,105 +551,125 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                 </div>
               </div>
 
-              <!-- Module Subscriptions Section -->
-              <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-sm">
-                <div class="flex items-center gap-2">
-                  <span class="material-symbols-outlined text-primary-fixed-dim text-lg">widgets</span>
+              <!-- Module Subscriptions Section (Clean Table) -->
+              <div class="bg-surface-container border border-outline-variant rounded-lg overflow-hidden flex flex-col">
+                <div class="p-md border-b border-outline-variant flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                    <span class="material-symbols-outlined text-base">widgets</span>
+                  </div>
                   <div>
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('profile.moduleSubscriptions') }}</h4>
+                    <h4 class="text-xs font-bold text-on-surface">{{ t('profile.moduleSubscriptions') }}</h4>
                     <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.moduleSubscriptionsDesc') }}</p>
                   </div>
                 </div>
 
-                <div class="border border-outline-variant/40 rounded-lg overflow-hidden mt-1 divide-y divide-outline-variant/30">
-                  <div
-                    v-for="mod in moduleSubscriptions"
-                    :key="mod.id"
-                    class="p-3 bg-surface-container-low flex items-center justify-between flex-wrap gap-md"
-                  >
-                    <div class="flex items-center gap-3 shrink-0">
-                      <input
-                        v-model="mod.enabled"
-                        class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
-                        type="checkbox"
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left border-collapse">
+                    <thead class="bg-surface-container-high/60 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant">
+                      <tr>
+                        <th class="p-md">{{ t('profile.colModule') }}</th>
+                        <th class="p-md">{{ t('profile.colMute') }}</th>
+                        <th class="p-md">{{ t('profile.colSound') }}</th>
+                        <th class="p-md">{{ t('profile.colThreshold') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-outline-variant/30 text-xs">
+                      <tr
+                        v-for="mod in moduleSubscriptions"
+                        :key="mod.id"
+                        class="hover:bg-surface-variant/20 transition-colors"
                       >
-                      <div>
-                        <div class="flex items-center gap-2">
-                          <span class="text-xs font-bold text-on-surface">{{ mod.name.includes('.') ? t(mod.name) : mod.name }}</span>
-                          <span class="bg-surface-variant text-[10px] px-1.5 py-0.5 rounded font-body-mono text-on-surface-variant">{{ mod.code }}</span>
-                        </div>
-                        <p class="text-[10px] text-on-surface-variant mt-0.5">{{ mod.description.includes('.') ? t(mod.description) : mod.description }}</p>
-                      </div>
-                    </div>
+                        <!-- Column 1: Module & Description -->
+                        <td class="p-md">
+                          <div class="flex items-center gap-3">
+                            <input
+                              v-model="mod.enabled"
+                              class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+                              type="checkbox"
+                            >
+                            <div>
+                              <div class="flex items-center gap-2">
+                                <span class="font-bold text-on-surface">{{ t(mod.nameKey) }}</span>
+                                <span class="bg-surface-variant text-[10px] px-1.5 py-0.5 rounded font-body-mono text-on-surface-variant">{{ mod.code }}</span>
+                              </div>
+                              <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t(mod.descKey) }}</p>
+                            </div>
+                          </div>
+                        </td>
 
-                    <div class="flex flex-wrap items-center gap-md">
-                      <div class="flex items-center gap-1.5">
-                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">{{ t('profile.moduleMute') }}</span>
-                        <div class="flex items-center gap-1">
-                          <button
-                            v-for="m in (['15m', '1h', '8h', 'inf'] as const)"
-                            :key="m"
-                            type="button"
-                            class="px-2 py-0.5 rounded text-[10px] font-bold border border-outline-variant transition-colors cursor-pointer"
-                            :class="mod.mute === m
-                              ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                              : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
-                            @click="mod.mute = mod.mute === m ? 'none' : m"
-                          >
-                            {{ m === 'inf' ? '∞' : m }}
-                          </button>
-                        </div>
-                      </div>
+                        <!-- Column 2: Temporary Mute Buttons -->
+                        <td class="p-md">
+                          <div class="flex items-center gap-1">
+                            <button
+                              v-for="m in (['15m', '1h', '8h', 'inf'] as const)"
+                              :key="m"
+                              type="button"
+                              class="px-2 py-0.5 rounded text-[10px] font-bold border border-outline-variant transition-colors cursor-pointer"
+                              :class="mod.mute === m
+                                ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
+                                : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
+                              @click="mod.mute = mod.mute === m ? 'none' : m"
+                            >
+                              {{ m === 'inf' ? '∞' : m }}
+                            </button>
+                          </div>
+                        </td>
 
-                      <div class="flex items-center gap-1.5">
-                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">{{ t('profile.moduleSound') }}</span>
-                        <div class="relative flex items-center">
-                          <select
-                            v-model="mod.sound"
-                            class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                          >
-                            <option>Default (by severity)</option>
-                            <option>Synth Chime</option>
-                            <option>Futuristic Blip</option>
-                            <option>Mute sound</option>
-                          </select>
-                          <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
-                        </div>
-                        <button
-                          type="button"
-                          class="w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-surface-variant flex items-center justify-center text-primary-fixed-dim transition-colors cursor-pointer"
-                          @click="playSoundEffect('info')"
-                        >
-                          <span class="material-symbols-outlined text-base">play_arrow</span>
-                        </button>
-                      </div>
+                        <!-- Column 3: Sound Select & Preview -->
+                        <td class="p-md">
+                          <div class="flex items-center gap-2">
+                            <div class="relative flex items-center">
+                              <select
+                                v-model="mod.sound"
+                                class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
+                              >
+                                <option>Default (by severity)</option>
+                                <option>Synth Chime</option>
+                                <option>Futuristic Blip</option>
+                                <option>Mute sound</option>
+                              </select>
+                              <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
+                            </div>
+                            <button
+                              type="button"
+                              class="w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-primary-fixed-dim transition-colors cursor-pointer"
+                              title="Прослушать сигнал"
+                              @click="playSoundEffect('info')"
+                            >
+                              <span class="material-symbols-outlined text-base">play_arrow</span>
+                            </button>
+                          </div>
+                        </td>
 
-                      <div class="flex items-center gap-1.5">
-                        <span class="text-[10px] text-on-surface-variant uppercase font-bold">{{ t('profile.severityThreshold') }}</span>
-                        <div class="relative flex items-center">
-                          <select
-                            v-model="mod.threshold"
-                            class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                          >
-                            <option value="profile.allEvents">{{ t('profile.allEvents') }}</option>
-                            <option value="profile.warnAndErrors">{{ t('profile.warnAndErrors') }}</option>
-                            <option value="profile.criticalOnly">{{ t('profile.criticalOnly') }}</option>
-                            <option value="profile.silentMode">{{ t('profile.silentMode') }}</option>
-                          </select>
-                          <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                        <!-- Column 4: Severity Threshold -->
+                        <td class="p-md">
+                          <div class="relative flex items-center">
+                            <select
+                              v-model="mod.threshold"
+                              class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
+                            >
+                              <option value="profile.allEvents">{{ t('profile.allEvents') }}</option>
+                              <option value="profile.warnAndErrors">{{ t('profile.warnAndErrors') }}</option>
+                              <option value="profile.criticalOnly">{{ t('profile.criticalOnly') }}</option>
+                              <option value="profile.silentMode">{{ t('profile.silentMode') }}</option>
+                            </select>
+                            <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
               <!-- Sound Signals Section -->
               <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-sm">
-                <div class="flex items-center gap-2">
-                  <span class="material-symbols-outlined text-primary-fixed-dim text-lg">volume_up</span>
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                    <span class="material-symbols-outlined text-base">volume_up</span>
+                  </div>
                   <div>
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('profile.soundSignals') }}</h4>
+                    <h4 class="text-xs font-bold text-on-surface">{{ t('profile.soundSignals') }}</h4>
                     <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.soundSignalsDesc') }}</p>
                   </div>
                 </div>
