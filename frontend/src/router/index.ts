@@ -29,6 +29,10 @@ const routes = [
     component: ModuleManagementView
   },
   {
+    path: '/settings/modules',
+    redirect: '/modules'
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: UserProfileView
