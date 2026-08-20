@@ -481,14 +481,14 @@ const roleOptions = computed(() => [
             <div class="flex flex-col gap-1">
               <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsOnline') }}</span>
               <div class="flex items-center gap-2">
-                <span class="text-2xl font-bold font-mono text-emerald-400">{{ onlineCount }}</span>
+                <span class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">{{ onlineCount }}</span>
                 <span class="relative flex h-2.5 w-2.5">
                   <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
               </div>
             </div>
-            <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <span class="material-symbols-outlined text-xl">wifi_tethering</span>
             </div>
           </div>
@@ -508,7 +508,7 @@ const roleOptions = computed(() => [
           <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl p-4 flex items-center justify-between shadow-card-dark transition-all hover:border-outline-variant">
             <div class="flex flex-col gap-1">
               <span class="text-xs text-on-surface-variant font-medium">{{ t('users.statsInactive') }}</span>
-              <span class="text-2xl font-bold font-mono" :class="inactiveCount > 0 ? 'text-amber-400' : 'text-on-surface-variant'">
+              <span class="text-2xl font-bold font-mono" :class="inactiveCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-on-surface-variant'">
                 {{ inactiveCount }}
               </span>
             </div>
@@ -761,7 +761,7 @@ const roleOptions = computed(() => [
                         >
                           <span>{{ op.email }}</span>
                           <span class="material-symbols-outlined text-[12px] opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
-                          <span v-if="copiedKey === `email-${op.id}`" class="text-[10px] text-emerald-400 font-bold ml-1">
+                          <span v-if="copiedKey === `email-${op.id}`" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold ml-1">
                             {{ t('users.copied') }}
                           </span>
                         </button>
@@ -780,7 +780,7 @@ const roleOptions = computed(() => [
                     >
                       <span>UID: {{ (op.uid || op.id).slice(0, 18) }}...</span>
                       <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
-                      <span v-if="copiedKey === `uid-${op.id}`" class="text-[10px] text-emerald-400 font-bold ml-1">
+                      <span v-if="copiedKey === `uid-${op.id}`" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold ml-1">
                         {{ t('users.copied') }}
                       </span>
                     </button>
@@ -828,7 +828,7 @@ const roleOptions = computed(() => [
                         class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
                         :class="isProtectedUser(op)
                           ? 'opacity-30 cursor-not-allowed text-on-surface-variant'
-                          : 'hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer text-on-surface-variant'"
+                          : 'hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer text-on-surface-variant'"
                         :title="isProtectedUser(op) ? t('users.protectedRoot') : t('users.lockUser')"
                         :disabled="isProtectedUser(op)"
                         @click="handleToggleLock(op)"

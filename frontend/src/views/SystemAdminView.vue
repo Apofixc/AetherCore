@@ -684,8 +684,8 @@ onUnmounted(() => {
                     :class="{
                       'bg-error/20 text-error border border-error/40': entry.level === 'ERROR',
                       'bg-warning-yellow/20 text-warning-yellow border border-warning-yellow/40': entry.level === 'WARN',
-                      'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40': entry.level === 'INFO',
-                      'bg-purple-500/20 text-purple-300 border border-purple-500/40': entry.level === 'DEBUG'
+                      'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40': entry.level === 'INFO',
+                      'bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40': entry.level === 'DEBUG'
                     }"
                   >
                     {{ entry.level }}

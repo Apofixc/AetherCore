@@ -77,19 +77,19 @@
   --primary-rgb: 0, 104, 119;
   --tertiary-rgb: 5, 150, 105;
 
-  --color-outline: 100 116 139;
+  --color-outline: 148 163 184;
   --color-outline-variant: 226 232 240;
   --color-background: 248 250 252;
   --color-on-background: 15 23 42;
   --color-surface: 255 255 255;
-  --color-surface-dim: 226 232 240;
+  --color-surface-dim: 241 245 249;
   --color-surface-bright: 255 255 255;
   --color-surface-deep: 241 245 249;
   --color-surface-container-lowest: 255 255 255;
-  --color-surface-container-low: 248 250 252;
-  --color-surface-container: 241 245 249;
-  --color-surface-container-high: 226 232 240;
-  --color-surface-container-highest: 203 213 225;
+  --color-surface-container-low: 255 255 255;
+  --color-surface-container: 248 250 252;
+  --color-surface-container-high: 241 245 249;
+  --color-surface-container-highest: 226 232 240;
   --color-surface-variant: 226 232 240;
   --color-surface-tint: 0 104 119;
   --color-on-surface: 15 23 42;
@@ -99,19 +99,19 @@
 
   --color-primary: 0 104 119;
   --color-on-primary: 255 255 255;
-  --color-primary-container: 162 238 255;
+  --color-primary-container: 224 242 254;
   --color-on-primary-container: 0 78 90;
   --color-inverse-primary: 115 212 232;
-  --color-primary-fixed: 162 238 255;
+  --color-primary-fixed: 224 242 254;
   --color-primary-fixed-dim: 0 104 119;
-  --color-on-primary-fixed: 0 31 37;
+  --color-on-primary-fixed: 255 255 255;
   --color-on-primary-fixed-variant: 0 78 90;
 
   --color-secondary: 71 85 105;
   --color-on-secondary: 255 255 255;
-  --color-secondary-container: 226 232 240;
+  --color-secondary-container: 241 245 249;
   --color-on-secondary-container: 30 41 59;
-  --color-secondary-fixed: 226 232 240;
+  --color-secondary-fixed: 241 245 249;
   --color-secondary-fixed-dim: 148 163 184;
   --color-on-secondary-fixed: 15 23 42;
   --color-on-secondary-fixed-variant: 51 65 85;
@@ -120,9 +120,9 @@
   --color-on-tertiary: 255 255 255;
   --color-tertiary-container: 209 250 229;
   --color-on-tertiary-container: 4 120 87;
-  --color-tertiary-fixed: 167 243 208;
+  --color-tertiary-fixed: 209 250 229;
   --color-tertiary-fixed-dim: 5 150 105;
-  --color-on-tertiary-fixed: 6 78 59;
+  --color-on-tertiary-fixed: 255 255 255;
   --color-on-tertiary-fixed-variant: 4 120 87;
 
   --color-error: 220 38 38;
@@ -132,13 +132,13 @@
   --color-error-red: 220 38 38;
   --color-warning-yellow: 217 119 6;
 
-  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
-  --shadow-glow-primary-sm: 0 1px 2px 0 rgba(0, 104, 119, 0.12);
-  --shadow-glow-primary-md: 0 4px 6px -1px rgba(0, 104, 119, 0.15);
-  --shadow-glow-primary-lg: 0 10px 15px -3px rgba(0, 104, 119, 0.18);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-glow-primary-sm: 0 0 0 1px rgba(0, 104, 119, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-glow-primary-md: 0 4px 6px -1px rgba(0, 104, 119, 0.12), 0 2px 4px -2px rgba(0, 104, 119, 0.08);
+  --shadow-glow-primary-lg: 0 10px 15px -3px rgba(0, 104, 119, 0.15), 0 4px 6px -4px rgba(0, 104, 119, 0.1);
   --shadow-glow-tertiary-sm: 0 1px 3px 0 rgba(5, 150, 105, 0.2);
-  --shadow-glow-inset: inset 0 0 4px rgba(0, 104, 119, 0.08);
-  --shadow-glow-inset-hover: inset 0 0 8px rgba(0, 104, 119, 0.12);
+  --shadow-glow-inset: inset 0 0 4px rgba(0, 104, 119, 0.06);
+  --shadow-glow-inset-hover: inset 0 0 8px rgba(0, 104, 119, 0.1);
 }
 
 body {

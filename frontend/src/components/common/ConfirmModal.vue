@@ -53,11 +53,11 @@ const iconComputed = computed(() => {
 const iconColorClass = computed(() => {
   switch (props.variant) {
     case 'danger':
-      return 'text-primary-fixed-dim'
+      return 'text-error'
     case 'warning':
-      return 'text-amber-400'
+      return 'text-amber-600 dark:text-amber-400'
     case 'info':
-      return 'text-sky-400'
+      return 'text-sky-600 dark:text-sky-400'
     case 'primary':
     default:
       return 'text-primary-fixed-dim'
