@@ -24,12 +24,16 @@ function isCurrent(path: string) {
 }
 
 function isSettingsActive() {
-  return route.path === '/profile' || route.path.startsWith('/settings') || route.path === '/users'
+  return route.path.startsWith('/settings') ||
+         route.path === '/modules' ||
+         route.path === '/users' ||
+         route.path === '/system' ||
+         route.path === '/profile'
 }
 
 function selectSubItem(item: string) {
   activeSubItem.value = item
-  router.push({ path: '/modules', query: { tab: item } })
+  router.push({ path: '/settings/modules', query: { tab: item } })
 }
 </script>
 
@@ -181,7 +185,7 @@ function selectSubItem(item: string) {
         <button
           type="button"
           class="flex items-center gap-md px-md py-sm mt-lg text-primary-fixed-dim hover:text-primary-fixed-dim/90 transition-all duration-200 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 shadow-glow-primary-sm hover:bg-primary-fixed-dim/20 hover:shadow-glow-primary-md cursor-pointer active:scale-95"
-          @click="router.push('/modules')"
+          @click="router.push('/settings/modules')"
         >
           <span class="material-symbols-outlined">add</span>
           {{ t('nav.addModule') }}
@@ -192,7 +196,7 @@ function selectSubItem(item: string) {
     <!-- Footer Tabs & CTA -->
     <div class="mt-auto flex flex-col gap-sm border-t border-outline-variant pt-md">
       <router-link
-        to="/settings/access-identity"
+        to="/settings/modules"
         class="flex items-center gap-md px-md py-sm rounded-lg transition-all duration-200 ease-in-out cursor-pointer"
         :class="isSettingsActive()
           ? 'bg-gradient-to-r from-primary-fixed-dim/20 to-transparent border-l-2 border-primary-fixed-dim text-primary-fixed-dim font-bold shadow-[inset_0_0_10px_rgba(115,212,232,0.15)] hover:from-primary-fixed-dim/30 hover:to-transparent'

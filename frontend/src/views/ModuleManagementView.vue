@@ -78,7 +78,7 @@ async function handleInstall() {
           <div class="px-md mb-sm">
             <div class="flex flex-col gap-xs">
               <router-link
-                to="/modules"
+                to="/settings/modules"
                 class="flex items-center gap-md px-md py-sm rounded-lg bg-gradient-to-r from-primary-fixed-dim/20 to-transparent border-l-2 border-primary-fixed-dim text-primary-fixed-dim font-bold transition-all duration-200 shadow-[inset_0_0_10px_rgba(115,212,232,0.15)] hover:from-primary-fixed-dim/30 hover:to-transparent"
               >
                 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">view_module</span>
@@ -127,7 +127,7 @@ async function handleInstall() {
             <div class="flex items-center gap-3">
               <button
                 type="button"
-                class="bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer active:scale-95"
+                class="bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
                 @click="handleScan"
               >
                 <span class="material-symbols-outlined text-[18px]" :class="{ 'animate-spin': isScanning }">refresh</span>
@@ -135,7 +135,7 @@ async function handleInstall() {
               </button>
               <button
                 type="button"
-                class="bg-primary-fixed-dim text-on-primary-fixed font-bold shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 px-4 py-2 rounded-lg text-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                class="bg-primary-fixed-dim hover:bg-primary-fixed-dim/90 text-on-primary-fixed border border-primary-fixed-dim px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 active:scale-95 transition-all duration-200 shadow-glow-primary-sm hover:shadow-glow-primary-md cursor-pointer"
                 @click="showInstallModal = true"
               >
                 <span class="material-symbols-outlined text-[18px]">add</span>

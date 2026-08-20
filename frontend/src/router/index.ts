@@ -25,26 +25,34 @@ const routes = [
   },
   {
     path: '/modules',
+    redirect: '/settings/modules'
+  },
+  {
+    path: '/settings/modules',
     name: 'modules',
     component: ModuleManagementView
   },
   {
-    path: '/settings/modules',
-    redirect: '/modules'
+    path: '/profile',
+    redirect: '/settings/profile'
   },
   {
-    path: '/profile',
+    path: '/settings/profile',
     name: 'profile',
     component: UserProfileView
   },
   {
     path: '/users',
+    redirect: '/settings/users'
+  },
+  {
+    path: '/settings/users',
     name: 'users',
     component: UsersManagementView
   },
   {
     path: '/settings',
-    redirect: '/settings/access-identity'
+    redirect: '/settings/modules'
   },
   {
     path: '/settings/access',
