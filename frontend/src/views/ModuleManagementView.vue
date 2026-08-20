@@ -63,6 +63,17 @@ async function handleInstall() {
     isInstalling.value = false
   }
 }
+
+function formatPermission(p: any): string {
+  if (typeof p === 'string') return p
+  if (p && typeof p === 'object') return p.id || p.name || 'permission'
+  return String(p)
+}
+
+function getPermissionTitle(p: any): string {
+  if (p && typeof p === 'object') return p.description || p.name || p.id || ''
+  return String(p)
+}
 </script>
 
 <template>
@@ -72,7 +83,7 @@ async function handleInstall() {
 
     <!-- Main Content Area with Aside -->
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
-      <div class="relative z-10 p-lg flex gap-lg h-full max-w-[1600px] mx-auto">
+      <div class="relative z-10 p-lg flex gap-lg h-full w-full">
         <!-- Submenu Sidebar -->
         <aside class="w-nav-width shrink-0 hidden md:flex flex-col gap-sm border-r border-outline-variant pr-md">
           <div class="px-md mb-sm">
@@ -99,21 +110,21 @@ async function handleInstall() {
                 class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-all"
               >
                 <span class="material-symbols-outlined text-[18px]">analytics</span>
-                <span class="text-xs">{{ t('sidebar.dataProcessor') }}</span>
+                <span class="text-xs">{{ t('nav.dataProcessor') }}</span>
               </router-link>
               <router-link
                 to="/file-explorer"
                 class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-all"
               >
                 <span class="material-symbols-outlined text-[18px]">folder</span>
-                <span class="text-xs">{{ t('sidebar.fileExplorer') }}</span>
+                <span class="text-xs">{{ t('nav.fileExplorer') }}</span>
               </router-link>
             </div>
           </div>
         </aside>
 
         <!-- Main Content -->
-        <div class="flex-1 flex flex-col gap-lg mx-auto w-full pb-xl">
+        <div class="flex-1 flex flex-col gap-lg w-full pb-xl">
           <!-- Header Actions -->
           <div class="flex items-center justify-between flex-wrap gap-md">
             <div>
@@ -431,10 +442,11 @@ async function handleInstall() {
                   <div class="flex flex-wrap gap-1.5">
                     <span
                       v-for="p in modulesStore.selectedModule.manifest?.permissions || ['network.listen', 'storage.kv', 'events.publish']"
-                      :key="p"
+                      :key="formatPermission(p)"
+                      :title="getPermissionTitle(p)"
                       class="px-2 py-0.5 bg-surface-variant border border-outline-variant/60 text-[10px] font-body-mono text-primary-fixed-dim rounded"
                     >
-                      {{ p }}
+                      {{ formatPermission(p) }}
                     </span>
                   </div>
                 </div>
