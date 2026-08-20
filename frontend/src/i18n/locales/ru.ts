@@ -108,6 +108,7 @@ export const ru = {
     disabled: 'Отключенные',
     moduleType: 'Тип модулей',
     moduleRegistry: 'Реестр модулей',
+    moduleRegistryDesc: 'Управление системными расширениями ядра и топологией связей',
     tableView: 'Таблица',
     topologyGraph: 'Граф топологии',
     filter: 'ФИЛЬТР:',

@@ -108,6 +108,7 @@ export const en = {
     disabled: 'Disabled',
     moduleType: 'Module Type',
     moduleRegistry: 'Module Registry',
+    moduleRegistryDesc: 'Manage system core extensions and interconnection topology',
     tableView: 'Table View',
     topologyGraph: 'Topology Graph',
     filter: 'FILTER:',

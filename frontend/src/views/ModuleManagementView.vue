@@ -162,37 +162,60 @@ function getPermissionTitle(p: any): string {
 
           <!-- Metric Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark">
-              <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
-                {{ t('modules.totalModules') }}
-              </p>
-              <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
-                {{ modulesStore.totalCount }}
-              </p>
+            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+              <div>
+                <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
+                  {{ t('modules.totalModules') }}
+                </p>
+                <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
+                  {{ modulesStore.totalCount }}
+                </p>
+              </div>
+              <div class="w-9 h-9 rounded-lg bg-surface-container-highest flex items-center justify-center text-on-surface-variant/70 border border-outline-variant/40">
+                <span class="material-symbols-outlined text-lg">widgets</span>
+              </div>
             </div>
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark">
-              <p class="text-label-caps font-label-caps text-tertiary-fixed-dim uppercase tracking-widest mb-sm">
-                {{ t('modules.active') }}
-              </p>
-              <p class="text-[32px] leading-none font-body-mono font-bold text-tertiary-fixed-dim">
-                {{ modulesStore.activeCount }}
-              </p>
+
+            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+              <div>
+                <p class="text-label-caps font-label-caps text-tertiary-fixed-dim uppercase tracking-widest mb-sm">
+                  {{ t('modules.active') }}
+                </p>
+                <p class="text-[32px] leading-none font-body-mono font-bold text-tertiary-fixed-dim">
+                  {{ modulesStore.activeCount }}
+                </p>
+              </div>
+              <div class="w-9 h-9 rounded-lg bg-tertiary-fixed-dim/10 flex items-center justify-center text-tertiary-fixed-dim border border-tertiary-fixed-dim/30">
+                <span class="material-symbols-outlined text-lg">check_circle</span>
+              </div>
             </div>
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark">
-              <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
-                {{ t('modules.disabled') }}
-              </p>
-              <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
-                {{ modulesStore.disabledCount }}
-              </p>
+
+            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+              <div>
+                <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
+                  {{ t('modules.disabled') }}
+                </p>
+                <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
+                  {{ modulesStore.disabledCount }}
+                </p>
+              </div>
+              <div class="w-9 h-9 rounded-lg bg-surface-container-highest flex items-center justify-center text-on-surface-variant/70 border border-outline-variant/40">
+                <span class="material-symbols-outlined text-lg">block</span>
+              </div>
             </div>
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark">
-              <p class="text-label-caps font-label-caps text-primary-fixed-dim uppercase tracking-widest mb-sm">
-                {{ t('modules.moduleType') }}
-              </p>
-              <p class="text-[32px] leading-none font-body-mono font-bold text-primary-fixed-dim">
-                {{ modulesStore.modules.length > 0 ? 'WASM' : '0' }}
-              </p>
+
+            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+              <div>
+                <p class="text-label-caps font-label-caps text-primary-fixed-dim uppercase tracking-widest mb-sm">
+                  {{ t('modules.moduleType') }}
+                </p>
+                <p class="text-[32px] leading-none font-body-mono font-bold text-primary-fixed-dim">
+                  {{ modulesStore.modules.length > 0 ? 'WASM' : '0' }}
+                </p>
+              </div>
+              <div class="w-9 h-9 rounded-lg bg-primary-fixed-dim/10 flex items-center justify-center text-primary-fixed-dim border border-primary-fixed-dim/30">
+                <span class="material-symbols-outlined text-lg">memory</span>
+              </div>
             </div>
           </div>
 
@@ -202,10 +225,22 @@ function getPermissionTitle(p: any): string {
             <div class="flex-1 bg-surface-container-low border border-outline-variant rounded-lg shadow-card-dark flex flex-col overflow-hidden">
               <!-- Card Header: Views & Filters -->
               <div class="p-md border-b border-outline-variant flex items-center justify-between flex-wrap gap-md bg-surface-container">
-                <div class="flex items-center gap-lg">
-                  <h2 class="font-title-sm text-title-sm text-on-surface font-bold">
-                    {{ t('modules.moduleRegistry') }}
-                  </h2>
+                <div class="flex items-center gap-sm text-on-surface">
+                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                    <span class="material-symbols-outlined text-xl">layers</span>
+                  </div>
+                  <div>
+                    <h2 class="font-title-sm font-bold text-on-surface">
+                      {{ t('modules.moduleRegistry') }}
+                    </h2>
+                    <p class="text-xs text-on-surface-variant mt-0.5">
+                      {{ t('modules.moduleRegistryDesc') }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-md flex-wrap">
+                  <!-- View Switcher -->
                   <div class="flex bg-surface-container-lowest rounded-lg p-1 border border-outline-variant">
                     <button
                       type="button"
@@ -230,12 +265,8 @@ function getPermissionTitle(p: any): string {
                       {{ t('modules.topologyGraph') }}
                     </button>
                   </div>
-                </div>
 
-                <div class="flex items-center gap-md">
-                  <span class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                    {{ t('modules.filter') }}
-                  </span>
+                  <!-- Filter Switcher -->
                   <div class="flex bg-surface-container-lowest rounded-lg p-1 border border-outline-variant">
                     <button
                       type="button"
@@ -408,16 +439,21 @@ function getPermissionTitle(p: any): string {
                 v-if="modulesStore.selectedModule"
                 class="bg-surface-container-low border border-outline-variant rounded-lg p-lg shadow-card-dark flex flex-col gap-md"
               >
-                <div class="flex items-center justify-between border-b border-outline-variant/40 pb-sm">
-                  <div>
-                    <h3 class="font-title-sm text-sm text-on-surface font-bold">
-                      {{ modulesStore.selectedModule.name }}
-                    </h3>
-                    <p class="text-[11px] font-body-mono text-on-surface-variant">
-                      {{ modulesStore.selectedModule.id }}
-                    </p>
+                <div class="flex items-start justify-between border-b border-outline-variant/40 pb-sm gap-2">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                      <span class="material-symbols-outlined text-lg">extension</span>
+                    </div>
+                    <div>
+                      <h3 class="font-title-sm text-sm text-on-surface font-bold">
+                        {{ modulesStore.selectedModule.name }}
+                      </h3>
+                      <p class="text-[11px] font-body-mono text-on-surface-variant">
+                        {{ modulesStore.selectedModule.id }}
+                      </p>
+                    </div>
                   </div>
-                  <span class="text-[10px] font-body-mono text-primary-fixed-dim font-bold px-2 py-0.5 rounded bg-primary-fixed-dim/10 border border-primary-fixed-dim/30">
+                  <span class="text-[10px] font-body-mono text-primary-fixed-dim font-bold px-2 py-0.5 rounded bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 shrink-0">
                     v{{ modulesStore.selectedModule.version }}
                   </span>
                 </div>
@@ -470,12 +506,19 @@ function getPermissionTitle(p: any): string {
                 </div>
               </div>
 
+              <!-- Empty State -->
               <div
                 v-else
-                class="bg-surface-container-low border border-outline-variant rounded-lg p-xl flex items-center justify-center text-center shadow-card-dark h-32"
+                class="bg-surface-container-low border border-outline-variant rounded-lg p-xl flex flex-col items-center justify-center text-center shadow-card-dark min-h-[180px] gap-2"
               >
-                <p class="text-sm text-on-surface-variant">
+                <div class="w-12 h-12 rounded-xl bg-surface-container-highest/60 border border-outline-variant/50 flex items-center justify-center text-on-surface-variant/40 mb-1">
+                  <span class="material-symbols-outlined text-2xl">extension</span>
+                </div>
+                <p class="text-xs font-bold text-on-surface">
                   {{ t('modules.selectModulePrompt') }}
+                </p>
+                <p class="text-[11px] text-on-surface-variant max-w-[200px]">
+                  Click on any module from the table or graph to inspect manifest and configuration.
                 </p>
               </div>
             </div>
