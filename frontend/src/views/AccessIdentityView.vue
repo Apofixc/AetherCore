@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
+import NumberInput from '@/components/common/NumberInput.vue'
 import { useI18n } from '@/i18n'
 
 const { t } = useI18n()
@@ -224,6 +225,25 @@ const auditLogs = ref<AuditLogEntry[]>([
   }
 ])
 
+const isRefreshingLogs = ref(false)
+
+function handleRefreshLogs() {
+  isRefreshingLogs.value = true
+  setTimeout(() => {
+    isRefreshingLogs.value = false
+  }, 500)
+}
+
+function handleExportLogs() {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(auditLogs.value, null, 2))
+  const downloadAnchor = document.createElement('a')
+  downloadAnchor.setAttribute("href", dataStr)
+  downloadAnchor.setAttribute("download", `security_audit_logs_${new Date().toISOString().slice(0,10)}.json`)
+  document.body.appendChild(downloadAnchor)
+  downloadAnchor.click()
+  downloadAnchor.remove()
+}
+
 const filteredAuditLogs = computed(() => {
   if (!auditSearch.value.trim()) return auditLogs.value
   const query = auditSearch.value.toLowerCase()
@@ -332,19 +352,21 @@ const filteredAuditLogs = computed(() => {
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.maxLoginAttempts') }}</span>
-                  <input
-                    class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
-                    type="number"
-                    v-model.number="maxLoginAttempts"
-                  >
+                  <NumberInput
+                    v-model="maxLoginAttempts"
+                    :min="1"
+                    :max="20"
+                    width-class="w-20"
+                  />
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.lockoutDuration') }}</span>
-                  <input
-                    class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
-                    type="number"
-                    v-model.number="lockoutDuration"
-                  >
+                  <NumberInput
+                    v-model="lockoutDuration"
+                    :min="1"
+                    :max="1440"
+                    width-class="w-20"
+                  />
                 </div>
               </div>
             </div>
@@ -358,19 +380,21 @@ const filteredAuditLogs = computed(() => {
               <div class="flex flex-col gap-sm">
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.sessionTTL') }}</span>
-                  <input
-                    class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
-                    type="number"
-                    v-model.number="sessionTTL"
-                  >
+                  <NumberInput
+                    v-model="sessionTTL"
+                    :min="1"
+                    :max="720"
+                    width-class="w-20"
+                  />
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.inactivityTimeout') }}</span>
-                  <input
-                    class="w-20 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
-                    type="number"
-                    v-model.number="inactivityTimeout"
-                  >
+                  <NumberInput
+                    v-model="inactivityTimeout"
+                    :min="1"
+                    :max="1440"
+                    width-class="w-20"
+                  />
                 </div>
               </div>
             </div>
@@ -385,11 +409,12 @@ const filteredAuditLogs = computed(() => {
             <div class="flex flex-wrap items-center gap-xl">
               <div class="flex items-center gap-3">
                 <span class="text-xs text-on-surface-variant">{{ t('accessIdentity.minLength') }}</span>
-                <input
-                  class="w-16 bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-center text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none"
-                  type="number"
-                  v-model.number="minPasswordLength"
-                >
+                <NumberInput
+                  v-model="minPasswordLength"
+                  :min="4"
+                  :max="64"
+                  width-class="w-24"
+                />
               </div>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0" type="checkbox" v-model="requireUppercase">
@@ -629,30 +654,46 @@ const filteredAuditLogs = computed(() => {
                 <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>
               </div>
             </div>
-            <!-- Action Group: Search, Filter, Export -->
+            <!-- Action Group: Search, Filter, Refresh, Export (All compact h-8 w-8 square icon buttons) -->
             <div class="flex items-center gap-2 flex-wrap">
+              <!-- Search Input -->
               <div class="relative flex items-center">
-                <span class="material-symbols-outlined absolute left-3 text-sm text-on-surface-variant pointer-events-none">search</span>
+                <span class="material-symbols-outlined absolute left-2.5 text-base text-on-surface-variant pointer-events-none">search</span>
                 <input
                   v-model="auditSearch"
-                  class="bg-surface-container-highest border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface font-body-mono w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
+                  class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-8 pr-3 text-xs font-body-mono text-on-surface w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
                   :placeholder="t('accessIdentity.searchAuditPlaceholder')"
                   type="text"
                 >
               </div>
+
+              <!-- Filter Button -->
               <button
                 type="button"
-                class="p-2 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                title="Filter Logs"
+                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                :title="t('common.filter')"
               >
-                <span class="material-symbols-outlined text-base">tune</span>
+                <span class="material-symbols-outlined text-[18px]">filter_list</span>
               </button>
+
+              <!-- Refresh Button -->
               <button
                 type="button"
-                class="bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
+                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                :title="t('common.refresh')"
+                @click="handleRefreshLogs"
               >
-                <span class="material-symbols-outlined text-[16px]">download</span>
-                {{ t('accessIdentity.exportLogs') }}
+                <span class="material-symbols-outlined text-[18px]" :class="{ 'animate-spin': isRefreshingLogs }">refresh</span>
+              </button>
+
+              <!-- Export Button -->
+              <button
+                type="button"
+                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                :title="t('accessIdentity.exportLogs')"
+                @click="handleExportLogs"
+              >
+                <span class="material-symbols-outlined text-[18px]">download</span>
               </button>
             </div>
           </div>
