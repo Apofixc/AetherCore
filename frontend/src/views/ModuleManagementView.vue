@@ -241,13 +241,13 @@ function getPermissionTitle(p: any): string {
 
                 <div class="flex items-center gap-md flex-wrap">
                   <!-- View Switcher -->
-                  <div class="flex bg-surface-container-lowest rounded-lg p-1 border border-outline-variant">
+                  <div class="flex bg-surface-container-highest border border-outline-variant rounded-lg p-0.5">
                     <button
                       type="button"
-                      class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                      class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                       :class="viewMode === 'table'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                        : 'text-on-surface-variant hover:text-on-surface'"
+                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
                       @click="viewMode = 'table'"
                     >
                       <span class="material-symbols-outlined text-[16px]">table_rows</span>
@@ -255,10 +255,10 @@ function getPermissionTitle(p: any): string {
                     </button>
                     <button
                       type="button"
-                      class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                      class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                       :class="viewMode === 'graph'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                        : 'text-on-surface-variant hover:text-on-surface'"
+                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
                       @click="viewMode = 'graph'"
                     >
                       <span class="material-symbols-outlined text-[16px]">account_tree</span>
@@ -266,38 +266,20 @@ function getPermissionTitle(p: any): string {
                     </button>
                   </div>
 
-                  <!-- Filter Switcher -->
-                  <div class="flex bg-surface-container-lowest rounded-lg p-1 border border-outline-variant">
-                    <button
-                      type="button"
-                      class="px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
-                      :class="modulesStore.filter === 'all'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed'
-                        : 'text-on-surface-variant hover:text-on-surface'"
-                      @click="modulesStore.setFilter('all')"
+                  <!-- Status Filter Select (Unified with other pages) -->
+                  <div class="relative flex items-center">
+                    <select
+                      :value="modulesStore.filter"
+                      class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer appearance-none"
+                      @change="modulesStore.setFilter(($event.target as HTMLSelectElement).value as any)"
                     >
-                      {{ t('modules.all') }}
-                    </button>
-                    <button
-                      type="button"
-                      class="px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
-                      :class="modulesStore.filter === 'active'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed'
-                        : 'text-on-surface-variant hover:text-on-surface'"
-                      @click="modulesStore.setFilter('active')"
-                    >
-                      {{ t('modules.activeStatus') }}
-                    </button>
-                    <button
-                      type="button"
-                      class="px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
-                      :class="modulesStore.filter === 'disabled'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed'
-                        : 'text-on-surface-variant hover:text-on-surface'"
-                      @click="modulesStore.setFilter('disabled')"
-                    >
-                      {{ t('modules.disabledStatus') }}
-                    </button>
+                      <option value="all">{{ t('modules.all') }}</option>
+                      <option value="active">{{ t('modules.activeStatus') }}</option>
+                      <option value="disabled">{{ t('modules.disabledStatus') }}</option>
+                    </select>
+                    <span class="material-symbols-outlined absolute right-2 text-base text-on-surface-variant pointer-events-none">
+                      expand_more
+                    </span>
                   </div>
                 </div>
               </div>
