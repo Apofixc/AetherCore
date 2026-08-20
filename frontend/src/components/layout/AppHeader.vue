@@ -181,33 +181,33 @@ function handleLogout() {
               <div class="flex items-center bg-surface-container-highest rounded-lg p-0.5 border border-outline-variant/50">
                 <button
                   type="button"
-                  class="px-1.5 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer flex items-center gap-0.5"
+                  class="p-1 px-1.5 rounded transition-all cursor-pointer flex items-center justify-center"
                   :class="theme === 'dark' ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm' : 'text-on-surface-variant hover:text-on-surface'"
                   @click="setTheme('dark')"
                   :title="t('auth.themeDark')"
+                  :aria-label="t('auth.themeDark')"
                 >
-                  <span class="material-symbols-outlined text-xs">dark_mode</span>
-                  <span>{{ t('auth.themeDark') }}</span>
+                  <span class="material-symbols-outlined text-sm">dark_mode</span>
                 </button>
                 <button
                   type="button"
-                  class="px-1.5 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer flex items-center gap-0.5"
+                  class="p-1 px-1.5 rounded transition-all cursor-pointer flex items-center justify-center"
                   :class="theme === 'light' ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm' : 'text-on-surface-variant hover:text-on-surface'"
                   @click="setTheme('light')"
                   :title="t('auth.themeLight')"
+                  :aria-label="t('auth.themeLight')"
                 >
-                  <span class="material-symbols-outlined text-xs">light_mode</span>
-                  <span>{{ t('auth.themeLight') }}</span>
+                  <span class="material-symbols-outlined text-sm">light_mode</span>
                 </button>
                 <button
                   type="button"
-                  class="px-1.5 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer flex items-center gap-0.5"
+                  class="p-1 px-1.5 rounded transition-all cursor-pointer flex items-center justify-center"
                   :class="theme === 'system' ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm' : 'text-on-surface-variant hover:text-on-surface'"
                   @click="setTheme('system')"
                   :title="t('auth.themeSystem')"
+                  :aria-label="t('auth.themeSystem')"
                 >
-                  <span class="material-symbols-outlined text-xs">desktop_windows</span>
-                  <span>{{ t('auth.themeSystem') }}</span>
+                  <span class="material-symbols-outlined text-sm">desktop_windows</span>
                 </button>
               </div>
             </div>
