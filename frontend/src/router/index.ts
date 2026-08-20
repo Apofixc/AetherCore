@@ -1,9 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type NavigationGuardNext } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import ModuleManagementView from '@/views/ModuleManagementView.vue'
 import UserProfileView from '@/views/UserProfileView.vue'
 import UsersManagementView from '@/views/UsersManagementView.vue'
+import AccessIdentityView from '@/views/AccessIdentityView.vue'
 import SystemAdminView from '@/views/SystemAdminView.vue'
 
 const routes = [
@@ -39,11 +40,20 @@ const routes = [
   },
   {
     path: '/settings',
-    redirect: '/modules'
+    redirect: '/settings/access-identity'
   },
   {
     path: '/settings/access',
-    redirect: '/users'
+    redirect: '/settings/access-identity'
+  },
+  {
+    path: '/settings/access-identity',
+    name: 'access-identity',
+    component: AccessIdentityView
+  },
+  {
+    path: '/system',
+    redirect: '/settings/system'
   },
   {
     path: '/settings/system',
@@ -61,7 +71,7 @@ export const router = createRouter({
   routes
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to: RouteLocationNormalized, _from: RouteLocationNormalized, next: NavigationGuardNext) => {
   const token = localStorage.getItem('nms_token')
   if (!to.meta.public && !token) {
     next('/login')

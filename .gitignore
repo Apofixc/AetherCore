@@ -3,9 +3,9 @@
 Cargo.lock
 
 # Web / Frontend node_modules & dist
-/node_modules/
-/dist/
-/.vite/
+frontend/node_modules/
+frontend//dist/
+frontend//.vite/
 
 # Graphify knowledge graph artifacts
 graphify-out/

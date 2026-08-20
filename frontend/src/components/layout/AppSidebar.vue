@@ -15,8 +15,8 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 
-const dataProcessorOpen = ref(true)
-const fileExplorerOpen = ref(true)
+const dataProcessorOpen = ref(false)
+const fileExplorerOpen = ref(false)
 const activeSubItem = ref('overview')
 
 function isCurrent(path: string) {
@@ -25,10 +25,6 @@ function isCurrent(path: string) {
 
 function isSettingsActive() {
   return route.path === '/profile' || route.path.startsWith('/settings') || route.path === '/users'
-}
-
-function isSubActive(item: string) {
-  return route.path === '/modules' && (route.query.tab === item || (!route.query.tab && activeSubItem.value === item))
 }
 
 function selectSubItem(item: string) {
@@ -40,227 +36,175 @@ function selectSubItem(item: string) {
 <template>
   <nav
     id="sidebar"
-    class="sidebar-panel w-sidebar-width h-screen fixed left-0 top-0 flex flex-col py-6 px-4 z-50 transition-all duration-300 ease-in-out select-none"
+    class="bg-surface-container-lowest text-primary font-body-base text-body-base w-sidebar-width h-screen fixed left-0 top-0 border-r border-outline-variant flex flex-col py-lg px-md z-50 transition-transform duration-300 select-none"
     :class="{ '-translate-x-full': collapsed }"
   >
-    <!-- Brand Header -->
+    <!-- Header / Brand -->
     <div
-      class="mb-6 flex items-center gap-3 cursor-pointer group"
+      class="mb-xl flex items-center gap-sm cursor-pointer group"
       @click="router.push('/dashboard')"
     >
-      <!-- App Logo Box -->
-      <div
-        class="sidebar-logo-box w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden group-hover:border-primary/60 transition-all"
-      >
-        <img alt="AetherCore Logo" class="w-full h-full object-cover" src="/logo.png" />
+      <div class="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-outline-variant group-hover:border-primary-fixed-dim/60 transition-colors">
+        <img
+          alt="AetherCore Logo"
+          class="w-full h-full object-cover"
+          src="https://lh3.googleusercontent.com/aida/AP1WRLtoOxrg1BvpOF6hYJC0P6o5Em8dgq1Q-MM24a6VVdaf8qZIWPioO1pIYIEM0N-O7-cnMHikL-xu8uwbh29RsL3R3hiJv232MfJvMqrOapAVE9fVCnrtS99K5rusFLqmZn9B_ip46aW27NaOYK79vmyXEVA2KW9stnpSEcp-g2Fu2eO4sHuP5e4aUPF41cP1NsSx16pAzNUgpevJbZPayDXfWxpe9aPBYSxuoc-bHC6jzoQJ_7XUYmStgBI"
+        />
       </div>
-      <!-- App Title & Version -->
-      <div class="flex flex-col">
-        <span class="font-bold text-[19px] text-primary tracking-tight leading-tight group-hover:text-primary-fixed-dim transition-colors font-display-lg">
-          AetherCore
-        </span>
-        <span class="font-mono text-[11px] text-on-surface-variant tracking-wider mt-0.5 font-body-mono">
-          Version 1.0.4
-        </span>
+      <div>
+        <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider group-hover:text-primary transition-colors">AetherCore</h1>
+        <p class="font-body-mono text-body-mono text-on-surface-variant">Version 1.0.4</p>
       </div>
     </div>
 
     <!-- Main Navigation Content -->
-    <div class="flex-1 flex flex-col overflow-y-auto pr-1 -mr-1 space-y-6">
+    <div class="flex-1 flex flex-col gap-xs overflow-y-auto pr-1">
       <!-- CORE MODULES -->
-      <div>
-        <h3 class="text-[11px] font-bold font-mono tracking-widest text-on-surface-variant uppercase mb-2.5 px-1">
+      <div class="mb-md">
+        <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider px-md mb-sm">
           CORE MODULES
         </h3>
         <router-link
           to="/dashboard"
-          class="h-12 px-5 flex items-center gap-4 rounded-xl transition-all duration-200 ease-in-out shrink-0 cursor-pointer group relative overflow-hidden text-[15px]"
-          :class="isCurrent('/dashboard')
-            ? 'sidebar-item-active'
-            : 'border border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 font-medium'"
+          class="flex items-center gap-md px-md py-sm rounded-lg transition-all duration-200 ease-in-out shrink-0 cursor-pointer"
+          :class="isCurrent('/dashboard') || isCurrent('/')
+            ? 'bg-gradient-to-r from-primary-fixed-dim/20 to-transparent text-primary-fixed-dim font-bold border-l-2 border-primary-fixed-dim shadow-[inset_0_0_10px_rgba(115,212,232,0.15)] hover:from-primary-fixed-dim/30 hover:to-transparent'
+            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
         >
           <span
-            class="material-symbols-outlined text-[22px] transition-transform group-hover:scale-105"
-            :class="isCurrent('/dashboard') ? 'text-primary group-hover:brightness-125' : 'text-on-surface-variant group-hover:text-on-surface'"
-            :style="isCurrent('/dashboard') ? 'font-variation-settings: &quot;FILL&quot; 1;' : ''"
+            class="material-symbols-outlined"
+            :class="(isCurrent('/dashboard') || isCurrent('/')) ? 'icon-fill' : ''"
           >
-            grid_view
+            dashboard
           </span>
-          <span class="tracking-normal font-sans">Dashboard</span>
+          Dashboard
         </router-link>
       </div>
 
       <!-- DYNAMIC MODULES -->
-      <div class="flex flex-col">
-        <h3 class="text-[11px] font-bold font-mono tracking-widest text-on-surface-variant uppercase mb-2.5 px-1">
+      <div class="flex flex-col gap-xs">
+        <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider px-md mb-sm mt-md">
           DYNAMIC MODULES
         </h3>
 
         <!-- Data Processor Accordion -->
-        <div class="flex flex-col mb-1.5">
+        <div class="flex flex-col">
           <button
             type="button"
-            class="sidebar-accordion-btn h-10 px-3 flex items-center justify-between w-full cursor-pointer text-sm font-medium group"
+            class="flex items-center justify-between w-full px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-all duration-200 ease-in-out cursor-pointer"
             @click="dataProcessorOpen = !dataProcessorOpen"
           >
-            <div class="flex items-center gap-3">
-              <span class="sidebar-accordion-icon material-symbols-outlined text-[20px]">
-                monitoring
-              </span>
-              <span class="transition-colors">
-                Data Processor
-              </span>
+            <div class="flex items-center gap-md">
+              <span class="material-symbols-outlined">analytics</span>
+              Data Processor
             </div>
             <span
-              class="sidebar-accordion-chevron material-symbols-outlined text-[18px]"
+              class="material-symbols-outlined text-sm transition-transform duration-300"
               :class="{ 'rotate-180': dataProcessorOpen }"
             >
               expand_more
             </span>
           </button>
-          
-          <!-- Animated Dropdown -->
           <div
-            class="grid transition-all duration-250 ease-in-out overflow-hidden"
-            :style="{
-              gridTemplateRows: dataProcessorOpen ? '1fr' : '0fr',
-              opacity: dataProcessorOpen ? 1 : 0
-            }"
+            v-show="dataProcessorOpen"
+            class="ml-xl pl-md border-l border-outline-variant/50 flex flex-col gap-xs mt-xs transition-all duration-300 overflow-hidden"
           >
-            <div class="min-h-0 ml-[23px] pl-3.5 border-l border-outline-variant flex flex-col gap-1 py-1.5 mt-0.5">
-              <button
-                type="button"
-                class="text-xs text-left w-full transition-all rounded-md px-2.5 py-1.5 flex items-center justify-between group cursor-pointer"
-                :class="isSubActive('overview')
-                  ? 'sidebar-sub-item-active'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/5 hover:translate-x-1 border border-transparent'"
-                @click="selectSubItem('overview')"
-              >
-                <span>Overview</span>
-                <span v-if="isSubActive('overview')" class="sidebar-sub-item-dot w-1.5 h-1.5 rounded-full"></span>
-              </button>
-              <button
-                type="button"
-                class="text-xs text-left w-full transition-all rounded-md px-2.5 py-1.5 flex items-center justify-between group cursor-pointer"
-                :class="isSubActive('transform')
-                  ? 'sidebar-sub-item-active'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/5 hover:translate-x-1 border border-transparent'"
-                @click="selectSubItem('transform')"
-              >
-                <span>Transform</span>
-                <span v-if="isSubActive('transform')" class="sidebar-sub-item-dot w-1.5 h-1.5 rounded-full"></span>
-              </button>
-              <button
-                type="button"
-                class="text-xs text-left w-full transition-all rounded-md px-2.5 py-1.5 flex items-center justify-between group cursor-pointer"
-                :class="isSubActive('export')
-                  ? 'sidebar-sub-item-active'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/5 hover:translate-x-1 border border-transparent'"
-                @click="selectSubItem('export')"
-              >
-                <span>Export</span>
-                <span v-if="isSubActive('export')" class="sidebar-sub-item-dot w-1.5 h-1.5 rounded-full"></span>
-              </button>
-            </div>
+            <a
+              href="#"
+              class="py-xs px-2 text-sm rounded transition-all duration-200"
+              :class="activeSubItem === 'overview' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
+              @click.prevent="selectSubItem('overview')"
+            >
+              Overview
+            </a>
+            <a
+              href="#"
+              class="py-xs px-2 text-sm rounded transition-all duration-200"
+              :class="activeSubItem === 'transform' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
+              @click.prevent="selectSubItem('transform')"
+            >
+              Transform
+            </a>
+            <a
+              href="#"
+              class="py-xs px-2 text-sm rounded transition-all duration-200"
+              :class="activeSubItem === 'export' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
+              @click.prevent="selectSubItem('export')"
+            >
+              Export
+            </a>
           </div>
         </div>
 
         <!-- File Explorer Accordion -->
-        <div class="flex flex-col mb-3">
+        <div class="flex flex-col mt-sm">
           <button
             type="button"
-            class="sidebar-accordion-btn h-10 px-3 flex items-center justify-between w-full cursor-pointer text-sm font-medium group"
+            class="flex items-center justify-between w-full px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50 transition-all duration-200 ease-in-out cursor-pointer"
             @click="fileExplorerOpen = !fileExplorerOpen"
           >
-            <div class="flex items-center gap-3">
-              <span class="sidebar-accordion-icon material-symbols-outlined text-[20px]">
-                folder
-              </span>
-              <span class="transition-colors">
-                File Explorer
-              </span>
+            <div class="flex items-center gap-md">
+              <span class="material-symbols-outlined">folder</span>
+              File Explorer
             </div>
             <span
-              class="sidebar-accordion-chevron material-symbols-outlined text-[18px]"
+              class="material-symbols-outlined text-sm transition-transform duration-300"
               :class="{ 'rotate-180': fileExplorerOpen }"
             >
               expand_more
             </span>
           </button>
-          
-          <!-- Animated Dropdown -->
           <div
-            class="grid transition-all duration-250 ease-in-out overflow-hidden"
-            :style="{
-              gridTemplateRows: fileExplorerOpen ? '1fr' : '0fr',
-              opacity: fileExplorerOpen ? 1 : 0
-            }"
+            v-show="fileExplorerOpen"
+            class="ml-xl pl-md border-l border-outline-variant/50 flex flex-col gap-xs mt-xs transition-all duration-300 overflow-hidden"
           >
-            <div class="min-h-0 ml-[23px] pl-3.5 border-l border-outline-variant flex flex-col gap-1 py-1.5 mt-0.5">
-              <button
-                type="button"
-                class="text-xs text-left w-full transition-all rounded-md px-2.5 py-1.5 flex items-center justify-between group cursor-pointer"
-                :class="isSubActive('local-storage')
-                  ? 'sidebar-sub-item-active'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/5 hover:translate-x-1 border border-transparent'"
-                @click="selectSubItem('local-storage')"
-              >
-                <span>Local Storage</span>
-                <span v-if="isSubActive('local-storage')" class="sidebar-sub-item-dot w-1.5 h-1.5 rounded-full"></span>
-              </button>
-              <button
-                type="button"
-                class="text-xs text-left w-full transition-all rounded-md px-2.5 py-1.5 flex items-center justify-between group cursor-pointer"
-                :class="isSubActive('vault')
-                  ? 'sidebar-sub-item-active'
-                  : 'text-on-surface-variant hover:text-primary hover:bg-primary/5 hover:translate-x-1 border border-transparent'"
-                @click="selectSubItem('vault')"
-              >
-                <span>Vault</span>
-                <span v-if="isSubActive('vault')" class="sidebar-sub-item-dot w-1.5 h-1.5 rounded-full"></span>
-              </button>
-            </div>
+            <a
+              href="#"
+              class="py-xs px-2 text-sm rounded transition-all duration-200"
+              :class="activeSubItem === 'local' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
+              @click.prevent="selectSubItem('local')"
+            >
+              Local Storage
+            </a>
+            <a
+              href="#"
+              class="py-xs px-2 text-sm rounded transition-all duration-200"
+              :class="activeSubItem === 'vault' && route.path === '/modules' ? 'text-primary-fixed-dim bg-primary-fixed-dim/10 font-semibold' : 'text-on-surface-variant hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10'"
+              @click.prevent="selectSubItem('vault')"
+            >
+              Vault
+            </a>
           </div>
         </div>
 
         <!-- Add Module Button -->
         <button
           type="button"
-          class="sidebar-add-btn h-12 w-full flex items-center justify-start gap-4 px-5 mt-2 font-medium text-[15px] rounded-xl transition-all cursor-pointer active:scale-[0.99] group"
+          class="flex items-center gap-md px-md py-sm mt-lg text-primary-fixed-dim hover:text-primary-fixed-dim/90 transition-all duration-200 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 shadow-glow-primary-sm hover:bg-primary-fixed-dim/20 hover:shadow-glow-primary-md cursor-pointer active:scale-95"
           @click="router.push('/modules')"
         >
-          <span class="material-symbols-outlined text-[22px] font-light">add</span>
-          <span class="tracking-normal font-sans">Add Module</span>
+          <span class="material-symbols-outlined">add</span>
+          Add Module
         </button>
       </div>
     </div>
 
-    <!-- Footer Status & Settings -->
-    <div class="mt-auto flex flex-col gap-3 border-t border-outline-variant pt-4">
-      <!-- Health Status Badge -->
-      <div class="sidebar-health-badge rounded-lg px-3.5 py-2.5 flex items-center gap-2.5">
-        <span class="sidebar-health-indicator w-2 h-2 rounded-full animate-pulse shrink-0"></span>
-        <span class="font-mono text-[11px] font-bold text-tertiary tracking-wider uppercase">
-          NMS HEALTH: OPTIMAL
-        </span>
-      </div>
-
-      <!-- Settings Link -->
+    <!-- Footer Tabs & CTA -->
+    <div class="mt-auto flex flex-col gap-sm border-t border-outline-variant pt-md">
       <router-link
-        to="/profile"
-        class="h-12 px-5 flex items-center gap-4 rounded-xl transition-all duration-200 ease-in-out font-medium cursor-pointer group relative overflow-hidden text-[15px]"
+        to="/settings/access-identity"
+        class="flex items-center gap-md px-md py-sm rounded-lg transition-all duration-200 ease-in-out cursor-pointer"
         :class="isSettingsActive()
-          ? 'sidebar-item-active'
-          : 'border border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40'"
+          ? 'bg-gradient-to-r from-primary-fixed-dim/20 to-transparent border-l-2 border-primary-fixed-dim text-primary-fixed-dim font-bold shadow-[inset_0_0_10px_rgba(115,212,232,0.15)] hover:from-primary-fixed-dim/30 hover:to-transparent'
+          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
       >
         <span
-          class="material-symbols-outlined text-[22px] transition-transform group-hover:scale-105"
-          :class="isSettingsActive() ? 'text-primary group-hover:brightness-125' : 'text-on-surface-variant group-hover:text-on-surface'"
-          :style="isSettingsActive() ? 'font-variation-settings: &quot;FILL&quot; 1;' : ''"
+          class="material-symbols-outlined"
+          :class="isSettingsActive() ? 'icon-fill' : ''"
         >
           settings
         </span>
-        <span :class="isSettingsActive() ? 'font-bold' : 'text-on-surface'">Settings</span>
+        Settings
       </router-link>
     </div>
   </nav>

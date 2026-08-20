@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useI18n, type Locale } from '@/i18n'
+import { useI18n } from '@/i18n'
 import { useTheme } from '@/theme'
 
 const authStore = useAuthStore()
@@ -24,7 +24,6 @@ async function handleLogin() {
     await authStore.login(operatorId.value, accessCode.value)
     router.push('/dashboard')
   } catch (err: any) {
-    // В dev-режиме, если бэкенд недоступен, позволяем зайти под дефолтным root-пользователем
     console.warn('Backend login fallback to local session:', err)
     authStore.token = 'mock-dev-token'
     localStorage.setItem('nms_token', 'mock-dev-token')
@@ -38,10 +37,9 @@ async function handleLogin() {
 
 <template>
   <div class="bg-surface-deep text-on-surface font-body-base min-h-screen flex flex-col items-center justify-center relative overflow-hidden select-none">
-    <!-- Quick Controls (Top-right) -->
+    <!-- Quick Language & Theme Controls (Top-right) -->
     <div class="absolute top-4 right-4 z-20 flex items-center gap-2">
-      <!-- Language Switcher -->
-      <div class="flex items-center bg-surface-container/80 backdrop-blur-sm rounded-lg p-0.5 border border-outline-variant/60">
+      <div class="flex items-center bg-surface-container-high/80 backdrop-blur-sm rounded-lg p-0.5 border border-outline-variant/60">
         <button
           type="button"
           class="px-2 py-1 text-xs font-bold rounded font-body-mono transition-all cursor-pointer"
@@ -60,10 +58,9 @@ async function handleLogin() {
         </button>
       </div>
 
-      <!-- Theme Switcher -->
       <button
         type="button"
-        class="p-2 text-on-surface-variant hover:text-primary transition-colors bg-surface-container/80 backdrop-blur-sm border border-outline-variant/60 rounded-lg flex items-center justify-center cursor-pointer"
+        class="p-2 text-on-surface-variant hover:text-primary-fixed-dim transition-colors bg-surface-container-high/80 backdrop-blur-sm border border-outline-variant/60 rounded-lg flex items-center justify-center cursor-pointer"
         @click="toggleTheme"
         :title="isDark ? 'Switch to Light' : 'Switch to Dark'"
       >
@@ -81,7 +78,7 @@ async function handleLogin() {
       <div class="absolute inset-0 bg-gradient-to-t from-surface-deep via-surface-deep/80 to-transparent"></div>
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-surface-dim/0 via-surface-deep/60 to-surface-deep/90"></div>
       <!-- Technical Grid Overlay -->
-      <div class="absolute inset-0 bg-[linear-gradient(rgba(138,235,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(138,235,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
+      <div class="absolute inset-0 bg-[linear-gradient(rgba(115,212,232,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(115,212,232,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
       <!-- Scanlines -->
       <div class="absolute inset-0 scanlines opacity-30"></div>
     </div>
@@ -90,17 +87,17 @@ async function handleLogin() {
     <main class="relative z-10 w-full max-w-md px-lg">
       <!-- Brand Header -->
       <div class="text-center mb-xl">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-surface-container-high border border-outline-variant glow-primary mb-md overflow-hidden">
-          <img src="/logo.png" alt="AetherCore Logo" class="w-full h-full object-cover" />
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
+          <img src="https://lh3.googleusercontent.com/aida/AP1WRLtoOxrg1BvpOF6hYJC0P6o5Em8dgq1Q-MM24a6VVdaf8qZIWPioO1pIYIEM0N-O7-cnMHikL-xu8uwbh29RsL3R3hiJv232MfJvMqrOapAVE9fVCnrtS99K5rusFLqmZn9B_ip46aW27NaOYK79vmyXEVA2KW9stnpSEcp-g2Fu2eO4sHuP5e4aUPF41cP1NsSx16pAzNUgpevJbZPayDXfWxpe9aPBYSxuoc-bHC6jzoQJ_7XUYmStgBI" alt="AetherCore Logo" class="w-full h-full object-cover" />
         </div>
-        <h1 class="font-display-lg text-display-lg text-primary tracking-tighter mb-xs">AETHERCORE</h1>
-        <p class="font-body-mono text-body-mono text-on-surface-variant">NEXT-GEN NOC TERMINAL</p>
+        <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">AETHERCORE</h1>
+        <p class="font-body-mono text-body-mono text-on-surface-variant">Command Center v1.0.4</p>
       </div>
 
       <!-- Login Card -->
-      <div class="bg-surface-dim/80 backdrop-blur-md border border-outline-variant rounded-[16px] p-lg shadow-2xl relative overflow-hidden">
+      <div class="bg-surface-container-low/90 backdrop-blur-md border border-outline-variant rounded-lg p-lg shadow-card-dark relative overflow-hidden">
         <!-- Subtle top accent line -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-container to-transparent opacity-50"></div>
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-fixed-dim to-transparent opacity-60"></div>
 
         <form class="space-y-md" @submit.prevent="handleLogin">
           <!-- Error alert -->
@@ -111,7 +108,7 @@ async function handleLogin() {
           <!-- Operator ID Field -->
           <div>
             <label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="operator_id">
-              OPERATOR IDENTIFIER
+              OPERATOR ID
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-sm flex items-center pointer-events-none">
@@ -123,8 +120,8 @@ async function handleLogin() {
                 type="text"
                 required
                 autocomplete="username"
-                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-high border border-outline rounded-DEFAULT text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-on-surface-variant transition-colors duration-200"
-                placeholder="sys_admin_01"
+                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
+                placeholder="Enter ID"
               />
             </div>
           </div>
@@ -144,7 +141,7 @@ async function handleLogin() {
                 type="password"
                 required
                 autocomplete="current-password"
-                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-high border border-outline rounded-DEFAULT text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-on-surface-variant transition-colors duration-200"
+                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
                 placeholder="••••••••••••"
               />
             </div>
@@ -157,13 +154,13 @@ async function handleLogin() {
                 id="remember-me"
                 v-model="rememberMe"
                 type="checkbox"
-                class="h-4 w-4 rounded-DEFAULT border-outline bg-surface-container-high text-primary focus:ring-primary focus:ring-offset-surface-dim"
+                class="h-4 w-4 rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-primary-fixed-dim"
               />
               <label class="ml-sm block font-body-base text-body-base text-on-surface-variant cursor-pointer" for="remember-me">
                 Remember Me
               </label>
             </div>
-            <a href="#" class="font-body-base text-body-base text-primary hover:text-primary-fixed-dim transition-colors" @click.prevent>
+            <a href="#" class="font-body-base text-body-base text-primary-fixed-dim hover:underline transition-colors" @click.prevent>
               Forgot Code?
             </a>
           </div>
@@ -172,13 +169,30 @@ async function handleLogin() {
           <button
             type="submit"
             :disabled="isSubmitting"
-            class="w-full flex items-center justify-center gap-sm py-sm px-md bg-primary-container text-on-primary-container rounded-lg font-title-sm text-title-sm glow-primary glow-primary-hover transition-all duration-200 active:scale-95 disabled:opacity-50 cursor-pointer"
+            class="w-full flex items-center justify-center gap-sm py-2.5 px-md bg-primary-fixed-dim text-on-primary-fixed rounded-lg font-title-sm text-title-sm shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 transition-all duration-200 active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             <span class="material-symbols-outlined" style="font-size: 20px;">login</span>
-            <span>{{ isSubmitting ? 'Establishing...' : 'Establish Connection' }}</span>
+            <span>{{ isSubmitting ? 'Establishing Connection...' : 'Establish Connection' }}</span>
           </button>
         </form>
       </div>
     </main>
+
+    <!-- Footer -->
+    <footer class="fixed bottom-0 w-full h-8 bg-surface-container-lowest/80 backdrop-blur-sm border-t border-outline-variant flex items-center justify-between px-lg z-50 font-body-mono text-[10px] tracking-wider">
+      <div class="flex items-center gap-md">
+        <span class="text-primary-fixed-dim">Built with Tauri &amp; Rust</span>
+        <span class="text-outline-variant">|</span>
+        <div class="flex items-center gap-xs text-tertiary-fixed-dim">
+          <span class="material-symbols-outlined text-[14px]">check_circle</span>
+          <span>System OK</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-lg text-on-surface-variant">
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">API Docs</a>
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">GitHub</a>
+        <a class="hover:text-primary-fixed-dim transition-colors" href="#">Discord</a>
+      </div>
+    </footer>
   </div>
 </template>
