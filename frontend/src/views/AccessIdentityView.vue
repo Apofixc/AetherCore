@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
-import NumberInput from '@/components/common/NumberInput.vue'
+import {
+  PageHeader,
+  BaseSwitch,
+  AppButton,
+  NumberInput,
+  SearchInput,
+  StatusBadge
+} from '@/components/common'
 import { useI18n } from '@/i18n'
 
 const { t } = useI18n()
@@ -235,10 +242,10 @@ function handleRefreshLogs() {
 }
 
 function handleExportLogs() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(auditLogs.value, null, 2))
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(auditLogs.value, null, 2))
   const downloadAnchor = document.createElement('a')
-  downloadAnchor.setAttribute("href", dataStr)
-  downloadAnchor.setAttribute("download", `security_audit_logs_${new Date().toISOString().slice(0,10)}.json`)
+  downloadAnchor.setAttribute('href', dataStr)
+  downloadAnchor.setAttribute('download', `security_audit_logs_${new Date().toISOString().slice(0, 10)}.json`)
   document.body.appendChild(downloadAnchor)
   downloadAnchor.click()
   downloadAnchor.remove()
@@ -263,11 +270,11 @@ const filteredAuditLogs = computed(() => {
     <!-- Secondary Top Navigation Bar -->
     <SettingsNav />
 
-    <!-- BEGIN: MainDashboardCanvas -->
+    <!-- Main Content -->
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
       <div class="p-lg flex flex-col gap-lg w-full">
 
-        <!-- Top Page Header with Title & Action Button -->
+        <!-- Top Page Header -->
         <div class="flex items-center justify-between flex-wrap gap-md">
           <div class="flex items-center gap-sm text-on-surface">
             <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
@@ -283,14 +290,14 @@ const filteredAuditLogs = computed(() => {
               <span class="material-symbols-outlined text-[16px]">check_circle</span>
               {{ t('common.changesApplied') }}
             </span>
-            <button
-              type="button"
-              class="bg-primary-fixed-dim/10 hover:bg-primary-fixed-dim/20 text-primary-fixed-dim border border-primary-fixed-dim/30 px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 active:scale-95 transition-all duration-200 hover:brightness-110 hover:shadow-glow-primary-sm ease-in-out cursor-pointer"
+            <AppButton
+              variant="primary"
+              size="sm"
+              icon="save"
               @click="applyChanges"
             >
-              <span class="material-symbols-outlined text-[18px]">save</span>
               {{ t('accessIdentity.applyChanges') }}
-            </button>
+            </AppButton>
           </div>
         </div>
 
@@ -309,50 +316,26 @@ const filteredAuditLogs = computed(() => {
 
           <!-- Row 1: 3 Global Auth Toggles -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-md">
-            <!-- Web UI Authorization Toggle Card -->
-            <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex items-start gap-2.5">
-                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">login</span>
-                <div class="flex flex-col gap-1">
-                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.webUiAuth') }}</h3>
-                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.webUiAuthDesc') }}</p>
-                </div>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
-                <input class="sr-only peer" type="checkbox" v-model="webUiAuth">
-                <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
-              </label>
-            </div>
+            <BaseSwitch
+              v-model="webUiAuth"
+              :label="t('accessIdentity.webUiAuth')"
+              :description="t('accessIdentity.webUiAuthDesc')"
+              icon="login"
+            />
 
-            <!-- Mandatory Password Change Toggle Card -->
-            <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex items-start gap-2.5">
-                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">lock_reset</span>
-                <div class="flex flex-col gap-1">
-                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.mandatoryPasswordChange') }}</h3>
-                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.mandatoryPasswordChangeDesc') }}</p>
-                </div>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
-                <input class="sr-only peer" type="checkbox" v-model="mandatoryPasswordChange">
-                <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
-              </label>
-            </div>
+            <BaseSwitch
+              v-model="mandatoryPasswordChange"
+              :label="t('accessIdentity.mandatoryPasswordChange')"
+              :description="t('accessIdentity.mandatoryPasswordChangeDesc')"
+              icon="lock_reset"
+            />
 
-            <!-- Force 2FA (MFA) Toggle Card -->
-            <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex items-start justify-between gap-4">
-              <div class="flex items-start gap-2.5">
-                <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">phonelink_lock</span>
-                <div class="flex flex-col gap-1">
-                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.force2FA') }}</h3>
-                  <p class="text-[11px] text-on-surface-variant leading-relaxed">{{ t('accessIdentity.force2FADesc') }}</p>
-                </div>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
-                <input class="sr-only peer" type="checkbox" v-model="force2FA">
-                <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
-              </label>
-            </div>
+            <BaseSwitch
+              v-model="force2FA"
+              :label="t('accessIdentity.force2FA')"
+              :description="t('accessIdentity.force2FADesc')"
+              icon="phonelink_lock"
+            />
           </div>
 
           <!-- Row 2: Rate Limiting & Session Lifecycle Grid -->
@@ -495,13 +478,13 @@ const filteredAuditLogs = computed(() => {
                   <p class="text-[11px] text-on-surface-variant">{{ t('accessIdentity.rolesManagementDesc') }}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                class="bg-primary-fixed-dim text-on-primary hover:bg-primary-fixed-dim/90 px-3 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
+              <AppButton
+                variant="primary"
+                size="xs"
+                icon="add"
               >
-                <span class="material-symbols-outlined text-sm">add</span>
                 {{ t('accessIdentity.addNewRole') }}
-              </button>
+              </AppButton>
             </div>
 
             <!-- Roles Management Table -->
@@ -556,15 +539,11 @@ const filteredAuditLogs = computed(() => {
                 </div>
               </div>
               <!-- Search input -->
-              <div class="relative flex items-center">
-                <span class="material-symbols-outlined absolute left-3 text-sm text-on-surface-variant pointer-events-none">search</span>
-                <input
-                  v-model="permissionsSearch"
-                  class="bg-surface-container-highest border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface font-body-mono w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
-                  :placeholder="t('accessIdentity.searchPermissions')"
-                  type="text"
-                >
-              </div>
+              <SearchInput
+                v-model="permissionsSearch"
+                :placeholder="t('accessIdentity.searchPermissions')"
+                width-class="w-64"
+              />
             </div>
 
             <!-- Permissions Matrix Table -->
@@ -632,10 +611,12 @@ const filteredAuditLogs = computed(() => {
                       </td>
                       <!-- Superuser (always checked & disabled) -->
                       <td class="py-3 px-lg text-center">
-                        <label class="relative inline-flex items-center justify-center cursor-not-allowed opacity-80">
-                          <input class="sr-only peer" type="checkbox" checked disabled>
-                          <div class="w-10 h-5 bg-primary-fixed-dim rounded-full border border-primary-fixed-dim relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-primary after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5"></div>
-                        </label>
+                        <div class="flex justify-center">
+                          <label class="relative inline-flex items-center justify-center cursor-not-allowed opacity-80">
+                            <input class="sr-only peer" type="checkbox" checked disabled>
+                            <div class="w-10 h-5 bg-primary-fixed-dim rounded-full border border-primary-fixed-dim relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-primary after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5"></div>
+                          </label>
+                        </div>
                       </td>
                       <!-- Administrator -->
                       <td class="py-3 px-lg text-center">
@@ -679,18 +660,14 @@ const filteredAuditLogs = computed(() => {
                 <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>
               </div>
             </div>
-            <!-- Action Group: Search, Filter, Refresh, Export (All compact h-8 w-8 square icon buttons) -->
+            <!-- Action Group: Search, Filter, Refresh, Export -->
             <div class="flex items-center gap-2 flex-wrap">
               <!-- Search Input -->
-              <div class="relative flex items-center">
-                <span class="material-symbols-outlined absolute left-2.5 text-base text-on-surface-variant pointer-events-none">search</span>
-                <input
-                  v-model="auditSearch"
-                  class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-8 pr-3 text-xs font-body-mono text-on-surface w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
-                  :placeholder="t('accessIdentity.searchAuditPlaceholder')"
-                  type="text"
-                >
-              </div>
+              <SearchInput
+                v-model="auditSearch"
+                :placeholder="t('accessIdentity.searchAuditPlaceholder')"
+                width-class="w-64"
+              />
 
               <!-- Filter Button -->
               <button
@@ -810,6 +787,5 @@ const filteredAuditLogs = computed(() => {
 
       </div>
     </main>
-    <!-- END: MainDashboardCanvas -->
   </div>
 </template>

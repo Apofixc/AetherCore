@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
+import {
+  PageHeader,
+  SearchInput,
+  BaseSelect,
+  AppButton,
+  StatusBadge,
+  BaseModal,
+  ConfirmModal,
+  BaseInput
+} from '@/components/common'
 import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
 import type { User } from '@/api/auth'
@@ -270,6 +280,23 @@ function confirmToggleLock() {
   }
   showLockModal.value = false
 }
+
+const statusOptions = computed(() => [
+  { value: 'all', label: t('users.allStatuses') },
+  { value: 'online', label: t('users.onlineOnly') },
+  { value: 'offline', label: t('users.offlineOnly') },
+  { value: 'superuser', label: t('users.superusers') },
+  { value: 'admin', label: t('users.administrators') },
+  { value: 'operator', label: t('users.operators') },
+  { value: 'viewer', label: t('users.viewers') }
+])
+
+const roleOptions = computed(() => [
+  { value: 'superuser', label: t('accessIdentity.superuser') },
+  { value: 'admin', label: t('accessIdentity.administrator') },
+  { value: 'operator', label: t('accessIdentity.operator') },
+  { value: 'viewer', label: t('accessIdentity.viewer') }
+])
 </script>
 
 <template>
@@ -280,94 +307,72 @@ function confirmToggleLock() {
     <!-- Main Content Area -->
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
       <div class="p-lg flex flex-col gap-lg w-full">
-        <!-- Top Page Header with Title -->
-        <div class="flex items-center justify-between flex-wrap gap-md">
-          <div class="flex items-center gap-sm text-on-surface">
-            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-              <span class="material-symbols-outlined text-xl">manage_accounts</span>
-            </div>
-            <div>
-              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-                {{ t('users.title') }}
-              </h1>
-              <p class="text-xs text-on-surface-variant mt-0.5">
-                {{ t('users.subtitle') }}
-              </p>
-            </div>
-          </div>
-        </div>
+        <!-- Top Page Header -->
+        <PageHeader
+          :title="t('users.title')"
+          :subtitle="t('users.subtitle')"
+          icon="manage_accounts"
+        />
 
         <!-- Action Bar: Search, Filters, Export, Add User -->
-        <div class="flex items-center justify-between flex-wrap gap-md bg-surface-container-low p-md rounded-lg border border-outline-variant shadow-card-dark">
+        <div class="flex items-center justify-between flex-wrap gap-md bg-surface-container-low p-md rounded-xl border border-outline-variant/60 shadow-card-dark">
           <div class="flex items-center gap-md flex-wrap">
             <!-- Search Input -->
-            <div class="relative flex items-center">
-              <span class="material-symbols-outlined absolute left-2.5 text-base text-on-surface-variant pointer-events-none">search</span>
-              <input
-                v-model="searchQuery"
-                type="text"
-                class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-8 pr-3 text-xs font-body-mono text-on-surface w-64 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/60"
-                :placeholder="t('users.filterOperators')"
+            <SearchInput
+              v-model="searchQuery"
+              :placeholder="t('users.filterOperators')"
+              width-class="w-64"
+            />
+
+            <!-- Role / Status Select -->
+            <div class="w-48">
+              <BaseSelect
+                v-model="statusFilter"
+                :options="statusOptions"
+                size="sm"
               />
             </div>
 
-            <!-- Role / Status Select -->
-            <div class="relative flex items-center">
-              <select
-                v-model="statusFilter"
-                class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs font-bold text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer appearance-none"
-              >
-                <option value="all">{{ t('users.allStatuses') }}</option>
-                <option value="online">{{ t('users.onlineOnly') }}</option>
-                <option value="offline">{{ t('users.offlineOnly') }}</option>
-                <option value="superuser">{{ t('users.superusers') }}</option>
-                <option value="admin">{{ t('users.administrators') }}</option>
-                <option value="operator">{{ t('users.operators') }}</option>
-                <option value="viewer">{{ t('users.viewers') }}</option>
-              </select>
-              <span class="material-symbols-outlined text-sm text-on-surface-variant absolute right-2.5 pointer-events-none">expand_more</span>
-            </div>
-
             <!-- Active Operators Counter -->
-            <span class="text-xs text-on-surface-variant font-body-mono hidden xl:inline-block">
+            <span class="text-xs text-on-surface-variant font-mono hidden xl:inline-block">
               {{ t('users.showingActiveOperators', { count: activeCount }) }}
             </span>
           </div>
 
           <!-- Actions: Export CSV, Export JSON, Add User -->
           <div class="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              class="h-8 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 flex items-center justify-center transition-colors cursor-pointer active:scale-95 font-body-mono text-[11px] font-bold tracking-wider"
-              :title="t('users.exportCsv')"
+            <AppButton
+              variant="outline"
+              size="sm"
               @click="handleExportCsv"
+              :title="t('users.exportCsv')"
             >
               CSV
-            </button>
-            <button
-              type="button"
-              class="h-8 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 flex items-center justify-center transition-colors cursor-pointer active:scale-95 font-body-mono text-[11px] font-bold tracking-wider"
-              :title="t('users.exportJson')"
+            </AppButton>
+            <AppButton
+              variant="outline"
+              size="sm"
               @click="handleExportJson"
+              :title="t('users.exportJson')"
             >
               JSON
-            </button>
-            <button
-              type="button"
-              class="h-8 px-3.5 bg-primary-fixed-dim hover:bg-primary-fixed-dim/90 text-on-primary-fixed border border-primary-fixed-dim rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 shadow-glow-primary-sm hover:shadow-glow-primary-md cursor-pointer"
+            </AppButton>
+            <AppButton
+              variant="primary"
+              size="sm"
+              icon="person_add"
               @click="showAddModal = true"
             >
-              <span class="material-symbols-outlined text-[18px]">person_add</span>
-              <span>{{ t('users.addNewUser') }}</span>
-            </button>
+              {{ t('users.addNewUser') }}
+            </AppButton>
           </div>
         </div>
 
         <!-- Users Table Card -->
-        <div class="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden shadow-card-dark">
+        <div class="bg-surface-container-low border border-outline-variant/60 rounded-xl overflow-hidden shadow-card-dark">
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
-              <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
+              <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant/60">
                 <tr>
                   <th class="py-3 px-md w-12 text-center">
                     <input
@@ -415,59 +420,49 @@ function confirmToggleLock() {
                   <td class="py-3 px-md">
                     <div class="flex items-center gap-md">
                       <div
-                        class="w-10 h-10 rounded-lg flex items-center justify-center font-bold font-body-mono shrink-0 border"
+                        class="w-10 h-10 rounded-lg flex items-center justify-center font-bold font-mono shrink-0 border"
                         :class="op.role === 'superuser'
                           ? 'bg-tertiary-fixed-dim/20 border-tertiary-fixed-dim/40 text-tertiary-fixed-dim'
                           : op.role === 'admin'
                           ? 'bg-primary-fixed-dim/20 border-primary-fixed-dim/40 text-primary-fixed-dim'
-                          : 'bg-surface-variant border-outline-variant text-on-surface'"
+                          : 'bg-surface-variant border-outline-variant/60 text-on-surface'"
                       >
                         {{ op.initials }}
                       </div>
                       <div>
-                        <p class="font-title-sm text-on-surface font-bold text-sm">{{ op.full_name }}</p>
-                        <p class="text-[11px] text-on-surface-variant font-body-mono">{{ op.email }}</p>
+                        <p class="font-bold text-on-surface text-sm">{{ op.full_name }}</p>
+                        <p class="text-[11px] text-on-surface-variant font-mono">{{ op.email }}</p>
                       </div>
                     </div>
                   </td>
 
                   <!-- Username / UID -->
                   <td class="py-3 px-md">
-                    <p class="text-sm text-on-surface font-body-mono font-semibold">{{ op.username }}</p>
-                    <p class="text-[10px] font-body-mono text-on-surface-variant uppercase">{{ op.uid }}</p>
+                    <p class="text-sm text-on-surface font-mono font-semibold">{{ op.username }}</p>
+                    <p class="text-[10px] font-mono text-on-surface-variant uppercase">{{ op.uid }}</p>
                   </td>
 
                   <!-- Role Badge with Icon -->
                   <td class="py-3 px-md">
-                    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-variant border border-outline-variant">
-                      <span
-                        class="material-symbols-outlined text-sm"
-                        :class="op.role === 'superuser' ? 'text-tertiary-fixed-dim' : 'text-primary-fixed-dim'"
-                      >
-                        {{ op.role === 'superuser' ? 'verified_user' : op.role === 'admin' ? 'admin_panel_settings' : op.role === 'operator' ? 'settings_accessibility' : 'visibility' }}
-                      </span>
-                      <span class="text-xs font-bold text-on-surface capitalize">
-                        {{ op.role === 'superuser' ? t('accessIdentity.superuser') : op.role === 'admin' ? t('accessIdentity.administrator') : op.role === 'operator' ? t('accessIdentity.operator') : t('accessIdentity.viewer') }}
-                      </span>
-                    </div>
+                    <StatusBadge
+                      :variant="op.role"
+                      :icon="op.role === 'superuser' ? 'verified_user' : op.role === 'admin' ? 'admin_panel_settings' : op.role === 'operator' ? 'settings_accessibility' : 'visibility'"
+                      size="sm"
+                    >
+                      {{ op.role === 'superuser' ? t('accessIdentity.superuser') : op.role === 'admin' ? t('accessIdentity.administrator') : op.role === 'operator' ? t('accessIdentity.operator') : t('accessIdentity.viewer') }}
+                    </StatusBadge>
                   </td>
 
                   <!-- Status (Online / Offline) -->
                   <td class="py-3 px-md">
-                    <div class="flex items-center gap-2">
-                      <div
-                        class="w-2.5 h-2.5 rounded-full"
-                        :class="op.is_online
-                          ? 'bg-tertiary-fixed-dim shadow-glow-tertiary-sm animate-pulse'
-                          : 'bg-outline-variant'"
-                      ></div>
-                      <span
-                        class="text-xs font-semibold"
-                        :class="op.is_online ? 'text-tertiary-fixed-dim font-bold' : 'text-on-surface-variant'"
-                      >
-                        {{ op.is_online ? t('users.online') : t('users.offline') }}
-                      </span>
-                    </div>
+                    <StatusBadge
+                      :variant="op.is_online ? 'online' : 'offline'"
+                      :pulse="op.is_online"
+                      :dot="true"
+                      size="sm"
+                    >
+                      {{ op.is_online ? t('users.online') : t('users.offline') }}
+                    </StatusBadge>
                   </td>
 
                   <!-- Action Buttons -->
@@ -513,147 +508,87 @@ function confirmToggleLock() {
     </main>
 
     <!-- Modal: Add New User -->
-    <div
-      v-if="showAddModal"
-      class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-md animate-fade-in"
-      @click.self="showAddModal = false"
+    <BaseModal
+      v-model="showAddModal"
+      :title="t('users.addUserModalTitle')"
+      icon="person_add"
+      max-width="max-w-md"
     >
-      <div class="bg-surface-container-low border border-outline-variant rounded-xl p-lg max-w-md w-full shadow-2xl flex flex-col gap-md">
-        <div class="flex items-center justify-between border-b border-outline-variant/60 pb-sm">
-          <div class="flex items-center gap-2 text-primary-fixed-dim">
-            <span class="material-symbols-outlined text-xl">person_add</span>
-            <h3 class="text-sm font-bold text-on-surface">{{ t('users.addUserModalTitle') }}</h3>
-          </div>
-          <button
-            type="button"
-            class="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-            @click="showAddModal = false"
-          >
-            <span class="material-symbols-outlined text-lg">close</span>
-          </button>
-        </div>
+      <form id="addUserForm" @submit.prevent="handleCreateUser" class="flex flex-col gap-3">
+        <BaseInput
+          v-model="newUserForm.full_name"
+          :label="t('users.fullName')"
+          placeholder="e.g. Alex Morgan"
+          size="sm"
+        />
 
-        <form @submit.prevent="handleCreateUser" class="flex flex-col gap-sm">
-          <div>
-            <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-              {{ t('users.fullName') }}
-            </label>
-            <input
-              v-model="newUserForm.full_name"
-              type="text"
-              class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary-fixed-dim"
-              placeholder="e.g. Alex Morgan"
-            />
-          </div>
+        <BaseInput
+          v-model="newUserForm.username"
+          :label="t('users.username')"
+          placeholder="e.g. a.morgan"
+          :required="true"
+          size="sm"
+        />
 
-          <div>
-            <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-              {{ t('users.username') }} *
-            </label>
-            <input
-              v-model="newUserForm.username"
-              type="text"
-              required
-              class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-on-surface outline-none focus:ring-1 focus:ring-primary-fixed-dim"
-              placeholder="e.g. a.morgan"
-            />
-          </div>
+        <BaseInput
+          v-model="newUserForm.email"
+          :label="t('users.email')"
+          placeholder="a.morgan@nms.local"
+          type="email"
+          size="sm"
+        />
 
-          <div>
-            <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-              {{ t('users.email') }}
-            </label>
-            <input
-              v-model="newUserForm.email"
-              type="email"
-              class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-body-mono text-on-surface outline-none focus:ring-1 focus:ring-primary-fixed-dim"
-              placeholder="a.morgan@nms.local"
-            />
-          </div>
+        <BaseInput
+          v-model="newUserForm.password"
+          :label="t('users.password')"
+          placeholder="••••••••"
+          type="password"
+          :required="true"
+          size="sm"
+        />
 
-          <div>
-            <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-              {{ t('users.password') }} *
-            </label>
-            <input
-              v-model="newUserForm.password"
-              type="password"
-              required
-              class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary-fixed-dim"
-              placeholder="••••••••"
-            />
-          </div>
+        <BaseSelect
+          v-model="newUserForm.role"
+          :label="t('users.role')"
+          :options="roleOptions"
+          size="sm"
+        />
+      </form>
 
-          <div>
-            <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-              {{ t('users.role') }}
-            </label>
-            <select
-              v-model="newUserForm.role"
-              class="w-full bg-surface-container-highest border border-outline-variant rounded-lg px-3 py-1.5 text-xs font-bold text-on-surface outline-none focus:ring-1 focus:ring-primary-fixed-dim cursor-pointer"
-            >
-              <option value="superuser">{{ t('accessIdentity.superuser') }}</option>
-              <option value="admin">{{ t('accessIdentity.administrator') }}</option>
-              <option value="operator">{{ t('accessIdentity.operator') }}</option>
-              <option value="viewer">{{ t('accessIdentity.viewer') }}</option>
-            </select>
-          </div>
+      <template #footer>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          @click="showAddModal = false"
+        >
+          {{ t('users.cancel') }}
+        </AppButton>
+        <AppButton
+          variant="primary"
+          size="sm"
+          type="submit"
+          form="addUserForm"
+          :loading="isSubmitting"
+          @click="handleCreateUser"
+        >
+          {{ isSubmitting ? t('users.creating') : t('users.create') }}
+        </AppButton>
+      </template>
+    </BaseModal>
 
-          <div class="flex items-center justify-end gap-2 pt-sm border-t border-outline-variant/60 mt-sm">
-            <button
-              type="button"
-              class="px-4 py-1.5 text-xs font-semibold rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
-              @click="showAddModal = false"
-            >
-              {{ t('users.cancel') }}
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-1.5 text-xs font-bold rounded-lg bg-primary-fixed-dim text-on-primary-fixed hover:bg-primary-fixed-dim/90 shadow-glow-primary-sm transition-all cursor-pointer disabled:opacity-50"
-              :disabled="isSubmitting"
-            >
-              {{ isSubmitting ? t('users.creating') : t('users.create') }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Modal: Lock / Password Management -->
-    <div
-      v-if="showLockModal && selectedUserForAction"
-      class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-md animate-fade-in"
-      @click.self="showLockModal = false"
+    <!-- Modal: Lock / Unlock User -->
+    <ConfirmModal
+      v-model="showLockModal"
+      :title="selectedUserForAction?.is_active ? 'Блокировка пользователя' : 'Разблокировка пользователя'"
+      :variant="selectedUserForAction?.is_active ? 'danger' : 'primary'"
+      :confirm-text="selectedUserForAction?.is_active ? 'Заблокировать' : 'Разблокировать'"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmToggleLock"
     >
-      <div class="bg-surface-container-low border border-outline-variant rounded-xl p-lg max-w-sm w-full shadow-2xl flex flex-col gap-md">
-        <div class="flex items-center gap-2 text-primary-fixed-dim">
-          <span class="material-symbols-outlined text-xl">{{ selectedUserForAction.is_active ? 'lock' : 'lock_open' }}</span>
-          <h3 class="text-sm font-bold text-on-surface">
-            {{ selectedUserForAction.is_active ? 'Блокировка пользователя' : 'Разблокировка пользователя' }}
-          </h3>
-        </div>
-        <p class="text-xs text-on-surface leading-relaxed">
-          Вы действительно хотите {{ selectedUserForAction.is_active ? 'заблокировать' : 'разблокировать' }} оператора
-          <strong class="text-primary-fixed-dim">{{ selectedUserForAction.full_name }}</strong> ({{ selectedUserForAction.username }})?
-        </p>
-        <div class="flex items-center justify-end gap-2 pt-sm border-t border-outline-variant/60">
-          <button
-            type="button"
-            class="px-4 py-1.5 text-xs font-semibold rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
-            @click="showLockModal = false"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer"
-            :class="selectedUserForAction.is_active ? 'bg-error text-on-error hover:bg-error/90' : 'bg-tertiary-fixed-dim text-on-tertiary-fixed hover:bg-tertiary-fixed-dim/90'"
-            @click="confirmToggleLock"
-          >
-            {{ selectedUserForAction.is_active ? 'Заблокировать' : 'Разблокировать' }}
-          </button>
-        </div>
-      </div>
-    </div>
+      <p v-if="selectedUserForAction">
+        Вы действительно хотите {{ selectedUserForAction.is_active ? 'заблокировать' : 'разблокировать' }} оператора
+        <strong class="text-primary-fixed-dim">{{ selectedUserForAction.full_name }}</strong> ({{ selectedUserForAction.username }})?
+      </p>
+    </ConfirmModal>
   </div>
 </template>

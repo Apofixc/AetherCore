@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
+import {
+  PageHeader,
+  AppButton,
+  BaseCard,
+  StatusBadge,
+  BaseModal,
+  BaseSelect
+} from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useModulesStore } from '@/stores/modules'
 import type { ModuleDto } from '@/api/modules'
@@ -74,6 +82,12 @@ function getPermissionTitle(p: any): string {
   if (p && typeof p === 'object') return p.description || p.name || p.id || ''
   return String(p)
 }
+
+const filterOptions = computed(() => [
+  { value: 'all', label: t('modules.all') },
+  { value: 'active', label: t('modules.activeStatus') },
+  { value: 'disabled', label: t('modules.disabledStatus') }
+])
 </script>
 
 <template>
@@ -85,7 +99,7 @@ function getPermissionTitle(p: any): string {
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
       <div class="relative z-10 p-lg flex gap-lg h-full w-full">
         <!-- Submenu Sidebar -->
-        <aside class="w-nav-width shrink-0 hidden md:flex flex-col gap-sm border-r border-outline-variant pr-md">
+        <aside class="w-nav-width shrink-0 hidden md:flex flex-col gap-sm border-r border-outline-variant/60 pr-md">
           <div class="px-md mb-sm">
             <div class="flex flex-col gap-xs">
               <router-link
@@ -126,48 +140,40 @@ function getPermissionTitle(p: any): string {
         <!-- Main Content -->
         <div class="flex-1 flex flex-col gap-lg w-full pb-xl">
           <!-- Header Actions -->
-          <div class="flex items-center justify-between flex-wrap gap-md">
-            <div class="flex items-center gap-sm text-on-surface">
-              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                <span class="material-symbols-outlined text-xl">view_module</span>
-              </div>
-              <div>
-                <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-                  {{ t('modules.title') }}
-                </h1>
-                <p class="text-xs text-on-surface-variant mt-0.5">
-                  {{ t('modules.subtitle') }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                class="bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 active:scale-95 transition-all duration-200 hover:brightness-110 ease-in-out cursor-pointer"
+          <PageHeader
+            :title="t('modules.title')"
+            :subtitle="t('modules.subtitle')"
+            icon="view_module"
+          >
+            <template #actions>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="refresh"
+                :loading="isScanning"
                 @click="handleScan"
               >
-                <span class="material-symbols-outlined text-[18px]" :class="{ 'animate-spin': isScanning }">refresh</span>
                 {{ t('modules.scanNewModules') }}
-              </button>
-              <button
-                type="button"
-                class="bg-primary-fixed-dim hover:bg-primary-fixed-dim/90 text-on-primary-fixed border border-primary-fixed-dim px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center gap-2 active:scale-95 transition-all duration-200 shadow-glow-primary-sm hover:shadow-glow-primary-md cursor-pointer"
+              </AppButton>
+              <AppButton
+                variant="primary"
+                size="sm"
+                icon="add"
                 @click="showInstallModal = true"
               >
-                <span class="material-symbols-outlined text-[18px]">add</span>
                 {{ t('modules.installModule') }}
-              </button>
-            </div>
-          </div>
+              </AppButton>
+            </template>
+          </PageHeader>
 
           <!-- Metric Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
               <div>
-                <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
+                <p class="text-[11px] font-mono text-on-surface-variant uppercase tracking-widest mb-sm">
                   {{ t('modules.totalModules') }}
                 </p>
-                <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
+                <p class="text-[32px] leading-none font-mono font-bold text-on-surface">
                   {{ modulesStore.totalCount }}
                 </p>
               </div>
@@ -176,12 +182,12 @@ function getPermissionTitle(p: any): string {
               </div>
             </div>
 
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
               <div>
-                <p class="text-label-caps font-label-caps text-tertiary-fixed-dim uppercase tracking-widest mb-sm">
+                <p class="text-[11px] font-mono text-tertiary-fixed-dim uppercase tracking-widest mb-sm">
                   {{ t('modules.active') }}
                 </p>
-                <p class="text-[32px] leading-none font-body-mono font-bold text-tertiary-fixed-dim">
+                <p class="text-[32px] leading-none font-mono font-bold text-tertiary-fixed-dim">
                   {{ modulesStore.activeCount }}
                 </p>
               </div>
@@ -190,12 +196,12 @@ function getPermissionTitle(p: any): string {
               </div>
             </div>
 
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
               <div>
-                <p class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-widest mb-sm">
+                <p class="text-[11px] font-mono text-on-surface-variant uppercase tracking-widest mb-sm">
                   {{ t('modules.disabled') }}
                 </p>
-                <p class="text-[32px] leading-none font-body-mono font-bold text-on-surface">
+                <p class="text-[32px] leading-none font-mono font-bold text-on-surface">
                   {{ modulesStore.disabledCount }}
                 </p>
               </div>
@@ -204,12 +210,12 @@ function getPermissionTitle(p: any): string {
               </div>
             </div>
 
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex items-start justify-between">
+            <div class="bg-surface-container-low border border-outline-variant/60 p-lg rounded-xl shadow-card-dark flex items-start justify-between">
               <div>
-                <p class="text-label-caps font-label-caps text-primary-fixed-dim uppercase tracking-widest mb-sm">
+                <p class="text-[11px] font-mono text-primary-fixed-dim uppercase tracking-widest mb-sm">
                   {{ t('modules.moduleType') }}
                 </p>
-                <p class="text-[32px] leading-none font-body-mono font-bold text-primary-fixed-dim">
+                <p class="text-[32px] leading-none font-mono font-bold text-primary-fixed-dim">
                   {{ modulesStore.modules.length > 0 ? 'WASM' : '0' }}
                 </p>
               </div>
@@ -222,86 +228,69 @@ function getPermissionTitle(p: any): string {
           <!-- Main Layout: Registry + Side Details -->
           <div class="flex flex-col lg:flex-row gap-lg">
             <!-- Left: Module Registry Card -->
-            <div class="flex-1 bg-surface-container-low border border-outline-variant rounded-lg shadow-card-dark flex flex-col overflow-hidden">
-              <!-- Card Header: Views & Filters -->
-              <div class="p-md border-b border-outline-variant flex items-center justify-between flex-wrap gap-md bg-surface-container">
-                <div class="flex items-center gap-sm text-on-surface">
-                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">layers</span>
-                  </div>
-                  <div>
-                    <h2 class="font-title-sm font-bold text-on-surface">
-                      {{ t('modules.moduleRegistry') }}
-                    </h2>
-                    <p class="text-xs text-on-surface-variant mt-0.5">
-                      {{ t('modules.moduleRegistryDesc') }}
-                    </p>
-                  </div>
+            <BaseCard
+              :title="t('modules.moduleRegistry')"
+              :subtitle="t('modules.moduleRegistryDesc')"
+              icon="layers"
+              :no-padding="true"
+              class="flex-1"
+            >
+              <template #headerActions>
+                <!-- View Switcher -->
+                <div class="flex bg-surface-container-highest border border-outline-variant/60 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                    :class="viewMode === 'table'
+                      ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
+                    @click="viewMode = 'table'"
+                  >
+                    <span class="material-symbols-outlined text-[16px]">table_rows</span>
+                    {{ t('modules.tableView') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                    :class="viewMode === 'graph'
+                      ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
+                    @click="viewMode = 'graph'"
+                  >
+                    <span class="material-symbols-outlined text-[16px]">account_tree</span>
+                    {{ t('modules.topologyGraph') }}
+                  </button>
                 </div>
 
-                <div class="flex items-center gap-md flex-wrap">
-                  <!-- View Switcher -->
-                  <div class="flex bg-surface-container-highest border border-outline-variant rounded-lg p-0.5">
-                    <button
-                      type="button"
-                      class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-                      :class="viewMode === 'table'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
-                      @click="viewMode = 'table'"
-                    >
-                      <span class="material-symbols-outlined text-[16px]">table_rows</span>
-                      {{ t('modules.tableView') }}
-                    </button>
-                    <button
-                      type="button"
-                      class="px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-                      :class="viewMode === 'graph'
-                        ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm font-bold'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
-                      @click="viewMode = 'graph'"
-                    >
-                      <span class="material-symbols-outlined text-[16px]">account_tree</span>
-                      {{ t('modules.topologyGraph') }}
-                    </button>
-                  </div>
-
-                  <!-- Status Filter Select (Unified with other pages) -->
-                  <div class="relative flex items-center">
-                    <select
-                      :value="modulesStore.filter"
-                      class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer appearance-none"
-                      @change="modulesStore.setFilter(($event.target as HTMLSelectElement).value as any)"
-                    >
-                      <option value="all">{{ t('modules.all') }}</option>
-                      <option value="active">{{ t('modules.activeStatus') }}</option>
-                      <option value="disabled">{{ t('modules.disabledStatus') }}</option>
-                    </select>
-                    <span class="material-symbols-outlined absolute right-2 text-base text-on-surface-variant pointer-events-none">
-                      expand_more
-                    </span>
-                  </div>
+                <!-- Status Filter Select -->
+                <div class="w-36">
+                  <BaseSelect
+                    :model-value="modulesStore.filter"
+                    :options="filterOptions"
+                    size="sm"
+                    @update:model-value="(val) => modulesStore.setFilter(val)"
+                  />
                 </div>
-              </div>
+              </template>
 
               <!-- Table View -->
               <div v-if="viewMode === 'table'" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
-                  <thead class="bg-surface-variant/50 border-b border-outline-variant">
+                  <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant/60">
                     <tr>
-                      <th class="py-sm px-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest w-1/4">
+                      <th class="py-3 px-md w-1/4">
                         {{ t('modules.moduleName') }}
                       </th>
-                      <th class="py-sm px-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest w-1/5">
+                      <th class="py-3 px-md w-1/5">
                         {{ t('modules.moduleTypeCol') }}
                       </th>
-                      <th class="py-sm px-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest w-1/6">
+                      <th class="py-3 px-md w-1/6">
                         {{ t('modules.version') }}
                       </th>
-                      <th class="py-sm px-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest w-1/6">
+                      <th class="py-3 px-md w-1/6">
                         {{ t('modules.status') }}
                       </th>
-                      <th class="py-sm px-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest text-right">
+                      <th class="py-3 px-md text-right">
                         {{ t('modules.actions') }}
                       </th>
                     </tr>
@@ -321,37 +310,34 @@ function getPermissionTitle(p: any): string {
                           </div>
                           <div>
                             <p class="font-bold text-on-surface text-sm">{{ mod.name }}</p>
-                            <p class="text-[11px] font-body-mono text-on-surface-variant">{{ mod.id }}</p>
+                            <p class="text-[11px] font-mono text-on-surface-variant">{{ mod.id }}</p>
                           </div>
                         </div>
                       </td>
-                      <td class="py-md px-md font-body-mono text-xs text-on-surface-variant">
+                      <td class="py-md px-md font-mono text-xs text-on-surface-variant">
                         {{ mod.manifest?.ui?.type || 'WASM Core' }}
                       </td>
-                      <td class="py-md px-md font-body-mono text-xs text-on-surface-variant">
+                      <td class="py-md px-md font-mono text-xs text-on-surface-variant">
                         v{{ mod.version }}
                       </td>
                       <td class="py-md px-md">
-                        <span
-                          class="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-body-mono"
-                          :class="mod.is_active
-                            ? 'bg-tertiary-fixed-dim/15 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30'
-                            : 'bg-surface-variant text-on-surface-variant border border-outline-variant/40'"
+                        <StatusBadge
+                          :variant="mod.is_active ? 'success' : 'neutral'"
+                          :dot="true"
+                          :pulse="mod.is_active"
+                          size="xs"
                         >
                           {{ mod.is_active ? t('modules.activeStatus') : t('modules.disabledStatus') }}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td class="py-md px-md text-right">
-                        <button
-                          type="button"
-                          class="px-3 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer active:scale-95"
-                          :class="mod.is_active
-                            ? 'border-error text-error hover:bg-error-container/20'
-                            : 'border-tertiary-fixed-dim text-tertiary-fixed-dim hover:bg-tertiary-fixed-dim/15'"
+                        <AppButton
+                          :variant="mod.is_active ? 'danger' : 'outline'"
+                          size="xs"
                           @click.stop="handleToggle(mod)"
                         >
                           {{ mod.is_active ? t('modules.disable') : t('modules.enable') }}
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
 
@@ -372,7 +358,7 @@ function getPermissionTitle(p: any): string {
                   <div class="px-6 py-3 rounded-xl bg-surface-container-highest border-2 border-primary-fixed-dim text-primary-fixed-dim shadow-glow-primary-md flex items-center gap-3">
                     <span class="material-symbols-outlined text-2xl animate-pulse">hub</span>
                     <div class="text-left">
-                      <div class="text-xs font-bold font-body-mono uppercase">AetherCore Message Bus</div>
+                      <div class="text-xs font-bold font-mono uppercase">AetherCore Message Bus</div>
                       <div class="text-[10px] text-on-surface-variant">IPC / WASM Host Runtime</div>
                     </div>
                   </div>
@@ -392,7 +378,7 @@ function getPermissionTitle(p: any): string {
                         <span class="material-symbols-outlined text-xl">extension</span>
                       </div>
                       <span class="text-xs font-bold text-on-surface">{{ mod.name }}</span>
-                      <span class="text-[10px] font-body-mono text-on-surface-variant">v{{ mod.version }}</span>
+                      <span class="text-[10px] font-mono text-on-surface-variant">v{{ mod.version }}</span>
                     </div>
 
                     <!-- Host System Adapter Node -->
@@ -401,7 +387,7 @@ function getPermissionTitle(p: any): string {
                         <span class="material-symbols-outlined text-xl">router</span>
                       </div>
                       <span class="text-xs font-bold text-on-surface">Network Driver</span>
-                      <span class="text-[10px] font-body-mono text-on-surface-variant">Sys Socket</span>
+                      <span class="text-[10px] font-mono text-on-surface-variant">Sys Socket</span>
                     </div>
                   </div>
                 </div>
@@ -413,87 +399,71 @@ function getPermissionTitle(p: any): string {
                   </p>
                 </div>
               </div>
-            </div>
+            </BaseCard>
 
             <!-- Right: Module Details Card -->
             <div class="w-full lg:w-80 shrink-0">
-              <div
+              <BaseCard
                 v-if="modulesStore.selectedModule"
-                class="bg-surface-container-low border border-outline-variant rounded-lg p-lg shadow-card-dark flex flex-col gap-md"
+                :title="modulesStore.selectedModule.name"
+                :subtitle="modulesStore.selectedModule.id"
+                icon="extension"
+                :badge="`v${modulesStore.selectedModule.version}`"
               >
-                <div class="flex items-start justify-between border-b border-outline-variant/40 pb-sm gap-2">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                      <span class="material-symbols-outlined text-lg">extension</span>
-                    </div>
-                    <div>
-                      <h3 class="font-title-sm text-sm text-on-surface font-bold">
-                        {{ modulesStore.selectedModule.name }}
-                      </h3>
-                      <p class="text-[11px] font-body-mono text-on-surface-variant">
-                        {{ modulesStore.selectedModule.id }}
-                      </p>
-                    </div>
+                <div class="flex flex-col gap-md">
+                  <div>
+                    <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
+                      {{ t('modules.description') }}
+                    </label>
+                    <p class="text-xs text-on-surface leading-relaxed">
+                      {{ modulesStore.selectedModule.manifest?.description || t('modules.noDescription') }}
+                    </p>
                   </div>
-                  <span class="text-[10px] font-body-mono text-primary-fixed-dim font-bold px-2 py-0.5 rounded bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 shrink-0">
-                    v{{ modulesStore.selectedModule.version }}
-                  </span>
-                </div>
 
-                <div>
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-                    {{ t('modules.description') }}
-                  </label>
-                  <p class="text-xs text-on-surface leading-relaxed">
-                    {{ modulesStore.selectedModule.manifest?.description || t('modules.noDescription') }}
-                  </p>
-                </div>
+                  <div>
+                    <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
+                      {{ t('modules.author') }}
+                    </label>
+                    <p class="text-xs text-on-surface font-mono">
+                      {{ modulesStore.selectedModule.manifest?.author || 'AetherCore Team' }}
+                    </p>
+                  </div>
 
-                <div>
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-                    {{ t('modules.author') }}
-                  </label>
-                  <p class="text-xs text-on-surface font-body-mono">
-                    {{ modulesStore.selectedModule.manifest?.author || 'AetherCore Team' }}
-                  </p>
-                </div>
-
-                <div>
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase block mb-1">
-                    {{ t('modules.permissions') }}
-                  </label>
-                  <div class="flex flex-wrap gap-1.5">
-                    <span
-                      v-for="p in modulesStore.selectedModule.manifest?.permissions || ['network.listen', 'storage.kv', 'events.publish']"
-                      :key="formatPermission(p)"
-                      :title="getPermissionTitle(p)"
-                      class="px-2 py-0.5 bg-surface-variant border border-outline-variant/60 text-[10px] font-body-mono text-primary-fixed-dim rounded"
-                    >
-                      {{ formatPermission(p) }}
-                    </span>
+                  <div>
+                    <label class="text-[10px] font-mono text-on-surface-variant uppercase block mb-1">
+                      {{ t('modules.permissions') }}
+                    </label>
+                    <div class="flex flex-wrap gap-1.5">
+                      <span
+                        v-for="p in modulesStore.selectedModule.manifest?.permissions || ['network.listen', 'storage.kv', 'events.publish']"
+                        :key="formatPermission(p)"
+                        :title="getPermissionTitle(p)"
+                        class="px-2 py-0.5 bg-surface-variant border border-outline-variant/60 text-[10px] font-mono text-primary-fixed-dim rounded"
+                      >
+                        {{ formatPermission(p) }}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div class="mt-md pt-sm border-t border-outline-variant/40 flex justify-end">
-                  <button
-                    type="button"
-                    class="w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95"
-                    :class="modulesStore.selectedModule.is_active
-                      ? 'bg-error-container/20 text-error hover:bg-error-container/40 border border-error/40'
-                      : 'bg-primary-fixed-dim text-on-primary-fixed hover:bg-primary-fixed-dim/90 shadow-glow-primary-sm'"
+                <template #footer>
+                  <AppButton
+                    :variant="modulesStore.selectedModule.is_active ? 'danger' : 'primary'"
+                    size="sm"
+                    :block="true"
                     @click="handleToggle(modulesStore.selectedModule)"
                   >
                     {{ modulesStore.selectedModule.is_active ? t('modules.disable') : t('modules.enable') }}
-                  </button>
-                </div>
-              </div>
+                  </AppButton>
+                </template>
+              </BaseCard>
 
               <!-- Empty State -->
               <div
                 v-else
                 class="bg-surface-container-low border border-outline-variant rounded-lg p-xl flex flex-col items-center justify-center text-center shadow-card-dark min-h-[180px] gap-2"
               >
-                <div class="w-12 h-12 rounded-xl bg-surface-container-highest/60 border border-outline-variant/50 flex items-center justify-center text-on-surface-variant/40 mb-1">
+                <div class="w-12 h-12 rounded-lg bg-surface-container-highest/60 border border-outline-variant/50 flex items-center justify-center text-on-surface-variant/40 mb-1">
                   <span class="material-symbols-outlined text-2xl">extension</span>
                 </div>
                 <p class="text-xs font-bold text-on-surface">
@@ -510,72 +480,54 @@ function getPermissionTitle(p: any): string {
     </main>
 
     <!-- Modal: Install Module -->
-    <div
-      v-if="showInstallModal"
-      class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-md animate-fade-in"
-      @click.self="showInstallModal = false"
+    <BaseModal
+      v-model="showInstallModal"
+      :title="t('modules.uploadWasmTitle')"
+      :subtitle="t('modules.uploadWasmDesc')"
+      icon="add_box"
+      max-width="max-w-lg"
     >
-      <div class="bg-surface-container-low border border-outline-variant rounded-xl p-lg max-w-lg w-full shadow-2xl flex flex-col gap-md">
-        <div class="flex items-center justify-between border-b border-outline-variant/60 pb-sm">
-          <div class="flex items-center gap-2 text-primary-fixed-dim">
-            <span class="material-symbols-outlined text-xl">add_box</span>
-            <h3 class="text-sm font-bold text-on-surface">{{ t('modules.uploadWasmTitle') }}</h3>
-          </div>
-          <button
-            type="button"
-            class="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-            @click="showInstallModal = false"
-          >
-            <span class="material-symbols-outlined text-lg">close</span>
-          </button>
-        </div>
-
-        <p class="text-xs text-on-surface-variant">
-          {{ t('modules.uploadWasmDesc') }}
+      <!-- Drop Zone -->
+      <div
+        class="border-2 border-dashed border-outline-variant hover:border-primary-fixed-dim/60 rounded-lg p-xl flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-surface-container-lowest/50 my-2"
+        @dragover.prevent
+        @drop="handleDrop"
+        @click="($refs.fileInput as HTMLInputElement)?.click()"
+      >
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".wasm,.tar.gz,.zip"
+          class="hidden"
+          @change="handleFileChange"
+        />
+        <span class="material-symbols-outlined text-3xl text-primary-fixed-dim mb-2">cloud_upload</span>
+        <p class="text-xs text-on-surface font-semibold mb-1">
+          {{ selectedFile ? selectedFile.name : t('modules.dragDropFile') }}
         </p>
-
-        <!-- Drop Zone -->
-        <div
-          class="border-2 border-dashed border-outline-variant hover:border-primary-fixed-dim/60 rounded-lg p-xl flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-surface-container-lowest/50"
-          @dragover.prevent
-          @drop="handleDrop"
-          @click="($refs.fileInput as HTMLInputElement)?.click()"
-        >
-          <input
-            ref="fileInput"
-            type="file"
-            accept=".wasm,.tar.gz,.zip"
-            class="hidden"
-            @change="handleFileChange"
-          />
-          <span class="material-symbols-outlined text-3xl text-primary-fixed-dim mb-2">cloud_upload</span>
-          <p class="text-xs text-on-surface font-semibold mb-1">
-            {{ selectedFile ? selectedFile.name : t('modules.dragDropFile') }}
-          </p>
-          <p class="text-[10px] text-on-surface-variant font-body-mono">
-            {{ selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : t('modules.browseFiles') }}
-          </p>
-        </div>
-
-        <div class="flex items-center justify-end gap-2 pt-sm border-t border-outline-variant/60">
-          <button
-            type="button"
-            class="px-4 py-1.5 text-xs font-semibold rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-variant transition-colors cursor-pointer"
-            @click="showInstallModal = false"
-          >
-            {{ t('modules.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="px-4 py-1.5 text-xs font-bold rounded-lg bg-primary-fixed-dim text-on-primary-fixed hover:bg-primary-fixed-dim/90 shadow-glow-primary-sm transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            :disabled="!selectedFile || isInstalling"
-            @click="handleInstall"
-          >
-            <span v-if="isInstalling" class="material-symbols-outlined text-sm animate-spin">refresh</span>
-            {{ isInstalling ? t('modules.installing') : t('modules.install') }}
-          </button>
-        </div>
+        <p class="text-[10px] text-on-surface-variant font-mono">
+          {{ selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : t('modules.browseFiles') }}
+        </p>
       </div>
-    </div>
+
+      <template #footer>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          @click="showInstallModal = false"
+        >
+          {{ t('modules.cancel') }}
+        </AppButton>
+        <AppButton
+          variant="primary"
+          size="sm"
+          :disabled="!selectedFile"
+          :loading="isInstalling"
+          @click="handleInstall"
+        >
+          {{ isInstalling ? t('modules.installing') : t('modules.install') }}
+        </AppButton>
+      </template>
+    </BaseModal>
   </div>
 </template>

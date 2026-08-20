@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
+import {
+  PageHeader,
+  BaseCard,
+  AppButton,
+  BaseInput,
+  BaseSelect,
+  BaseSwitch,
+  StatusBadge
+} from '@/components/common'
 import { useI18n, type Locale } from '@/i18n'
 import { useTheme, type ThemeMode } from '@/theme'
 import { useAuthStore } from '@/stores/auth'
@@ -98,16 +107,6 @@ const moduleSubscriptions = ref<ModuleSub[]>([
 // Save Notification
 const savedNotice = ref(false)
 
-function handleThemeChange(event: Event) {
-  const select = event.target as HTMLSelectElement
-  setTheme(select.value.toLowerCase() as ThemeMode)
-}
-
-function handleLocaleChange(event: Event) {
-  const select = event.target as HTMLSelectElement
-  setLocale(select.value as Locale)
-}
-
 function handleSaveProfile() {
   if (authStore.user) {
     authStore.user.full_name = fullName.value
@@ -190,6 +189,47 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
     console.debug('Audio not supported or blocked:', e)
   }
 }
+
+const themeOptions = computed(() => [
+  { value: 'dark', label: t('profile.themeDark') },
+  { value: 'light', label: t('profile.themeLight') },
+  { value: 'system', label: t('profile.themeSystem') }
+])
+
+const languageOptions = [
+  { value: 'en', label: 'English (EN)' },
+  { value: 'ru', label: 'Русский (RU)' },
+  { value: 'de', label: 'Deutsch (DE) — скоро', disabled: true },
+  { value: 'es', label: 'Español (ES) — скоро', disabled: true },
+  { value: 'fr', label: 'Français (FR) — скоро', disabled: true },
+  { value: 'zh', label: '中文 (ZH) — скоро', disabled: true }
+]
+
+const timezoneOptions = [
+  { value: 'Europe/Minsk', label: 'Europe/Minsk (GMT+3)' },
+  { value: 'Europe/Moscow', label: 'Europe/Moscow (GMT+3)' },
+  { value: 'UTC', label: 'UTC (GMT+0)' },
+  { value: 'America/New_York', label: 'America/New_York (GMT-5)' }
+]
+
+const thresholdOptions = computed(() => [
+  { value: 'profile.allEvents', label: t('profile.allEvents') },
+  { value: 'profile.warnAndErrors', label: t('profile.warnAndErrors') },
+  { value: 'profile.criticalOnly', label: t('profile.criticalOnly') },
+  { value: 'profile.silentMode', label: t('profile.silentMode') }
+])
+
+const soundOptions = [
+  'Default (by severity)',
+  'Synth Chime',
+  'Futuristic Blip',
+  'Mute sound'
+]
+
+const infoSoundOptions = ['Soft Chime', 'Digital Click', 'Hologram Whir', 'Gentle Bell']
+const successSoundOptions = ['Major Chord', 'Ascending Harp', 'Success Ping', 'Power Up']
+const warningSoundOptions = ['Double Beep', 'Low Drone', 'Caution Radar', 'Warning Clack']
+const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'System Failure']
 </script>
 
 <template>
@@ -201,681 +241,546 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
       <div class="p-lg flex flex-col gap-lg w-full">
         <!-- Top Page Header -->
-        <div class="flex items-center justify-between flex-wrap gap-md">
-          <div class="flex items-center gap-sm text-on-surface">
-            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-              <span class="material-symbols-outlined text-xl">account_circle</span>
-            </div>
-            <div>
-              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-                {{ t('profile.title') }}
-              </h1>
-              <p class="text-xs text-on-surface-variant mt-0.5">
-                {{ t('profile.subtitle') }}
-              </p>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          :title="t('profile.title')"
+          :subtitle="t('profile.subtitle')"
+          icon="account_circle"
+        />
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-lg">
           <!-- Left Column: User Summary & Security -->
           <div class="lg:col-span-4 flex flex-col gap-lg">
             <!-- Profile Card -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col items-center text-center gap-md">
-              <div class="relative mb-2">
-                <div class="w-24 h-24 rounded-full bg-surface-variant border border-primary-fixed-dim flex items-center justify-center text-2xl font-bold font-body-mono text-primary-fixed-dim shadow-glow-primary-md">
+            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg flex flex-col items-center text-center gap-md shadow-card-dark">
+              <div class="relative w-24 h-24 mx-auto">
+                <div class="w-24 h-24 rounded-full bg-surface-variant border border-primary-fixed-dim flex items-center justify-center text-2xl font-bold font-mono text-primary-fixed-dim shadow-glow-primary-md">
                   ГА
                 </div>
                 <div class="absolute bottom-1 right-1 w-4 h-4 bg-tertiary-fixed-dim rounded-full border-2 border-background animate-pulse"></div>
               </div>
-              <div>
+              <div class="flex flex-col items-center">
                 <h2 class="font-display-lg text-display-lg text-on-surface font-bold">
                   {{ fullName }}
                 </h2>
                 <p class="text-xs text-primary-fixed-dim font-medium tracking-wide mt-1">
                   {{ t('profile.superuserRole') }}
                 </p>
-                <p class="text-[11px] text-on-surface-variant font-body-mono mt-0.5">
+                <p class="text-[11px] text-on-surface-variant font-mono mt-0.5">
                   {{ t('profile.uid') }}
                 </p>
               </div>
 
-              <div class="flex items-center justify-between w-full mt-2 px-md py-2 border border-outline-variant/40 rounded-lg bg-surface-container">
+              <div class="flex items-center justify-between w-full px-md py-2 border border-outline-variant/60 rounded-lg bg-surface-container">
                 <div class="flex items-center gap-1.5">
                   <span class="w-2 h-2 rounded-full bg-tertiary-fixed-dim animate-pulse"></span>
-                  <span class="text-xs text-tertiary-fixed-dim font-bold">{{ t('profile.activeStatus') }}</span>
+                  <span class="text-xs font-bold text-tertiary-fixed-dim uppercase tracking-wider">{{ t('profile.activeStatus') }}</span>
                 </div>
-                <span class="text-xs text-on-surface-variant font-body-mono font-medium">{{ currentTimeString }}</span>
+                <span class="text-xs text-on-surface-variant font-mono font-medium">{{ currentTimeString }}</span>
               </div>
 
               <div class="grid grid-cols-2 gap-sm w-full">
-                <button
-                  type="button"
-                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                <AppButton
+                  variant="outline"
+                  size="sm"
+                  icon="upload"
                 >
-                  <span class="material-symbols-outlined text-base text-primary-fixed-dim">upload</span>
-                  <span>{{ t('profile.uploadPhoto') }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  {{ t('profile.uploadPhoto') }}
+                </AppButton>
+                <AppButton
+                  variant="outline"
+                  size="sm"
+                  icon="restart_alt"
                 >
-                  <span class="material-symbols-outlined text-base text-on-surface-variant">restart_alt</span>
-                  <span>{{ t('profile.resetPhoto') }}</span>
-                </button>
+                  {{ t('profile.resetPhoto') }}
+                </AppButton>
               </div>
             </div>
 
             <!-- Security Policies Card -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-              <div class="flex items-center gap-sm text-on-surface">
-                <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                  <span class="material-symbols-outlined text-xl">security</span>
-                </div>
-                <div>
-                  <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.securityPolicies') }}</h3>
-                  <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.securityPoliciesDesc') }}</p>
-                </div>
-              </div>
-
-              <div v-if="passwordStatus" class="p-2 text-xs rounded font-body-mono bg-primary-fixed-dim/10 border border-primary-fixed-dim text-primary-fixed-dim">
+            <BaseCard
+              :title="t('profile.securityPolicies')"
+              :subtitle="t('profile.securityPoliciesDesc')"
+              icon="security"
+            >
+              <div v-if="passwordStatus" class="p-2.5 mb-3 text-xs rounded-xl font-mono bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 text-primary-fixed-dim">
                 {{ passwordStatus }}
               </div>
 
-              <form class="flex flex-col gap-sm" @submit.prevent="handleChangePassword">
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
-                    {{ t('profile.currentPassword') }}
-                  </label>
-                  <input
-                    v-model="currentPassword"
-                    type="password"
-                    class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg px-3 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                    placeholder="••••••••••••"
-                  />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
-                    {{ t('profile.newPassword') }}
-                  </label>
-                  <input
-                    v-model="newPassword"
-                    type="password"
-                    class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg px-3 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                    placeholder="••••••••••••"
-                  />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-label-caps text-on-surface-variant uppercase">
-                    {{ t('profile.confirmNewPassword') }}
-                  </label>
-                  <input
-                    v-model="confirmPassword"
-                    type="password"
-                    class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg px-3 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                    placeholder="••••••••••••"
-                  />
-                </div>
-                <div class="flex justify-end mt-xs">
-                  <button
+              <form class="flex flex-col gap-3" @submit.prevent="handleChangePassword">
+                <BaseInput
+                  v-model="currentPassword"
+                  type="password"
+                  :label="t('profile.currentPassword')"
+                  placeholder="••••••••••••"
+                  size="sm"
+                />
+                <BaseInput
+                  v-model="newPassword"
+                  type="password"
+                  :label="t('profile.newPassword')"
+                  placeholder="••••••••••••"
+                  size="sm"
+                />
+                <BaseInput
+                  v-model="confirmPassword"
+                  type="password"
+                  :label="t('profile.confirmNewPassword')"
+                  placeholder="••••••••••••"
+                  size="sm"
+                />
+                <div class="flex justify-end mt-1">
+                  <AppButton
+                    variant="primary"
+                    size="sm"
                     type="submit"
-                    class="h-8 px-4 bg-primary-fixed-dim text-on-primary-fixed font-bold shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 rounded-lg text-xs uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    icon="lock_reset"
                   >
-                    <span class="material-symbols-outlined text-base">lock_reset</span>
-                    <span>{{ t('profile.changePassword') }}</span>
-                  </button>
+                    {{ t('profile.changePassword') }}
+                  </AppButton>
                 </div>
               </form>
-            </div>
+            </BaseCard>
 
             <!-- Two-Factor Auth Card -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-sm text-on-surface">
-                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">verified_user</span>
-                  </div>
-                  <div>
-                    <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.twoFactorAuth') }}</h3>
-                    <p class="text-xs text-on-surface-variant mt-0.5">TOTP</p>
-                  </div>
-                </div>
-                <span class="px-2 py-0.5 bg-surface-variant text-[10px] font-bold text-on-surface-variant rounded uppercase font-body-mono border border-outline-variant/40">
-                  Disabled
-                </span>
-              </div>
-              <p class="text-xs text-on-surface-variant leading-relaxed">
+            <BaseCard
+              :title="t('profile.twoFactorAuth')"
+              subtitle="TOTP"
+              icon="verified_user"
+              badge="Disabled"
+              badge-variant="neutral"
+            >
+              <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
                 {{ t('profile.twoFactorDesc') }}
               </p>
-              <button
-                type="button"
-                class="h-8 bg-surface-container hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-xs font-semibold uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="qr_code_2"
+                :block="true"
               >
-                <span class="material-symbols-outlined text-base text-primary-fixed-dim">qr_code_2</span>
-                <span>{{ t('profile.setup2fa') }}</span>
-              </button>
-            </div>
+                {{ t('profile.setup2fa') }}
+              </AppButton>
+            </BaseCard>
           </div>
 
           <!-- Right Column -->
           <div class="lg:col-span-8 flex flex-col gap-lg">
             <!-- Personal Information -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-sm text-on-surface">
-                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">person</span>
-                  </div>
-                  <div>
-                    <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.personalInfo') }}</h3>
-                    <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.personalInfoDesc') }}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="h-8 px-4 bg-primary-fixed-dim text-on-primary-fixed font-bold shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 rounded-lg text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            <BaseCard
+              :title="t('profile.personalInfo')"
+              :subtitle="t('profile.personalInfoDesc')"
+              icon="person"
+            >
+              <template #headerActions>
+                <AppButton
+                  variant="primary"
+                  size="sm"
+                  icon="save"
                   @click="handleSaveProfile"
                 >
-                  <span class="material-symbols-outlined text-base">save</span>
                   {{ savedNotice ? t('profile.savedChanges') : t('profile.saveChanges') }}
-                </button>
-              </div>
+                </AppButton>
+              </template>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-md mt-sm">
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.fullName') }}</label>
-                  <input
-                    v-model="fullName"
-                    type="text"
-                    class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg px-3 text-xs text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                  />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.department') }} <span class="text-[8px] opacity-50 font-body-mono">({{ t('profile.readonly') }})</span></label>
-                  <input
-                    v-model="department"
-                    type="text"
-                    readonly
-                    class="h-8 bg-surface-variant/30 border border-outline-variant/50 rounded-lg px-3 text-xs text-on-surface-variant cursor-not-allowed font-body-mono"
-                  />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.role') }} <span class="text-[8px] opacity-50 font-body-mono">({{ t('profile.readonly') }})</span></label>
-                  <input
-                    v-model="role"
-                    type="text"
-                    readonly
-                    class="h-8 bg-surface-variant/30 border border-outline-variant/50 rounded-lg px-3 text-xs text-on-surface-variant cursor-not-allowed font-body-mono"
-                  />
-                </div>
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.email') }}</label>
-                  <input
-                    v-model="email"
-                    type="email"
-                    class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg px-3 text-xs font-body-mono text-on-surface focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                  />
-                </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+                <BaseInput
+                  v-model="fullName"
+                  :label="t('profile.fullName')"
+                  size="sm"
+                />
+                <BaseInput
+                  v-model="department"
+                  :label="`${t('profile.department')} (${t('profile.readonly')})`"
+                  :readonly="true"
+                  :disabled="true"
+                  size="sm"
+                />
+                <BaseInput
+                  v-model="role"
+                  :label="`${t('profile.role')} (${t('profile.readonly')})`"
+                  :readonly="true"
+                  :disabled="true"
+                  size="sm"
+                />
+                <BaseInput
+                  v-model="email"
+                  type="email"
+                  :label="t('profile.email')"
+                  size="sm"
+                />
               </div>
-            </div>
+            </BaseCard>
 
             <!-- Appearance & Regionality -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-              <div class="flex items-center gap-sm text-on-surface">
-                <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                  <span class="material-symbols-outlined text-xl">tune</span>
-                </div>
-                <div>
-                  <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.appearanceRegionality') }}</h3>
-                  <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.appearanceRegionalityDesc') }}</p>
+            <BaseCard
+              :title="t('profile.appearanceRegionality')"
+              :subtitle="t('profile.appearanceRegionalityDesc')"
+              icon="tune"
+            >
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+                <BaseSelect
+                  :model-value="theme"
+                  :label="t('profile.theme')"
+                  :options="themeOptions"
+                  size="sm"
+                  @update:model-value="(val) => setTheme(val as ThemeMode)"
+                />
+
+                <BaseSelect
+                  :model-value="locale"
+                  :label="t('profile.language')"
+                  :options="languageOptions"
+                  size="sm"
+                  @update:model-value="(val) => setLocale(val as Locale)"
+                />
+
+                <div class="md:col-span-2">
+                  <BaseSelect
+                    v-model="timezone"
+                    :label="t('profile.timezone')"
+                    :options="timezoneOptions"
+                    size="sm"
+                  >
+                    <template #labelRight>
+                      <button
+                        type="button"
+                        class="flex items-center gap-1 text-primary-fixed-dim text-xs cursor-pointer hover:underline"
+                        @click="handleAutoDetectTimezone"
+                      >
+                        <span class="material-symbols-outlined text-sm">auto_mode</span>
+                        <span>{{ t('profile.autoDetect') }}</span>
+                      </button>
+                    </template>
+                  </BaseSelect>
                 </div>
               </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-md mt-sm">
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.theme') }}</label>
-                  <div class="relative flex items-center">
-                    <select
-                      :value="theme"
-                      class="w-full h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                      @change="handleThemeChange"
-                    >
-                      <option value="dark">{{ t('profile.themeDark') }}</option>
-                      <option value="light">{{ t('profile.themeLight') }}</option>
-                      <option value="system">{{ t('profile.themeSystem') }}</option>
-                    </select>
-                    <span class="material-symbols-outlined text-base text-on-surface-variant absolute right-2.5 pointer-events-none">
-                      expand_more
-                    </span>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.language') }}</label>
-                  <div class="relative flex items-center">
-                    <select
-                      :value="locale"
-                      class="w-full h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                      @change="handleLocaleChange"
-                    >
-                      <option value="en">English (EN)</option>
-                      <option value="ru">Русский (RU)</option>
-                      <option value="de" disabled>Deutsch (DE) — скоро</option>
-                      <option value="es" disabled>Español (ES) — скоро</option>
-                      <option value="fr" disabled>Français (FR) — скоро</option>
-                      <option value="zh" disabled>中文 (ZH) — скоро</option>
-                    </select>
-                    <span class="material-symbols-outlined text-base text-on-surface-variant absolute right-2.5 pointer-events-none">
-                      expand_more
-                    </span>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-1 md:col-span-2">
-                  <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-on-surface-variant uppercase">{{ t('profile.timezone') }}</label>
-                    <button
-                      type="button"
-                      class="flex items-center gap-1 text-primary-fixed-dim text-xs cursor-pointer hover:underline"
-                      @click="handleAutoDetectTimezone"
-                    >
-                      <span class="material-symbols-outlined text-sm">auto_mode</span>
-                      <span>{{ t('profile.autoDetect') }}</span>
-                    </button>
-                  </div>
-                  <div class="relative flex items-center">
-                    <select
-                      v-model="timezone"
-                      class="w-full h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-3 pr-8 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer font-body-mono"
-                    >
-                      <option value="Europe/Minsk">Europe/Minsk (GMT+3)</option>
-                      <option value="Europe/Moscow">Europe/Moscow (GMT+3)</option>
-                      <option value="UTC">UTC (GMT+0)</option>
-                      <option value="America/New_York">America/New_York (GMT-5)</option>
-                    </select>
-                    <span class="material-symbols-outlined absolute right-2.5 text-base text-on-surface-variant pointer-events-none">
-                      expand_more
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </BaseCard>
 
             <!-- Complete Notification Settings -->
-            <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-lg">
-              <div class="flex items-start justify-between">
-                <div class="flex items-center gap-sm text-on-surface">
-                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">notifications_active</span>
-                  </div>
-                  <div>
-                    <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.notificationSettings') }}</h3>
-                    <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.notificationDesc') }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Top Row: Do Not Disturb & Quiet Hours Grid -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
-                <!-- Do Not Disturb Card -->
-                <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col justify-between gap-3">
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="flex items-center gap-2.5">
-                      <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                        <span class="material-symbols-outlined text-base">do_not_disturb_on</span>
+            <BaseCard
+              :title="t('profile.notificationSettings')"
+              :subtitle="t('profile.notificationDesc')"
+              icon="notifications_active"
+            >
+              <div class="flex flex-col gap-lg">
+                <!-- Top Row: Do Not Disturb & Quiet Hours Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+                  <!-- Do Not Disturb Card -->
+                  <div class="p-md bg-surface-container-highest/30 border border-outline-variant/50 rounded-xl flex flex-col justify-between gap-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                          <span class="material-symbols-outlined text-base">do_not_disturb_on</span>
+                        </div>
+                        <div>
+                          <h4 class="text-xs font-bold text-on-surface">{{ t('profile.doNotDisturb') }}</h4>
+                          <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.doNotDisturbDesc') }}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 class="text-xs font-bold text-on-surface">{{ t('profile.doNotDisturb') }}</h4>
-                        <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.doNotDisturbDesc') }}</p>
-                      </div>
-                    </div>
-                    <div
-                      class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase shrink-0"
-                      :class="activeMuteDuration !== 'none'
-                        ? 'bg-warning-yellow/10 border-warning-yellow/30 text-warning-yellow'
-                        : 'bg-tertiary-fixed-dim/10 border-tertiary-fixed-dim/30 text-tertiary-fixed-dim'"
-                    >
-                      <span
-                        class="w-1.5 h-1.5 rounded-full"
-                        :class="activeMuteDuration !== 'none' ? 'bg-warning-yellow' : 'bg-tertiary-fixed-dim animate-pulse'"
-                      ></span>
-                      <span>{{ activeMuteDuration !== 'none' ? `${t('profile.notificationsMuted')} (${activeMuteDuration})` : t('profile.notificationsActive') }}</span>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
-                    <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.muteNotifications') }}</span>
-                    <div class="flex items-center gap-1">
-                      <button
-                        v-for="dur in (['15m', '1h', '8h', '24h'] as const)"
-                        :key="dur"
-                        type="button"
-                        class="h-7 px-2.5 border rounded-md text-xs font-semibold transition-all cursor-pointer"
-                        :class="activeMuteDuration === dur
-                          ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
-                          : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
-                        @click="activeMuteDuration = activeMuteDuration === dur ? 'none' : dur"
+                      <StatusBadge
+                        :variant="activeMuteDuration !== 'none' ? 'warning' : 'success'"
+                        :pulse="activeMuteDuration === 'none'"
+                        :dot="true"
+                        size="xs"
                       >
-                        {{ dur }}
-                      </button>
-                      <button
-                        type="button"
-                        class="h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1 border transition-all cursor-pointer"
-                        :class="activeMuteDuration === 'inf'
-                          ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
-                          : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
-                        @click="activeMuteDuration = activeMuteDuration === 'inf' ? 'none' : 'inf'"
-                      >
-                        <span>{{ t('profile.untilTurnedOff') }}</span>
-                      </button>
+                        {{ activeMuteDuration !== 'none' ? `${t('profile.notificationsMuted')} (${activeMuteDuration})` : t('profile.notificationsActive') }}
+                      </StatusBadge>
+                    </div>
+
+                    <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
+                      <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.muteNotifications') }}</span>
+                      <div class="flex items-center gap-1">
+                        <button
+                          v-for="dur in (['15m', '1h', '8h', '24h'] as const)"
+                          :key="dur"
+                          type="button"
+                          class="h-7 px-2.5 border rounded-md text-xs font-semibold transition-all cursor-pointer"
+                          :class="activeMuteDuration === dur
+                            ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
+                            : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
+                          @click="activeMuteDuration = activeMuteDuration === dur ? 'none' : dur"
+                        >
+                          {{ dur }}
+                        </button>
+                        <button
+                          type="button"
+                          class="h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1 border transition-all cursor-pointer"
+                          :class="activeMuteDuration === 'inf'
+                            ? 'bg-primary-fixed-dim text-on-primary-fixed border-primary-fixed-dim shadow-glow-primary-sm'
+                            : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface border-outline-variant/40'"
+                          @click="activeMuteDuration = activeMuteDuration === 'inf' ? 'none' : 'inf'"
+                        >
+                          <span>{{ t('profile.untilTurnedOff') }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Quiet Hours Card -->
+                  <div class="p-md bg-surface-container-highest/30 border border-outline-variant/50 rounded-xl flex flex-col justify-between gap-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                          <span class="material-symbols-outlined text-base">schedule</span>
+                        </div>
+                        <div>
+                          <h4 class="text-xs font-bold text-on-surface">{{ t('profile.quietHours') }}</h4>
+                          <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.quietHoursDesc') }}</p>
+                        </div>
+                      </div>
+                      <BaseSwitch
+                        v-model="quietHoursEnabled"
+                        size="sm"
+                        class="!p-0"
+                      />
+                    </div>
+
+                    <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
+                      <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.quietScheduleLabel') }}</span>
+                      <span class="text-xs font-mono font-bold text-on-surface bg-surface-container-highest px-2.5 py-1 rounded-md border border-outline-variant/40">
+                        23:00 — 07:00 (GMT+3)
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Quiet Hours Card -->
-                <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col justify-between gap-3">
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="flex items-center gap-2.5">
-                      <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                        <span class="material-symbols-outlined text-base">schedule</span>
-                      </div>
-                      <div>
-                        <h4 class="text-xs font-bold text-on-surface">{{ t('profile.quietHours') }}</h4>
-                        <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.quietHoursDesc') }}</p>
-                      </div>
+                <!-- Module Subscriptions Section -->
+                <div class="bg-surface-container border border-outline-variant/60 rounded-xl overflow-hidden flex flex-col">
+                  <div class="p-md border-b border-outline-variant/60 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                      <span class="material-symbols-outlined text-base">widgets</span>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
-                      <input class="sr-only peer" type="checkbox" v-model="quietHoursEnabled">
-                      <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
-                    </label>
+                    <div>
+                      <h4 class="text-xs font-bold text-on-surface">{{ t('profile.moduleSubscriptions') }}</h4>
+                      <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.moduleSubscriptionsDesc') }}</p>
+                    </div>
                   </div>
 
-                  <div class="flex items-center justify-between flex-wrap gap-2 pt-2.5 border-t border-outline-variant/30">
-                    <span class="text-xs text-on-surface-variant font-medium">{{ t('profile.quietScheduleLabel') }}</span>
-                    <span class="text-xs font-body-mono font-bold text-on-surface bg-surface-container-highest px-2.5 py-1 rounded-md border border-outline-variant/40">
-                      23:00 — 07:00 (GMT+3)
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Module Subscriptions Section (Clean Table) -->
-              <div class="bg-surface-container border border-outline-variant rounded-lg overflow-hidden flex flex-col">
-                <div class="p-md border-b border-outline-variant flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-base">widgets</span>
-                  </div>
-                  <div>
-                    <h4 class="text-xs font-bold text-on-surface">{{ t('profile.moduleSubscriptions') }}</h4>
-                    <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.moduleSubscriptionsDesc') }}</p>
-                  </div>
-                </div>
-
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left border-collapse">
-                    <thead class="bg-surface-container-high/60 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant">
-                      <tr>
-                        <th class="p-md">{{ t('profile.colModule') }}</th>
-                        <th class="p-md">{{ t('profile.colMute') }}</th>
-                        <th class="p-md">{{ t('profile.colSound') }}</th>
-                        <th class="p-md">{{ t('profile.colThreshold') }}</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-outline-variant/30 text-xs">
-                      <tr
-                        v-for="mod in moduleSubscriptions"
-                        :key="mod.id"
-                        class="hover:bg-surface-variant/20 transition-colors"
-                      >
-                        <!-- Column 1: Module & Description -->
-                        <td class="p-md">
-                          <div class="flex items-center gap-3">
-                            <input
-                              v-model="mod.enabled"
-                              class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
-                              type="checkbox"
-                            >
-                            <div>
-                              <div class="flex items-center gap-2">
-                                <span class="font-bold text-on-surface">{{ t(mod.nameKey) }}</span>
-                                <span class="bg-surface-variant text-[10px] px-1.5 py-0.5 rounded font-body-mono text-on-surface-variant">{{ mod.code }}</span>
-                              </div>
-                              <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t(mod.descKey) }}</p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <!-- Column 2: Temporary Mute Buttons -->
-                        <td class="p-md">
-                          <div class="flex items-center gap-1">
-                            <button
-                              v-for="m in (['15m', '1h', '8h', 'inf'] as const)"
-                              :key="m"
-                              type="button"
-                              class="px-2 py-0.5 rounded text-[10px] font-bold border border-outline-variant transition-colors cursor-pointer"
-                              :class="mod.mute === m
-                                ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
-                                : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
-                              @click="mod.mute = mod.mute === m ? 'none' : m"
-                            >
-                              {{ m === 'inf' ? '∞' : m }}
-                            </button>
-                          </div>
-                        </td>
-
-                        <!-- Column 3: Sound Select & Preview -->
-                        <td class="p-md">
-                          <div class="flex items-center gap-2">
-                            <div class="relative flex items-center">
-                              <select
-                                v-model="mod.sound"
-                                class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                      <thead class="bg-surface-container-high/60 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant/60">
+                        <tr>
+                          <th class="p-md">{{ t('profile.colModule') }}</th>
+                          <th class="p-md">{{ t('profile.colMute') }}</th>
+                          <th class="p-md">{{ t('profile.colSound') }}</th>
+                          <th class="p-md">{{ t('profile.colThreshold') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-outline-variant/30 text-xs">
+                        <tr
+                          v-for="mod in moduleSubscriptions"
+                          :key="mod.id"
+                          class="hover:bg-surface-variant/20 transition-colors"
+                        >
+                          <!-- Column 1: Module & Description -->
+                          <td class="p-md">
+                            <div class="flex items-center gap-3">
+                              <input
+                                v-model="mod.enabled"
+                                class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+                                type="checkbox"
                               >
-                                <option>Default (by severity)</option>
-                                <option>Synth Chime</option>
-                                <option>Futuristic Blip</option>
-                                <option>Mute sound</option>
-                              </select>
-                              <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
+                              <div>
+                                <div class="flex items-center gap-2">
+                                  <span class="font-bold text-on-surface">{{ t(mod.nameKey) }}</span>
+                                  <span class="bg-surface-variant text-[10px] px-1.5 py-0.5 rounded font-mono text-on-surface-variant">{{ mod.code }}</span>
+                                </div>
+                                <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t(mod.descKey) }}</p>
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              class="w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-primary-fixed-dim transition-colors cursor-pointer"
-                              title="Прослушать сигнал"
-                              @click="playSoundEffect('info')"
-                            >
-                              <span class="material-symbols-outlined text-base">play_arrow</span>
-                            </button>
-                          </div>
-                        </td>
+                          </td>
 
-                        <!-- Column 4: Severity Threshold -->
-                        <td class="p-md">
-                          <div class="relative flex items-center">
-                            <select
-                              v-model="mod.threshold"
-                              class="h-7 bg-surface-container-highest border border-outline-variant rounded-lg pl-2 pr-6 text-[10px] text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                            >
-                              <option value="profile.allEvents">{{ t('profile.allEvents') }}</option>
-                              <option value="profile.warnAndErrors">{{ t('profile.warnAndErrors') }}</option>
-                              <option value="profile.criticalOnly">{{ t('profile.criticalOnly') }}</option>
-                              <option value="profile.silentMode">{{ t('profile.silentMode') }}</option>
-                            </select>
-                            <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1 pointer-events-none">expand_more</span>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                          <!-- Column 2: Temporary Mute Buttons -->
+                          <td class="p-md">
+                            <div class="flex items-center gap-1">
+                              <button
+                                v-for="m in (['15m', '1h', '8h', 'inf'] as const)"
+                                :key="m"
+                                type="button"
+                                class="px-2 py-0.5 rounded text-[10px] font-bold border border-outline-variant transition-colors cursor-pointer"
+                                :class="mod.mute === m
+                                  ? 'bg-primary-fixed-dim text-on-primary-fixed shadow-glow-primary-sm'
+                                  : 'bg-surface-container-highest hover:bg-surface-variant text-on-surface'"
+                                @click="mod.mute = mod.mute === m ? 'none' : m"
+                              >
+                                {{ m === 'inf' ? '∞' : m }}
+                              </button>
+                            </div>
+                          </td>
+
+                          <!-- Column 3: Sound Select & Preview -->
+                          <td class="p-md">
+                            <div class="flex items-center gap-2">
+                              <div class="w-40">
+                                <BaseSelect
+                                  v-model="mod.sound"
+                                  :options="soundOptions"
+                                  size="sm"
+                                />
+                              </div>
+                              <AppButton
+                                variant="outline"
+                                size="xs"
+                                icon="play_arrow"
+                                title="Прослушать сигнал"
+                                @click="playSoundEffect('info')"
+                              />
+                            </div>
+                          </td>
+
+                          <!-- Column 4: Severity Threshold -->
+                          <td class="p-md">
+                            <div class="w-40">
+                              <BaseSelect
+                                v-model="mod.threshold"
+                                :options="thresholdOptions"
+                                size="sm"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Sound Signals Section -->
+                <div class="p-md bg-surface-container border border-outline-variant/60 rounded-xl flex flex-col gap-sm">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                      <span class="material-symbols-outlined text-base">volume_up</span>
+                    </div>
+                    <div>
+                      <h4 class="text-xs font-bold text-on-surface">{{ t('profile.soundSignals') }}</h4>
+                      <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.soundSignalsDesc') }}</p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+                    <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-xl">
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary-fixed-dim text-base">info</span>
+                        <span class="text-xs font-semibold text-on-surface">{{ t('profile.infoSeverity') }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="w-36">
+                          <BaseSelect
+                            v-model="soundInfo"
+                            :options="infoSoundOptions"
+                            size="sm"
+                          />
+                        </div>
+                        <AppButton
+                          variant="outline"
+                          size="xs"
+                          icon="play_arrow"
+                          title="Прослушать сигнал"
+                          @click="playSoundEffect('info')"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-xl">
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-tertiary-fixed-dim text-base">check_circle</span>
+                        <span class="text-xs font-semibold text-on-surface">{{ t('profile.successSeverity') }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="w-36">
+                          <BaseSelect
+                            v-model="soundSuccess"
+                            :options="successSoundOptions"
+                            size="sm"
+                          />
+                        </div>
+                        <AppButton
+                          variant="outline"
+                          size="xs"
+                          icon="play_arrow"
+                          title="Прослушать сигнал"
+                          @click="playSoundEffect('success')"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-xl">
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-warning-yellow text-base">warning</span>
+                        <span class="text-xs font-semibold text-on-surface">{{ t('profile.warningSeverity') }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="w-36">
+                          <BaseSelect
+                            v-model="soundWarning"
+                            :options="warningSoundOptions"
+                            size="sm"
+                          />
+                        </div>
+                        <AppButton
+                          variant="outline"
+                          size="xs"
+                          icon="play_arrow"
+                          title="Прослушать сигнал"
+                          @click="playSoundEffect('warning')"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-xl">
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-error text-base">error</span>
+                        <span class="text-xs font-semibold text-on-surface">{{ t('profile.errorSeverity') }}</span>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="w-36">
+                          <BaseSelect
+                            v-model="soundError"
+                            :options="errorSoundOptions"
+                            size="sm"
+                          />
+                        </div>
+                        <AppButton
+                          variant="outline"
+                          size="xs"
+                          icon="play_arrow"
+                          title="Прослушать сигнал"
+                          @click="playSoundEffect('error')"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <!-- Sound Signals Section -->
-              <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-sm">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-base">volume_up</span>
-                  </div>
-                  <div>
-                    <h4 class="text-xs font-bold text-on-surface">{{ t('profile.soundSignals') }}</h4>
-                    <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('profile.soundSignalsDesc') }}</p>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
-                  <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-lg">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-primary-fixed-dim text-base">info</span>
-                      <span class="text-xs font-semibold text-on-surface">{{ t('profile.infoSeverity') }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <div class="relative flex items-center">
-                        <select
-                          v-model="soundInfo"
-                          class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-2.5 pr-7 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                        >
-                          <option>Soft Chime</option>
-                          <option>Digital Click</option>
-                          <option>Hologram Whir</option>
-                          <option>Gentle Bell</option>
-                        </select>
-                        <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1.5 pointer-events-none">expand_more</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-primary-fixed-dim transition-colors cursor-pointer"
-                        title="Прослушать сигнал"
-                        @click="playSoundEffect('info')"
-                      >
-                        <span class="material-symbols-outlined text-base">play_arrow</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-lg">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-tertiary-fixed-dim text-base">check_circle</span>
-                      <span class="text-xs font-semibold text-on-surface">{{ t('profile.successSeverity') }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <div class="relative flex items-center">
-                        <select
-                          v-model="soundSuccess"
-                          class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-2.5 pr-7 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                        >
-                          <option>Major Chord</option>
-                          <option>Ascending Harp</option>
-                          <option>Success Ping</option>
-                          <option>Power Up</option>
-                        </select>
-                        <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1.5 pointer-events-none">expand_more</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-tertiary-fixed-dim transition-colors cursor-pointer"
-                        title="Прослушать сигнал"
-                        @click="playSoundEffect('success')"
-                      >
-                        <span class="material-symbols-outlined text-base">play_arrow</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-lg">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-warning-yellow text-base">warning</span>
-                      <span class="text-xs font-semibold text-on-surface">{{ t('profile.warningSeverity') }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <div class="relative flex items-center">
-                        <select
-                          v-model="soundWarning"
-                          class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-2.5 pr-7 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                        >
-                          <option>Double Beep</option>
-                          <option>Low Drone</option>
-                          <option>Caution Radar</option>
-                          <option>Warning Clack</option>
-                        </select>
-                        <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1.5 pointer-events-none">expand_more</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-warning-yellow transition-colors cursor-pointer"
-                        title="Прослушать сигнал"
-                        @click="playSoundEffect('warning')"
-                      >
-                        <span class="material-symbols-outlined text-base">play_arrow</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/50 rounded-lg">
-                    <div class="flex items-center gap-2">
-                      <span class="material-symbols-outlined text-error text-base">error</span>
-                      <span class="text-xs font-semibold text-on-surface">{{ t('profile.errorSeverity') }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <div class="relative flex items-center">
-                        <select
-                          v-model="soundError"
-                          class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-2.5 pr-7 text-xs text-on-surface appearance-none focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer"
-                        >
-                          <option>Alarm Tone</option>
-                          <option>Heavy Klaxon</option>
-                          <option>Critical Siren</option>
-                          <option>System Failure</option>
-                        </select>
-                        <span class="material-symbols-outlined text-xs text-on-surface-variant absolute right-1.5 pointer-events-none">expand_more</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-surface-variant border border-outline-variant flex items-center justify-center text-error transition-colors cursor-pointer"
-                        title="Прослушать сигнал"
-                        @click="playSoundEffect('error')"
-                      >
-                        <span class="material-symbols-outlined text-base">play_arrow</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </BaseCard>
 
             <!-- Bottom: Active Sessions -->
-            <div class="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden shadow-card-dark">
-              <div class="p-md border-b border-outline-variant bg-surface-container flex items-center justify-between flex-wrap gap-3">
-                <div class="flex items-center gap-sm text-on-surface">
-                  <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                    <span class="material-symbols-outlined text-xl">devices_other</span>
-                  </div>
-                  <div>
-                    <h3 class="font-title-sm font-bold text-on-surface">{{ t('profile.activeSessions') }}</h3>
-                    <p class="text-xs text-on-surface-variant mt-0.5">{{ t('profile.activeSessionsDesc') }}</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    type="button"
-                    class="h-8 bg-error-container/20 border border-error/30 text-error hover:bg-error-container/40 px-3 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                  >
-                    <span class="material-symbols-outlined text-base">shield</span>
-                    <span>{{ t('profile.terminateOthers') }}</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="h-8 bg-surface-container-highest hover:bg-surface-variant text-on-surface border border-outline-variant px-3 rounded-lg text-xs font-semibold uppercase transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                    @click="authStore.logout"
-                  >
-                    <span class="material-symbols-outlined text-base">logout</span>
-                    <span>{{ t('profile.allLogout') }}</span>
-                  </button>
-                </div>
-              </div>
+            <BaseCard
+              :title="t('profile.activeSessions')"
+              :subtitle="t('profile.activeSessionsDesc')"
+              icon="devices_other"
+              :no-padding="true"
+            >
+              <template #headerActions>
+                <AppButton
+                  variant="danger"
+                  size="xs"
+                  icon="shield"
+                >
+                  {{ t('profile.terminateOthers') }}
+                </AppButton>
+                <AppButton
+                  variant="outline"
+                  size="xs"
+                  icon="logout"
+                  @click="authStore.logout"
+                >
+                  {{ t('profile.allLogout') }}
+                </AppButton>
+              </template>
 
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
-                  <thead class="bg-surface-container-high/70 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant">
+                  <thead class="bg-surface-container-high/70 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant/60">
                     <tr>
                       <th class="p-md">{{ t('profile.ipAddress') }}</th>
                       <th class="p-md">{{ t('profile.deviceBrowser') }}</th>
@@ -883,32 +788,31 @@ function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
                       <th class="p-md text-right">{{ t('common.actions') }}</th>
                     </tr>
                   </thead>
-                  <tbody class="text-xs font-body-mono divide-y divide-outline-variant/30">
+                  <tbody class="text-xs font-mono divide-y divide-outline-variant/30">
                     <tr class="hover:bg-surface-variant/20 transition-colors">
                       <td class="p-md">
                         <div class="flex items-center gap-2">
                           <span class="text-on-surface font-bold">127.0.0.1</span>
-                          <span class="inline-flex items-center gap-1 bg-tertiary-fixed-dim/15 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
-                            <span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim animate-pulse"></span>
-                            <span>{{ t('profile.currentSession') }}</span>
-                          </span>
+                          <StatusBadge variant="success" :pulse="true" :dot="true" size="xs">
+                            {{ t('profile.currentSession') }}
+                          </StatusBadge>
                         </div>
                       </td>
                       <td class="p-md text-on-surface">Edge (Windows)</td>
                       <td class="p-md text-on-surface-variant">8/20/2026, 9:30:32 PM</td>
                       <td class="p-md text-right">
-                        <button
-                          type="button"
-                          class="h-7 text-[10px] font-bold uppercase text-error border border-error/30 px-2.5 rounded-lg hover:bg-error-container/20 transition-colors cursor-pointer active:scale-95"
+                        <AppButton
+                          variant="danger"
+                          size="xs"
                         >
                           {{ t('profile.revoke') }}
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-            </div>
+            </BaseCard>
           </div>
         </div>
       </div>

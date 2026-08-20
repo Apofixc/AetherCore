@@ -2,6 +2,15 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
+import {
+  PageHeader,
+  BaseCard,
+  AppButton,
+  StatusBadge,
+  SearchInput,
+  BaseSelect,
+  BaseModal
+} from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 
@@ -189,6 +198,21 @@ function downloadCurrentLog() {
   notify('Файл логов скачан')
 }
 
+const logFileOptions = [
+  '[system] backend.log (3.5 MB)',
+  '[system] error.log (1.2 MB)',
+  '[auth] access.log (0.8 MB)',
+  '[database] query.log (12.4 MB)'
+]
+
+const logLevelOptions = [
+  { value: 'ALL', label: 'ALL' },
+  { value: 'ERROR', label: 'ERROR' },
+  { value: 'WARN', label: 'WARN' },
+  { value: 'INFO', label: 'INFO' },
+  { value: 'DEBUG', label: 'DEBUG' }
+]
+
 onMounted(() => {
   refreshTimer = window.setInterval(() => {
     if (isAutoRefresh.value && logs.value.length < 200) {
@@ -226,47 +250,27 @@ onUnmounted(() => {
         <!-- Toast Notification Banner -->
         <div
           v-if="notificationMessage"
-          class="fixed bottom-12 right-6 z-50 bg-surface-container-high border border-primary-fixed-dim/50 text-primary-fixed-dim px-4 py-2 rounded-lg shadow-glow-primary-md flex items-center gap-2 text-xs font-bold font-body-mono animate-fade-in"
+          class="fixed bottom-12 right-6 z-50 bg-surface-container-high border border-primary-fixed-dim/50 text-primary-fixed-dim px-4 py-2 rounded-xl shadow-glow-primary-md flex items-center gap-2 text-xs font-bold font-mono animate-fade-in"
         >
           <span class="material-symbols-outlined text-sm">check_circle</span>
           <span>{{ notificationMessage }}</span>
         </div>
 
         <!-- Top Page Header -->
-        <div class="flex items-center justify-between flex-wrap gap-md">
-          <div class="flex items-center gap-sm text-on-surface">
-            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-              <span class="material-symbols-outlined text-xl">admin_panel_settings</span>
-            </div>
-            <div>
-              <h1 class="font-display-lg text-display-lg text-on-surface font-bold">
-                {{ t('system.title') }}
-              </h1>
-              <p class="text-xs text-on-surface-variant mt-0.5">
-                {{ t('system.subtitle') }}
-              </p>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          :title="t('system.title')"
+          :subtitle="t('system.subtitle')"
+          icon="admin_panel_settings"
+        />
 
         <!-- Top Row: Backup & Restore + Active Sessions -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-lg">
           <!-- Card 1: Backup & Restore -->
-          <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-            <div class="flex items-center gap-sm text-on-surface">
-              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                <span class="material-symbols-outlined text-xl">cloud_sync</span>
-              </div>
-              <div>
-                <h2 class="font-title-sm font-bold text-on-surface">
-                  {{ t('system.backupRestoreTitle') }}
-                </h2>
-                <p class="text-xs text-on-surface-variant mt-0.5">
-                  {{ t('system.backupDesc') }}
-                </p>
-              </div>
-            </div>
-
+          <BaseCard
+            :title="t('system.backupRestoreTitle')"
+            :subtitle="t('system.backupDesc')"
+            icon="cloud_sync"
+          >
             <input
               ref="fileInputRef"
               type="file"
@@ -275,229 +279,174 @@ onUnmounted(() => {
               @change="handleFileSelected"
             />
 
-            <div class="flex flex-wrap gap-sm mt-auto pt-sm">
-              <button
-                type="button"
-                class="bg-primary-fixed-dim hover:bg-primary-fixed-dim/90 text-on-primary-fixed border border-primary-fixed-dim px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 shadow-glow-primary-sm hover:shadow-glow-primary-md cursor-pointer"
+            <div class="flex flex-wrap gap-sm pt-2">
+              <AppButton
+                variant="primary"
+                size="sm"
+                icon="download"
                 @click="handleDownloadBackup"
               >
-                <span class="material-symbols-outlined text-[18px]">download</span>
-                <span>{{ t('system.downloadBackup') }}</span>
-              </button>
-              <button
-                type="button"
-                class="h-8 px-3 bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 cursor-pointer"
+                {{ t('system.downloadBackup') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="upload_file"
                 @click="triggerRestoreFile"
               >
-                <span class="material-symbols-outlined text-[18px]">upload_file</span>
-                <span>{{ t('system.restoreFromFile') }}</span>
-              </button>
-              <button
-                type="button"
-                class="h-8 px-3 bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant hover:border-primary-fixed-dim/40 rounded-lg text-xs font-bold uppercase flex items-center gap-1.5 active:scale-95 transition-all duration-200 cursor-pointer"
+                {{ t('system.restoreFromFile') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="history"
                 @click="handleRotateAudit"
               >
-                <span class="material-symbols-outlined text-[18px]">history</span>
-                <span>{{ t('system.rotateAudit') }}</span>
-              </button>
+                {{ t('system.rotateAudit') }}
+              </AppButton>
             </div>
-          </div>
+          </BaseCard>
 
           <!-- Card 2: Active Sessions -->
-          <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg shadow-card-dark flex flex-col gap-md">
-            <div class="flex items-center justify-between flex-wrap gap-sm">
-              <div class="flex items-center gap-sm text-on-surface">
-                <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                  <span class="material-symbols-outlined text-xl">hub</span>
-                </div>
-                <div>
-                  <h2 class="font-title-sm font-bold text-on-surface">
-                    {{ t('system.activeSessionsTitle') }}
-                  </h2>
-                  <p class="text-xs text-on-surface-variant mt-0.5">
-                    {{ t('system.activeSessionsDesc') }}
-                  </p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  class="bg-error-container/20 border border-error/40 text-error hover:bg-error-container/40 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                  @click="terminateOthers"
-                >
-                  <span class="material-symbols-outlined text-[14px]">security</span>
-                  <span>{{ t('system.terminateOthers') }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="h-7 px-2.5 bg-surface-container-high hover:bg-surface-variant text-on-surface border border-outline-variant rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                  @click="handleAllLogout"
-                >
-                  <span class="material-symbols-outlined text-[14px]">logout</span>
-                  <span>{{ t('system.allLogout') }}</span>
-                </button>
-              </div>
-            </div>
+          <BaseCard
+            :title="t('system.activeSessionsTitle')"
+            :subtitle="t('system.activeSessionsDesc')"
+            icon="hub"
+          >
+            <template #headerActions>
+              <AppButton
+                variant="danger"
+                size="xs"
+                icon="security"
+                @click="terminateOthers"
+              >
+                {{ t('system.terminateOthers') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="logout"
+                @click="handleAllLogout"
+              >
+                {{ t('system.allLogout') }}
+              </AppButton>
+            </template>
 
             <!-- Sessions List -->
-            <div class="flex flex-col gap-2 mt-1 max-h-40 overflow-y-auto pr-1">
+            <div class="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
               <div
                 v-for="s in sessions"
                 :key="s.id"
-                class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40"
+                class="flex items-center justify-between p-2.5 bg-surface-container-highest/50 rounded-xl border border-outline-variant/40"
               >
                 <div class="flex items-center gap-2.5 flex-wrap">
-                  <div
-                    class="w-2 h-2 rounded-full"
-                    :class="s.isCurrent ? 'bg-tertiary-fixed-dim shadow-glow-tertiary-sm animate-pulse' : 'bg-outline-variant'"
-                  ></div>
-                  <span class="font-body-mono text-xs font-bold text-on-surface">{{ s.username }}</span>
-                  <span
-                    v-if="s.isCurrent"
-                    class="bg-tertiary-fixed-dim/20 text-tertiary-fixed-dim border border-tertiary-fixed-dim/30 text-[9px] px-1.5 py-0.2 rounded font-bold font-body-mono uppercase"
+                  <StatusBadge
+                    :variant="s.isCurrent ? 'success' : 'neutral'"
+                    :pulse="s.isCurrent"
+                    :dot="true"
+                    size="xs"
                   >
-                    {{ t('system.currentSession') }}
-                  </span>
-                  <span class="text-[11px] text-on-surface-variant font-body-mono">
+                    {{ s.isCurrent ? t('system.currentSession') : s.username }}
+                  </StatusBadge>
+                  <span v-if="s.isCurrent" class="font-mono text-xs font-bold text-on-surface">{{ s.username }}</span>
+                  <span class="text-[11px] text-on-surface-variant font-mono">
                     ({{ s.role }}) [{{ s.ip }}]
                   </span>
                 </div>
                 <div class="flex items-center gap-3">
-                  <span class="text-[10px] font-body-mono text-on-surface-variant">{{ s.time }}</span>
-                  <button
+                  <span class="text-[10px] font-mono text-on-surface-variant">{{ s.time }}</span>
+                  <AppButton
                     v-if="!s.isCurrent"
-                    type="button"
-                    class="text-[10px] font-bold uppercase text-error border border-error/40 px-2 py-0.5 rounded-lg hover:bg-error-container/20 transition-colors cursor-pointer active:scale-95"
+                    variant="danger"
+                    size="xs"
                     @click="revokeSession(s.id)"
                   >
                     {{ t('system.revokeSession') }}
-                  </button>
+                  </AppButton>
                 </div>
               </div>
             </div>
-          </div>
+          </BaseCard>
         </div>
 
         <!-- Card 3: System Logs Viewer -->
-        <div class="bg-surface-container-low border border-outline-variant rounded-lg shadow-card-dark flex flex-col overflow-hidden">
-          <!-- Log Toolbar -->
-          <div class="p-md border-b border-outline-variant flex items-center justify-between bg-surface-container flex-wrap gap-md">
-            <div class="flex items-center gap-sm text-on-surface">
-              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-                <span class="material-symbols-outlined text-xl">terminal</span>
-              </div>
-              <div>
-                <h2 class="font-title-sm font-bold text-on-surface">
-                  {{ t('system.systemLogsViewerTitle') }}
-                </h2>
-                <p class="text-xs text-on-surface-variant mt-0.5">
-                  {{ t('system.systemLogsViewerSubtitle') }}
-                </p>
-              </div>
+        <BaseCard
+          :title="t('system.systemLogsViewerTitle')"
+          :subtitle="t('system.systemLogsViewerSubtitle')"
+          icon="terminal"
+          :no-padding="true"
+        >
+          <template #headerActions>
+            <!-- Log File Selector -->
+            <div class="w-48">
+              <BaseSelect
+                v-model="selectedLogFile"
+                :options="logFileOptions"
+                size="sm"
+              />
             </div>
 
-            <!-- Filters & Actions -->
-            <div class="flex items-center gap-2 flex-wrap">
-              <!-- Log File Selector -->
-              <div class="flex items-center gap-1.5">
-                <span class="text-[10px] font-bold text-on-surface-variant uppercase hidden sm:inline-block">
-                  {{ t('system.logFileLabel') }}
-                </span>
-                <div class="relative flex items-center">
-                  <select
-                    v-model="selectedLogFile"
-                    class="h-8 bg-surface-container-highest border border-outline-variant text-on-surface font-body-mono rounded-lg pl-2.5 pr-7 text-xs focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer appearance-none"
-                  >
-                    <option>[system] backend.log (3.5 MB)</option>
-                    <option>[system] error.log (1.2 MB)</option>
-                    <option>[auth] access.log (0.8 MB)</option>
-                    <option>[database] query.log (12.4 MB)</option>
-                  </select>
-                  <span class="material-symbols-outlined text-sm text-on-surface-variant absolute right-2 pointer-events-none">expand_more</span>
-                </div>
-              </div>
-
-              <!-- Log Level Selector -->
-              <div class="flex items-center gap-1.5">
-                <span class="text-[10px] font-bold text-on-surface-variant uppercase hidden sm:inline-block">
-                  {{ t('system.logLevelLabel') }}
-                </span>
-                <div class="relative flex items-center">
-                  <select
-                    v-model="selectedLogLevel"
-                    class="h-8 bg-surface-container-highest border border-outline-variant text-on-surface font-body-mono rounded-lg pl-2.5 pr-7 text-xs focus:ring-1 focus:ring-primary-fixed-dim outline-none cursor-pointer appearance-none"
-                  >
-                    <option value="ALL">{{ t('system.allLevels') }}</option>
-                    <option value="ERROR">ERROR</option>
-                    <option value="WARN">WARN</option>
-                    <option value="INFO">INFO</option>
-                    <option value="DEBUG">DEBUG</option>
-                  </select>
-                  <span class="material-symbols-outlined text-sm text-on-surface-variant absolute right-2 pointer-events-none">expand_more</span>
-                </div>
-              </div>
-
-              <!-- Search Input -->
-              <div class="relative flex items-center">
-                <span class="material-symbols-outlined absolute left-2.5 text-sm text-on-surface-variant pointer-events-none">search</span>
-                <input
-                  v-model="logSearchQuery"
-                  type="text"
-                  class="h-8 bg-surface-container-highest border border-outline-variant rounded-lg pl-8 pr-2.5 text-xs font-body-mono text-on-surface w-44 focus:ring-1 focus:ring-primary-fixed-dim outline-none placeholder:text-on-surface-variant/50"
-                  :placeholder="t('system.searchInLogs')"
-                />
-              </div>
-
-              <!-- Auto-refresh Checkbox -->
-              <label class="flex items-center gap-1.5 cursor-pointer ml-1">
-                <input
-                  v-model="isAutoRefresh"
-                  type="checkbox"
-                  class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0 cursor-pointer"
-                />
-                <span class="text-[10px] text-on-surface-variant select-none">{{ t('system.autoRefresh') }}</span>
-              </label>
-
-              <!-- Action Icons -->
-              <div class="flex items-center gap-1 ml-1">
-                <button
-                  type="button"
-                  class="h-8 w-8 rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                  :title="t('system.refreshLogs')"
-                  @click="refreshLogs"
-                >
-                  <span class="material-symbols-outlined text-[18px]">refresh</span>
-                </button>
-                <button
-                  type="button"
-                  class="h-8 w-8 rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                  :title="t('system.clearLogs')"
-                  @click="clearConsole"
-                >
-                  <span class="material-symbols-outlined text-[18px]">cleaning_services</span>
-                </button>
-                <button
-                  type="button"
-                  class="h-8 w-8 rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                  :title="t('system.serviceStatus')"
-                  @click="showServiceStatusModal = true"
-                >
-                  <span class="material-symbols-outlined text-[18px]">dns</span>
-                </button>
-                <button
-                  type="button"
-                  class="h-8 w-8 rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                  :title="t('system.downloadLogs')"
-                  @click="downloadCurrentLog"
-                >
-                  <span class="material-symbols-outlined text-[18px]">download</span>
-                </button>
-              </div>
+            <!-- Log Level Selector -->
+            <div class="w-28">
+              <BaseSelect
+                v-model="selectedLogLevel"
+                :options="logLevelOptions"
+                size="sm"
+              />
             </div>
-          </div>
+
+            <!-- Search Input -->
+            <SearchInput
+              v-model="logSearchQuery"
+              :placeholder="t('system.searchInLogs')"
+              width-class="w-48"
+            />
+
+            <!-- Auto-refresh Checkbox -->
+            <label class="flex items-center gap-1.5 cursor-pointer ml-1">
+              <input
+                v-model="isAutoRefresh"
+                type="checkbox"
+                class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+              />
+              <span class="text-[10px] text-on-surface-variant select-none">{{ t('system.autoRefresh') }}</span>
+            </label>
+
+            <!-- Action Icons -->
+            <div class="flex items-center gap-1">
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="refresh"
+                :title="t('system.refreshLogs')"
+                @click="refreshLogs"
+              />
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="cleaning_services"
+                :title="t('system.clearLogs')"
+                @click="clearConsole"
+              />
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="dns"
+                :title="t('system.serviceStatus')"
+                @click="showServiceStatusModal = true"
+              />
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="download"
+                :title="t('system.downloadLogs')"
+                @click="downloadCurrentLog"
+              />
+            </div>
+          </template>
 
           <!-- Console Terminal Output Area -->
-          <div class="bg-surface-deep p-md font-body-mono text-xs h-[420px] overflow-y-auto flex flex-col gap-1 select-text">
+          <div class="bg-surface-deep p-md font-mono text-xs h-[420px] overflow-y-auto flex flex-col gap-1 select-text">
             <div
               v-for="entry in filteredLogs"
               :key="entry.id"
@@ -526,60 +475,45 @@ onUnmounted(() => {
               Нет логов, соответствующих выбранным фильтрам
             </div>
           </div>
-        </div>
+        </BaseCard>
       </div>
     </main>
 
     <!-- Modal: Service Status Dialog -->
-    <div
-      v-if="showServiceStatusModal"
-      class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-md animate-fade-in"
-      @click.self="showServiceStatusModal = false"
+    <BaseModal
+      v-model="showServiceStatusModal"
+      title="Статус сервисов AetherCore NMS"
+      icon="dns"
+      max-width="max-w-md"
     >
-      <div class="bg-surface-container-low border border-outline-variant rounded-xl p-lg max-w-md w-full shadow-2xl flex flex-col gap-md">
-        <div class="flex items-center justify-between border-b border-outline-variant/60 pb-sm">
-          <div class="flex items-center gap-2 text-primary-fixed-dim">
-            <span class="material-symbols-outlined text-xl">dns</span>
-            <h3 class="text-sm font-bold text-on-surface">Статус сервисов AetherCore NMS</h3>
-          </div>
-          <button
-            type="button"
-            class="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-            @click="showServiceStatusModal = false"
-          >
-            <span class="material-symbols-outlined text-lg">close</span>
-          </button>
+      <div class="flex flex-col gap-2.5 text-xs font-body-mono">
+        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
+          <span>AetherCore Core Daemon</span>
+          <StatusBadge variant="success" size="xs">RUNNING (pid 4182)</StatusBadge>
         </div>
-
-        <div class="flex flex-col gap-2.5 text-xs font-body-mono">
-          <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-            <span>AetherCore Core Daemon</span>
-            <span class="text-tertiary-fixed-dim font-bold">RUNNING (pid 4182)</span>
-          </div>
-          <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-            <span>WASM Plugin Runtime</span>
-            <span class="text-tertiary-fixed-dim font-bold">READY (4 active)</span>
-          </div>
-          <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-            <span>IPC Message Bus</span>
-            <span class="text-tertiary-fixed-dim font-bold">CONNECTED</span>
-          </div>
-          <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-            <span>SQLite Embedded DB</span>
-            <span class="text-tertiary-fixed-dim font-bold">SYNCED (WAL mode)</span>
-          </div>
+        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
+          <span>WASM Plugin Runtime</span>
+          <StatusBadge variant="success" size="xs">READY (4 active)</StatusBadge>
         </div>
-
-        <div class="flex justify-end pt-sm border-t border-outline-variant/60">
-          <button
-            type="button"
-            class="px-4 py-1.5 text-xs font-bold rounded-lg bg-primary-fixed-dim text-on-primary-fixed hover:bg-primary-fixed-dim/90 shadow-glow-primary-sm transition-all cursor-pointer"
-            @click="showServiceStatusModal = false"
-          >
-            Закрыть
-          </button>
+        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
+          <span>IPC Message Bus</span>
+          <StatusBadge variant="success" size="xs">CONNECTED</StatusBadge>
+        </div>
+        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
+          <span>SQLite Embedded DB</span>
+          <StatusBadge variant="success" size="xs">SYNCED (WAL mode)</StatusBadge>
         </div>
       </div>
-    </div>
+
+      <template #footer>
+        <AppButton
+          variant="primary"
+          size="sm"
+          @click="showServiceStatusModal = false"
+        >
+          Закрыть
+        </AppButton>
+      </template>
+    </BaseModal>
   </div>
 </template>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 import { useTheme } from '@/theme'
+import { AppButton, BaseInput } from '@/components/common'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -42,7 +43,7 @@ async function handleLogin() {
       <div class="flex items-center bg-surface-container-high/80 backdrop-blur-sm rounded-lg p-0.5 border border-outline-variant/60">
         <button
           type="button"
-          class="px-2 py-1 text-xs font-bold rounded font-body-mono transition-all cursor-pointer"
+          class="px-2 py-1 text-xs font-bold rounded font-mono transition-all cursor-pointer"
           :class="locale === 'ru' ? 'bg-primary-fixed-dim text-on-primary-fixed shadow' : 'text-on-surface-variant hover:text-on-surface'"
           @click="setLocale('ru')"
         >
@@ -50,7 +51,7 @@ async function handleLogin() {
         </button>
         <button
           type="button"
-          class="px-2 py-1 text-xs font-bold rounded font-body-mono transition-all cursor-pointer"
+          class="px-2 py-1 text-xs font-bold rounded font-mono transition-all cursor-pointer"
           :class="locale === 'en' ? 'bg-primary-fixed-dim text-on-primary-fixed shadow' : 'text-on-surface-variant hover:text-on-surface'"
           @click="setLocale('en')"
         >
@@ -87,99 +88,82 @@ async function handleLogin() {
     <main class="relative z-10 w-full max-w-md px-lg">
       <!-- Brand Header -->
       <div class="text-center mb-xl">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
           <img src="/logo.png" alt="AetherCore Logo" class="w-full h-full object-cover" />
         </div>
         <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">{{ t('auth.title') }}</h1>
-        <p class="font-body-mono text-body-mono text-on-surface-variant">{{ t('auth.subtitle') }}</p>
+        <p class="font-mono text-xs text-on-surface-variant">{{ t('auth.subtitle') }}</p>
       </div>
 
       <!-- Login Card -->
-      <div class="bg-surface-container-low/90 backdrop-blur-md border border-outline-variant rounded-lg p-lg shadow-card-dark relative overflow-hidden">
+      <div class="bg-surface-container-low/90 backdrop-blur-md border border-outline-variant rounded-2xl p-lg shadow-card-dark relative overflow-hidden">
         <!-- Subtle top accent line -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-fixed-dim to-transparent opacity-60"></div>
 
-        <form class="space-y-md" @submit.prevent="handleLogin">
+        <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
           <!-- Error alert -->
-          <div v-if="errorMessage" class="p-sm bg-error-container/30 border border-error text-error rounded-lg text-xs font-body-mono">
+          <div v-if="errorMessage" class="p-sm bg-error-container/30 border border-error text-error rounded-xl text-xs font-mono">
             {{ errorMessage }}
           </div>
 
           <!-- Operator ID Field -->
-          <div>
-            <label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="operator_id">
-              {{ t('auth.operatorId') }}
-            </label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-sm flex items-center pointer-events-none">
-                <span class="material-symbols-outlined text-on-surface-variant" style="font-size: 20px;">person</span>
-              </div>
-              <input
-                id="operator_id"
-                v-model="operatorId"
-                type="text"
-                required
-                autocomplete="username"
-                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
-                :placeholder="t('auth.operatorIdPlaceholder')"
-              />
-            </div>
-          </div>
+          <BaseInput
+            id="operator_id"
+            v-model="operatorId"
+            :label="t('auth.operatorId')"
+            :placeholder="t('auth.operatorIdPlaceholder')"
+            icon="person"
+            :required="true"
+            autocomplete="username"
+          />
 
           <!-- Access Code Field -->
-          <div>
-            <label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="access_code">
-              {{ t('auth.accessCode') }}
-            </label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-sm flex items-center pointer-events-none">
-                <span class="material-symbols-outlined text-on-surface-variant" style="font-size: 20px;">lock</span>
-              </div>
-              <input
-                id="access_code"
-                v-model="accessCode"
-                type="password"
-                required
-                autocomplete="current-password"
-                class="block w-full pl-[40px] pr-md py-sm bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface font-body-mono text-body-mono focus:ring-1 focus:ring-primary-fixed-dim focus:border-primary-fixed-dim placeholder:text-on-surface-variant/50 transition-colors duration-200"
-                :placeholder="t('auth.accessCodePlaceholder')"
-              />
-            </div>
-          </div>
+          <BaseInput
+            id="access_code"
+            v-model="accessCode"
+            type="password"
+            :label="t('auth.accessCode')"
+            :placeholder="t('auth.accessCodePlaceholder')"
+            icon="lock"
+            :required="true"
+            autocomplete="current-password"
+          />
 
           <!-- Auxiliary Actions -->
-          <div class="flex items-center justify-between pt-sm pb-md">
-            <div class="flex items-center">
+          <div class="flex items-center justify-between pt-1 pb-1">
+            <label class="flex items-center gap-2 cursor-pointer">
               <input
                 id="remember-me"
                 v-model="rememberMe"
                 type="checkbox"
-                class="h-4 w-4 rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-primary-fixed-dim"
+                class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
               />
-              <label class="ml-sm block font-body-base text-body-base text-on-surface-variant cursor-pointer" for="remember-me">
+              <span class="text-xs text-on-surface-variant select-none">
                 {{ t('auth.rememberMe') }}
-              </label>
-            </div>
-            <a href="#" class="font-body-base text-body-base text-primary-fixed-dim hover:underline transition-colors" @click.prevent>
+              </span>
+            </label>
+            <a href="#" class="text-xs text-primary-fixed-dim hover:underline transition-colors select-none" @click.prevent>
               {{ t('auth.forgotCode') }}
             </a>
           </div>
 
           <!-- Primary CTA -->
-          <button
+          <AppButton
             type="submit"
-            :disabled="isSubmitting"
-            class="w-full flex items-center justify-center gap-sm py-2.5 px-md bg-primary-fixed-dim text-on-primary-fixed rounded-lg font-title-sm text-title-sm shadow-glow-primary-sm hover:shadow-glow-primary-md hover:bg-primary-fixed-dim/90 transition-all duration-200 active:scale-95 disabled:opacity-50 cursor-pointer"
+            variant="primary"
+            size="lg"
+            :block="true"
+            icon="login"
+            :loading="isSubmitting"
           >
-            <span class="material-symbols-outlined" style="font-size: 20px;">login</span>
-            <span>{{ isSubmitting ? t('auth.establishingConnection') : t('auth.establishConnection') }}</span>
-          </button>
+            {{ isSubmitting ? t('auth.establishingConnection') : t('auth.establishConnection') }}
+          </AppButton>
         </form>
       </div>
     </main>
 
     <!-- Footer -->
-    <footer class="fixed bottom-0 w-full h-8 bg-surface-container-lowest/80 backdrop-blur-sm border-t border-outline-variant flex items-center justify-between px-lg z-50 font-body-mono text-[10px] tracking-wider">
+    <footer class="fixed bottom-0 w-full h-8 bg-surface-container-lowest/80 backdrop-blur-sm border-t border-outline-variant/60 flex items-center justify-between px-lg z-50 font-mono text-[10px] tracking-wider">
       <div class="flex items-center gap-md">
         <span class="text-primary-fixed-dim">{{ t('common.builtWith') }}</span>
         <span class="text-outline-variant">|</span>
