@@ -88,7 +88,7 @@ async function handleLogin() {
       <!-- Brand Header -->
       <div class="text-center mb-xl">
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-lg bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
-          <img src="https://lh3.googleusercontent.com/aida/AP1WRLtoOxrg1BvpOF6hYJC0P6o5Em8dgq1Q-MM24a6VVdaf8qZIWPioO1pIYIEM0N-O7-cnMHikL-xu8uwbh29RsL3R3hiJv232MfJvMqrOapAVE9fVCnrtS99K5rusFLqmZn9B_ip46aW27NaOYK79vmyXEVA2KW9stnpSEcp-g2Fu2eO4sHuP5e4aUPF41cP1NsSx16pAzNUgpevJbZPayDXfWxpe9aPBYSxuoc-bHC6jzoQJ_7XUYmStgBI" alt="AetherCore Logo" class="w-full h-full object-cover" />
+          <img src="/logo.png" alt="AetherCore Logo" class="w-full h-full object-cover" />
         </div>
         <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">AETHERCORE</h1>
         <p class="font-body-mono text-body-mono text-on-surface-variant">Command Center v1.0.4</p>

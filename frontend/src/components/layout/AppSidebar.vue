@@ -48,7 +48,7 @@ function selectSubItem(item: string) {
         <img
           alt="AetherCore Logo"
           class="w-full h-full object-cover"
-          src="https://lh3.googleusercontent.com/aida/AP1WRLtoOxrg1BvpOF6hYJC0P6o5Em8dgq1Q-MM24a6VVdaf8qZIWPioO1pIYIEM0N-O7-cnMHikL-xu8uwbh29RsL3R3hiJv232MfJvMqrOapAVE9fVCnrtS99K5rusFLqmZn9B_ip46aW27NaOYK79vmyXEVA2KW9stnpSEcp-g2Fu2eO4sHuP5e4aUPF41cP1NsSx16pAzNUgpevJbZPayDXfWxpe9aPBYSxuoc-bHC6jzoQJ_7XUYmStgBI"
+          src="/logo.png"
         />
       </div>
       <div>

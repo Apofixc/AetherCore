@@ -37,8 +37,8 @@ onMounted(async () => {
     <!-- Main Content Wrapper -->
     <div
       id="main-content"
-      class="flex-1 flex flex-col transition-all duration-300 h-screen overflow-hidden pb-8"
-      :class="sidebarCollapsed ? 'ml-0 w-full' : 'ml-sidebar-width w-[calc(100vw-312px)]'"
+      class="ml-sidebar-width flex-1 flex flex-col w-[calc(100vw-312px)] transition-all duration-300 h-screen overflow-hidden"
+      :class="sidebarCollapsed ? '!ml-0 !w-full' : ''"
     >
       <!-- Top App Bar -->
       <AppHeader @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed" />
@@ -51,18 +51,3 @@ onMounted(async () => {
     <AppFooter :class="sidebarCollapsed ? '!ml-0 !w-full' : ''" />
   </div>
 </template>
-
-<style>
-/* Sidebar collapse transition */
-.sidebar-collapsed #sidebar {
-  transform: translateX(-312px);
-}
-.sidebar-collapsed #main-content {
-  margin-left: 0;
-  width: 100vw;
-}
-.sidebar-collapsed #footer {
-  margin-left: 0;
-  width: 100vw;
-}
-</style>
