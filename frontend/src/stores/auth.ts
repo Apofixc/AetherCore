@@ -37,20 +37,8 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = u
       return u
     } catch (err) {
-      // Если сессия недействительна в бэкенде, но есть токен в режиме dev, оставляем заглушку или сбрасываем
-      if (!user.value) {
-        user.value = {
-          id: 'ROOT-001',
-          username: 'admin',
-          full_name: 'Главный администратор (Root)',
-          email: 'root@nms.local',
-          is_active: true,
-          is_superuser: true,
-          roles: ['admin', 'superuser'],
-          permissions: ['*']
-        }
-      }
-      return user.value
+      logout()
+      return null
     } finally {
       loading.value = false
     }

@@ -37,15 +37,8 @@ async function handleLogin() {
       router.push('/dashboard')
     }
   } catch (err: any) {
-    console.warn('Backend login fallback to local session:', err)
-    authStore.token = 'mock-dev-token'
-    localStorage.setItem('nms_token', 'mock-dev-token')
-    await authStore.fetchUser()
-    if (authStore.user?.must_change_password) {
-      showPasswordChangeModal.value = true
-    } else {
-      router.push('/dashboard')
-    }
+    console.error('Login failed:', err)
+    errorMessage.value = err?.response?.data?.message || err?.message || 'Неверное имя пользователя или пароль'
   } finally {
     isSubmitting.value = false
   }
