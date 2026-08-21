@@ -7,12 +7,12 @@ use nms_core::db::Db;
 async fn test_database_init_in_memory() {
     let db = Db::init_in_memory().await.expect("DB in memory init failed");
 
-    // Проверяем, что стандартные роли созданы
+    // Проверяем, что стандартные роли созданы (superuser, admin, operator, viewer)
     let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM roles")
         .fetch_one(db.reader())
         .await
         .unwrap();
-    assert_eq!(row.0, 3);
+    assert_eq!(row.0, 4);
 
     // Проверяем, что права созданы
     let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM permissions")

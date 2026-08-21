@@ -97,6 +97,19 @@ async fn create_user_handler(
         (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
     })?;
 
+    let is_creating_superuser = dto.is_superuser == Some(true)
+        || dto.roles.as_ref().map_or(false, |r| r.contains(&"superuser".to_string()));
+
+    if is_creating_superuser && !claims.is_superuser {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Only superusers can create or assign superuser role")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
+
     let user = state.user_service.create_user(dto).await.map_err(|e| {
         (
             StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
@@ -123,22 +136,6 @@ async fn create_user_handler(
 /// GET /api/v1/users/{id}
 ///
 /// Получить профиль пользователя по его уникальному идентификатору (UUID).
-///
-/// # Требуемые права RBAC
-/// * `users.view` (или права суперпользователя).
-///
-/// # Аргументы
-/// * `state` — Разделяемое состояние сервера [`AppState`].
-/// * `locale` — Локаль запроса [`RequestLocale`].
-/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
-/// * `id` — UUID пользователя.
-///
-/// # Возвращаемое значение
-/// Профиль пользователя [`UserResponseDto`].
-///
-/// # Ошибки
-/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
-/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
 async fn get_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -162,24 +159,6 @@ async fn get_user_handler(
 /// PUT /api/v1/users/{id}
 ///
 /// Обновить параметры пользователя (ФИО, email, пароль, статус активности, флаг суперпользователя, роли).
-///
-/// # Требуемые права RBAC
-/// * `users.manage` (или права суперпользователя).
-///
-/// # Аргументы
-/// * `state` — Разделяемое состояние сервера [`AppState`].
-/// * `locale` — Локаль запроса [`RequestLocale`].
-/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
-/// * `id` — UUID обновляемого пользователя.
-/// * `dto` — Тело JSON-запроса с обновляемыми полями [`UpdateUserDto`].
-///
-/// # Возвращаемое значение
-/// Обновленный профиль пользователя [`UserResponseDto`].
-///
-/// # Ошибки
-/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
-/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
-/// * [`StatusCode::BAD_REQUEST`] — ошибка валидации полей.
 async fn update_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -190,6 +169,38 @@ async fn update_user_handler(
     check_permission(&claims, "users.manage").map_err(|e| {
         (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
     })?;
+
+    let target_user = state.user_service.get_user_by_id(id).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::NOT_FOUND),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    // Только суперпользователь может редактировать профиль другого суперпользователя
+    if target_user.is_superuser && claims.sub != target_user.id && !claims.is_superuser {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Only superusers can modify other superuser accounts")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
+
+    // Только суперпользователь может повысить пользователя до суперпользователя
+    let is_promoting_to_superuser = dto.is_superuser == Some(true)
+        || dto.roles.as_ref().map_or(false, |r| r.contains(&"superuser".to_string()));
+
+    if !target_user.is_superuser && is_promoting_to_superuser && !claims.is_superuser {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Only superusers can promote accounts to superuser")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
 
     let user = state
         .user_service
@@ -221,23 +232,6 @@ async fn update_user_handler(
 /// DELETE /api/v1/users/{id}
 ///
 /// Удалить учетную запись пользователя из системы. Запрещено удалять собственный аккаунт.
-///
-/// # Требуемые права RBAC
-/// * `users.manage` (или права суперпользователя).
-///
-/// # Аргументы
-/// * `state` — Разделяемое состояние сервера [`AppState`].
-/// * `locale` — Локаль запроса [`RequestLocale`].
-/// * `claims` — Данные авторизованного пользователя [`AuthUser`].
-/// * `id` — UUID удаляемого пользователя.
-///
-/// # Возвращаемое значение
-/// `{"success": true}` при успешном удалении.
-///
-/// # Ошибки
-/// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа.
-/// * [`StatusCode::BAD_REQUEST`] — попытка удалить самого себя.
-/// * [`StatusCode::NOT_FOUND`] — пользователь не найден.
 async fn delete_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -254,6 +248,24 @@ async fn delete_user_handler(
             StatusCode::BAD_REQUEST,
             Json(
                 AppError::bad_request("Cannot delete your own user account")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
+
+    let target_user = state.user_service.get_user_by_id(id).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::NOT_FOUND),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    // Только суперпользователь может удалять суперпользователей
+    if target_user.is_superuser && !claims.is_superuser {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Only superusers can delete superuser accounts")
                     .to_api_response(locale),
             ),
         ));

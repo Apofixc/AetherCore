@@ -13,9 +13,11 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
+import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/api/auth'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 interface OperatorItem {
   id: string
@@ -29,24 +31,27 @@ interface OperatorItem {
   initials: string
 }
 
-const loading = ref(true)
+// State
 const searchQuery = ref('')
-const statusFilter = ref('all')
+const statusFilter = ref<'all' | 'online' | 'offline' | 'inactive' | 'superuser' | 'admin' | 'operator' | 'viewer'>('all')
 const selectedUserIds = ref<string[]>([])
+const copiedKey = ref<string | null>(null)
 const sortKey = ref<'full_name' | 'username' | 'role' | 'is_online'>('full_name')
 const sortOrder = ref<'asc' | 'desc'>('asc')
+const loading = ref(false)
 
-// Modals state
+// Modals State
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const showLockModal = ref(false)
 const showDeleteModal = ref(false)
 const showBulkDeleteModal = ref(false)
+const isSubmitting = ref(false)
+const formError = ref<string | null>(null)
 
+// Target user for action
 const selectedUserForAction = ref<OperatorItem | null>(null)
 const userToDelete = ref<OperatorItem | null>(null)
-const isSubmitting = ref(false)
-const copiedKey = ref<string | null>(null)
 
 // Form for new user
 const newUserForm = ref({
@@ -54,7 +59,8 @@ const newUserForm = ref({
   username: '',
   email: '',
   password: '',
-  role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer'
+  role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
+  must_change_password: true
 })
 
 // Form for editing user
@@ -65,7 +71,8 @@ const editUserForm = ref({
   email: '',
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
   is_active: true,
-  password: ''
+  password: '',
+  must_change_password: false
 })
 
 // Operators list
@@ -77,7 +84,7 @@ async function loadUsers() {
     const list = await usersApi.list()
     if (list && Array.isArray(list)) {
       operators.value = list.map((u: User) => {
-        const role = (u.roles && u.roles.includes('superuser')) ? 'superuser'
+        const role = (u.roles && u.roles.includes('superuser')) || u.is_superuser ? 'superuser'
           : (u.roles && u.roles.includes('admin')) ? 'admin'
           : (u.roles && u.roles.includes('operator')) ? 'operator' : 'viewer'
         const initials = u.full_name
@@ -110,6 +117,7 @@ onMounted(() => {
 // KPI Statistics
 const totalCount = computed(() => operators.value.length)
 const onlineCount = computed(() => operators.value.filter((op) => op.is_online).length)
+const superuserCount = computed(() => operators.value.filter((op) => op.role === 'superuser').length)
 const adminCount = computed(() => operators.value.filter((op) => op.role === 'superuser' || op.role === 'admin').length)
 const inactiveCount = computed(() => operators.value.filter((op) => !op.is_active).length)
 
@@ -187,7 +195,15 @@ function toggleSelectUser(id: string) {
 
 function isProtectedUser(op: OperatorItem | null): boolean {
   if (!op) return false
-  return op.username === 'root' || op.id === 'ROOT-001'
+  return op.role === 'superuser' || op.username === 'root' || op.id === 'ROOT-001'
+}
+
+function canEditUser(op: OperatorItem | null): boolean {
+  if (!op) return false
+  if (op.role === 'superuser' && !authStore.isSuperuser) {
+    return false
+  }
+  return true
 }
 
 // Copy to clipboard helper
@@ -270,7 +286,8 @@ async function handleCreateUser() {
       username: '',
       email: '',
       password: '',
-      role: 'operator'
+      role: 'operator',
+      must_change_password: true
     }
     showAddModal.value = false
   } catch (err: any) {
@@ -298,7 +315,8 @@ async function handleCreateUser() {
       username: '',
       email: '',
       password: '',
-      role: 'operator'
+      role: 'operator',
+      must_change_password: true
     }
     showAddModal.value = false
   } finally {
@@ -308,6 +326,7 @@ async function handleCreateUser() {
 
 // Edit User
 function handleOpenEdit(op: OperatorItem) {
+  if (!canEditUser(op)) return
   editUserForm.value = {
     id: op.id,
     full_name: op.full_name,
@@ -315,7 +334,8 @@ function handleOpenEdit(op: OperatorItem) {
     email: op.email,
     role: op.role,
     is_active: op.is_active,
-    password: ''
+    password: '',
+    must_change_password: false
   }
   showEditModal.value = true
 }
@@ -460,6 +480,53 @@ const roleOptions = computed(() => [
   { value: 'operator', label: t('accessIdentity.operator') },
   { value: 'viewer', label: t('accessIdentity.viewer') }
 ])
+
+const createRoleOptions = computed(() => {
+  const opts = []
+  if (authStore.isSuperuser) {
+    opts.push({
+      value: 'superuser',
+      label: superuserCount.value >= 4
+        ? `${t('accessIdentity.superuser')} (Лимит 4)`
+        : t('accessIdentity.superuser'),
+      disabled: superuserCount.value >= 4
+    })
+  }
+  opts.push(
+    { value: 'admin', label: t('accessIdentity.administrator') },
+    { value: 'operator', label: t('accessIdentity.operator') },
+    { value: 'viewer', label: t('accessIdentity.viewer') }
+  )
+  return opts
+})
+
+const editRoleOptions = computed(() => {
+  const opts = []
+  const isTargetSuper = editUserForm.value.role === 'superuser'
+  if (authStore.isSuperuser) {
+    if (isTargetSuper) {
+      opts.push({
+        value: 'superuser',
+        label: t('accessIdentity.superuser'),
+        disabled: superuserCount.value <= 1
+      })
+    } else {
+      opts.push({
+        value: 'superuser',
+        label: superuserCount.value >= 4
+          ? `${t('accessIdentity.superuser')} (Лимит 4)`
+          : t('accessIdentity.superuser'),
+        disabled: superuserCount.value >= 4
+      })
+    }
+  }
+  opts.push(
+    { value: 'admin', label: t('accessIdentity.administrator') },
+    { value: 'operator', label: t('accessIdentity.operator') },
+    { value: 'viewer', label: t('accessIdentity.viewer') }
+  )
+  return opts
+})
 </script>
 
 <template>
@@ -829,8 +896,12 @@ const roleOptions = computed(() => [
                       <!-- Edit User Button -->
                       <button
                         type="button"
-                        class="h-8 w-8 rounded-lg hover:text-primary-fixed-dim hover:bg-surface-variant/50 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
-                        :title="t('users.editUser')"
+                        class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
+                        :class="canEditUser(op)
+                          ? 'hover:text-primary-fixed-dim hover:bg-surface-variant/50 cursor-pointer text-on-surface-variant'
+                          : 'opacity-30 cursor-not-allowed text-on-surface-variant'"
+                        :title="canEditUser(op) ? t('users.editUser') : t('users.protectedRoot')"
+                        :disabled="!canEditUser(op)"
                         @click="handleOpenEdit(op)"
                       >
                         <span class="material-symbols-outlined text-base">edit</span>
@@ -934,7 +1005,7 @@ const roleOptions = computed(() => [
         <BaseSelect
           v-model="newUserForm.role"
           :label="t('users.role')"
-          :options="roleOptions"
+          :options="createRoleOptions"
           size="sm"
         />
       </form>
@@ -992,8 +1063,8 @@ const roleOptions = computed(() => [
         <BaseSelect
           v-model="editUserForm.role"
           :label="t('users.role')"
-          :options="roleOptions"
-          :disabled="editUserForm.username === 'root'"
+          :options="editRoleOptions"
+          :disabled="editUserForm.username === 'root' || (editUserForm.role === 'superuser' && superuserCount <= 1)"
           size="sm"
         />
 

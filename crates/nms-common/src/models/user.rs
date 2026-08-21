@@ -29,6 +29,8 @@ pub struct User {
     pub is_active: bool,
     /// Флаг суперпользователя (предоставляет безусловный доступ ко всем операциям ядра)
     pub is_superuser: bool,
+    /// Требуется ли обязательная смена пароля при следующем входе
+    pub must_change_password: bool,
     /// Список назначенных пользователю ролей (например, `["admin"]`, `["viewer"]`)
     pub roles: Vec<String>,
     /// Агрегированный дедуплицированный список прав доступа (из назначенных ролей и индивидуальных прав)
@@ -56,6 +58,8 @@ pub struct CreateUserDto {
     pub is_active: Option<bool>,
     /// Флаг суперпользователя (по умолчанию `false`)
     pub is_superuser: Option<bool>,
+    /// Требовать ли обязательную смену пароля при первом входе
+    pub must_change_password: Option<bool>,
     /// Список назначаемых ролей (по умолчанию `["viewer"]`)
     pub roles: Option<Vec<String>>,
 }
@@ -73,6 +77,8 @@ pub struct UpdateUserDto {
     pub is_active: Option<bool>,
     /// Новый статус суперпользователя
     pub is_superuser: Option<bool>,
+    /// Требовать ли обязательную смену пароля при следующем входе
+    pub must_change_password: Option<bool>,
     /// Новый список назначенных ролей (перезаписывает предыдущий набор)
     pub roles: Option<Vec<String>>,
 }
@@ -92,6 +98,8 @@ pub struct UserResponseDto {
     pub is_active: bool,
     /// Флаг суперпользователя
     pub is_superuser: bool,
+    /// Флаг обязательной смены пароля
+    pub must_change_password: bool,
     /// Список назначенных ролей
     pub roles: Vec<String>,
     /// Агрегированный список прав доступа
@@ -111,6 +119,7 @@ impl From<User> for UserResponseDto {
             email: u.email,
             is_active: u.is_active,
             is_superuser: u.is_superuser,
+            must_change_password: u.must_change_password,
             roles: u.roles,
             permissions: u.permissions,
             created_at: u.created_at,

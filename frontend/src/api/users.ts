@@ -8,6 +8,7 @@ export interface CreateUserDto {
   email?: string
   is_active?: boolean
   is_superuser?: boolean
+  must_change_password?: boolean
   roles?: string[]
   permissions?: string[]
 }
@@ -18,6 +19,7 @@ export interface UpdateUserDto {
   password?: string
   is_active?: boolean
   is_superuser?: boolean
+  must_change_password?: boolean
   roles?: string[]
 }
 

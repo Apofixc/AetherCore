@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 import { useTheme } from '@/theme'
-import { AppButton, BaseInput } from '@/components/common'
+import { AppButton, BaseInput, BaseModal } from '@/components/common'
+import { usersApi } from '@/api/users'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -17,21 +18,65 @@ const rememberMe = ref(true)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
 
+// Mandatory Password Change state
+const showPasswordChangeModal = ref(false)
+const newPassword = ref('')
+const confirmPassword = ref('')
+const passwordChangeError = ref<string | null>(null)
+const isChangingPassword = ref(false)
+
 async function handleLogin() {
   if (!operatorId.value || !accessCode.value) return
   isSubmitting.value = true
   errorMessage.value = null
   try {
     await authStore.login(operatorId.value, accessCode.value)
-    router.push('/dashboard')
+    if (authStore.user?.must_change_password) {
+      showPasswordChangeModal.value = true
+    } else {
+      router.push('/dashboard')
+    }
   } catch (err: any) {
     console.warn('Backend login fallback to local session:', err)
     authStore.token = 'mock-dev-token'
     localStorage.setItem('nms_token', 'mock-dev-token')
     await authStore.fetchUser()
-    router.push('/dashboard')
+    if (authStore.user?.must_change_password) {
+      showPasswordChangeModal.value = true
+    } else {
+      router.push('/dashboard')
+    }
   } finally {
     isSubmitting.value = false
+  }
+}
+
+async function handleSaveNewPassword() {
+  if (newPassword.value.length < 4) {
+    passwordChangeError.value = 'Пароль должен быть не менее 4 символов'
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    passwordChangeError.value = 'Пароли не совпадают'
+    return
+  }
+
+  isChangingPassword.value = true
+  passwordChangeError.value = null
+  try {
+    if (authStore.user) {
+      await usersApi.update(authStore.user.id, {
+        password: newPassword.value,
+        must_change_password: false
+      })
+      authStore.user.must_change_password = false
+    }
+    showPasswordChangeModal.value = false
+    router.push('/dashboard')
+  } catch (err: any) {
+    passwordChangeError.value = err.message || 'Ошибка смены пароля'
+  } finally {
+    isChangingPassword.value = false
   }
 }
 </script>
@@ -162,21 +207,54 @@ async function handleLogin() {
       </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="fixed bottom-0 w-full h-8 bg-surface-container-lowest/80 backdrop-blur-sm border-t border-outline-variant/60 flex items-center justify-between px-lg z-50 font-mono text-[10px] tracking-wider">
-      <div class="flex items-center gap-md">
-        <span class="text-primary-fixed-dim">{{ t('common.builtWith') }}</span>
-        <span class="text-outline-variant">|</span>
-        <div class="flex items-center gap-xs text-tertiary-fixed-dim">
-          <span class="material-symbols-outlined text-[14px]">check_circle</span>
-          <span>{{ t('common.systemOk') }}</span>
+    <!-- Mandatory Password Change Modal -->
+    <BaseModal
+      v-model="showPasswordChangeModal"
+      title="Обязательная смена пароля"
+      icon="lock_reset"
+      max-width="max-w-md"
+      :show-close="false"
+    >
+      <form id="changePasswordForm" @submit.prevent="handleSaveNewPassword" class="flex flex-col gap-3">
+        <p class="text-xs text-on-surface-variant leading-relaxed">
+          В соответствии с политиками безопасности при первом входе в систему вам необходимо задать новый постоянный пароль.
+        </p>
+
+        <div v-if="passwordChangeError" class="p-2 bg-error-container/40 border border-error text-error rounded-lg text-xs font-mono">
+          {{ passwordChangeError }}
         </div>
-      </div>
-      <div class="flex items-center gap-lg text-on-surface-variant">
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.apiDocs') }}</a>
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.github') }}</a>
-        <a class="hover:text-primary-fixed-dim transition-colors" href="#">{{ t('common.discord') }}</a>
-      </div>
-    </footer>
+
+        <BaseInput
+          v-model="newPassword"
+          label="Новый пароль"
+          placeholder="••••••••"
+          type="password"
+          :required="true"
+          size="sm"
+        />
+
+        <BaseInput
+          v-model="confirmPassword"
+          label="Подтверждение пароля"
+          placeholder="••••••••"
+          type="password"
+          :required="true"
+          size="sm"
+        />
+      </form>
+
+      <template #footer>
+        <AppButton
+          variant="primary"
+          size="sm"
+          type="submit"
+          form="changePasswordForm"
+          :loading="isChangingPassword"
+          @click="handleSaveNewPassword"
+        >
+          {{ isChangingPassword ? 'Сохранение...' : 'Установить пароль и войти' }}
+        </AppButton>
+      </template>
+    </BaseModal>
   </div>
 </template>

@@ -46,6 +46,7 @@ impl UserService {
                 email: Some("admin@nms.local".to_string()),
                 is_active: Some(true),
                 is_superuser: Some(true),
+                must_change_password: Some(false),
                 roles: Some(vec!["admin".to_string()]),
             })
             .await?;
@@ -54,20 +55,19 @@ impl UserService {
         Ok(())
     }
 
+    /// Получить количество активных суперпользователей в системе
+    pub async fn count_superusers(&self) -> Result<i64> {
+        let count_row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_superuser = 1")
+            .fetch_one(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        Ok(count_row.0)
+    }
+
     /// Создать нового пользователя системы
     ///
-    /// Выполняет валидацию логина и пароля, хэширует пароль алгоритмом Argon2id,
-    /// сохраняет запись в БД и привязывает указанные роли (по умолчанию `"viewer"`).
-    ///
-    /// # Аргументы
-    /// * `dto` — Данные создаваемого пользователя ([`CreateUserDto`]).
-    ///
-    /// # Возвращаемое значение
-    /// Созданный объект пользователя ([`User`]) с агрегированными правами доступа.
-    ///
-    /// # Ошибки
-    /// - [`AppError::Validation`](nms_common::error::AppError) — если имя пользователя или пароль не удовлетворяют требованиям.
-    /// - [`AppError::Conflict`](nms_common::error::AppError) — если пользователь с таким именем уже существует.
+    /// Выполняет валидацию логина и пароля, проверку квоты суперпользователей (макс 4),
+    /// хэширует пароль алгоритмом Argon2id, сохраняет запись в БД и привязывает указанные роли.
     pub async fn create_user(&self, dto: CreateUserDto) -> Result<User> {
         let username = dto.username.trim().to_lowercase();
         if username.is_empty() {
@@ -93,17 +93,31 @@ impl UserService {
             return Err(AppError::conflict(format!("User '{}' already exists", username)));
         }
 
+        let is_superuser = dto.is_superuser.unwrap_or(false)
+            || dto.roles.as_ref().map_or(false, |r| r.contains(&"superuser".to_string()));
+
+        // Проверка квоты суперпользователей (максимум 4)
+        if is_superuser {
+            let current_superusers = self.count_superusers().await?;
+            if current_superusers >= 4 {
+                return Err(AppError::validation(
+                    "roles",
+                    "Maximum 4 superusers allowed in the system",
+                ));
+            }
+        }
+
         let id = Uuid::new_v4();
         let password_hash = hash_password(&dto.password)?;
         let now = Utc::now();
         let is_active = dto.is_active.unwrap_or(true);
-        let is_superuser = dto.is_superuser.unwrap_or(false);
+        let must_change_password = dto.must_change_password.unwrap_or(false);
 
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, password_hash, is_active, is_superuser, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -113,6 +127,7 @@ impl UserService {
         .bind(&password_hash)
         .bind(if is_active { 1 } else { 0 })
         .bind(if is_superuser { 1 } else { 0 })
+        .bind(if must_change_password { 1 } else { 0 })
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
         .execute(self.db.writer())
@@ -120,7 +135,14 @@ impl UserService {
         .map_err(|e| AppError::database(format!("Failed to insert user: {}", e)))?;
 
         // Назначаем роли
-        let roles = dto.roles.unwrap_or_else(|| vec!["viewer".to_string()]);
+        let roles = dto.roles.unwrap_or_else(|| {
+            if is_superuser {
+                vec!["superuser".to_string()]
+            } else {
+                vec!["viewer".to_string()]
+            }
+        });
+
         for role in &roles {
             sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, ?)")
                 .bind(id.to_string())
@@ -134,17 +156,6 @@ impl UserService {
     }
 
     /// Получить пользователя по его уникальному идентификатору (UUID)
-    ///
-    /// Включает загрузку связанных ролей и вычисление агрегированных прав доступа.
-    ///
-    /// # Аргументы
-    /// * `id` — Идентификатор пользователя ([`Uuid`]).
-    ///
-    /// # Возвращаемое значение
-    /// Полный объект [`User`].
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если пользователь не найден.
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<User> {
         let row: Option<(
             String,
@@ -154,12 +165,13 @@ impl UserService {
             String,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -175,14 +187,6 @@ impl UserService {
     }
 
     /// Получить пользователя по логину (username)
-    ///
-    /// Поиск выполняется без учета регистра.
-    ///
-    /// # Аргументы
-    /// * `username` — Имя пользователя для поиска.
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если пользователь не найден.
     pub async fn get_user_by_username(&self, username: &str) -> Result<User> {
         let username_clean = username.trim().to_lowercase();
         let row: Option<(
@@ -193,12 +197,13 @@ impl UserService {
             String,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -214,19 +219,6 @@ impl UserService {
     }
 
     /// Выполнить аутентификацию пользователя по логину и паролю
-    ///
-    /// Проверяет активность аккаунта (`is_active`), сверяет хэш пароля через Argon2id
-    /// и обновляет поле `last_login_at`.
-    ///
-    /// # Аргументы
-    /// * `username` — Имя пользователя.
-    /// * `password` — Открытый пароль.
-    ///
-    /// # Возвращаемое значение
-    /// Аутентифицированный объект [`User`].
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Unauthorized`](nms_common::error::AppError), если логин/пароль неверны или аккаунт отключен.
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
         let user = self.get_user_by_username(username).await.map_err(|_| {
             AppError::unauthorized("Invalid username or password")
@@ -252,12 +244,6 @@ impl UserService {
     }
 
     /// Получить список всех зарегистрированных пользователей системы
-    ///
-    /// # Возвращаемое значение
-    /// Вектор объектов [`User`] в алфавитном порядке имен пользователей.
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса.
     pub async fn list_users(&self) -> Result<Vec<User>> {
         let rows: Vec<(
             String,
@@ -267,12 +253,13 @@ impl UserService {
             String,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -288,35 +275,68 @@ impl UserService {
         Ok(users)
     }
 
-    /// Обновить профиль, пароль или роли пользователя
-    ///
-    /// # Аргументы
-    /// * `id` — Идентификатор обновляемого пользователя.
-    /// * `dto` — Объект с обновляемыми полями ([`UpdateUserDto`]).
-    ///
-    /// # Возвращаемое значение
-    /// Актуальный объект [`User`] после применения изменений.
-    ///
-    /// # Ошибки
-    /// - [`AppError::NotFound`](nms_common::error::AppError) — пользователь не найден.
-    /// - [`AppError::Database`](nms_common::error::AppError) — сбой при сохранении в SQLite.
+    /// Обновить профиль, пароль или роли пользователя с проверкой правил безопасности
     pub async fn update_user(&self, id: Uuid, dto: UpdateUserDto) -> Result<User> {
         let existing = self.get_user_by_id(id).await?;
         let now = Utc::now().to_rfc3339();
 
+        // 1. Проверка роли superuser
+        let new_is_superuser = dto.is_superuser.unwrap_or_else(|| {
+            dto.roles
+                .as_ref()
+                .map_or(existing.is_superuser, |r| r.contains(&"superuser".to_string()))
+        });
+
+        // Запрет блокировки суперпользователя
+        if existing.is_superuser && dto.is_active == Some(false) {
+            return Err(AppError::validation(
+                "is_active",
+                "Superusers cannot be deactivated or locked",
+            ));
+        }
+
+        // Повышение до superuser -> проверка квоты <= 4
+        if !existing.is_superuser && new_is_superuser {
+            let current_superusers = self.count_superusers().await?;
+            if current_superusers >= 4 {
+                return Err(AppError::validation(
+                    "roles",
+                    "Maximum 4 superusers allowed in the system",
+                ));
+            }
+        }
+
+        // Понижение superuser -> проверка квоты >= 1 (нельзя понизить последнего)
+        if existing.is_superuser && !new_is_superuser {
+            let current_superusers = self.count_superusers().await?;
+            if current_superusers <= 1 {
+                return Err(AppError::validation(
+                    "roles",
+                    "Cannot demote the last remaining superuser in the system",
+                ));
+            }
+        }
+
+        let is_password_changed = dto.password.as_ref().map_or(false, |p| !p.trim().is_empty());
         let password_hash = match dto.password {
-            Some(ref pwd) if !pwd.is_empty() => hash_password(pwd)?,
+            Some(ref pwd) if !pwd.trim().is_empty() => hash_password(pwd)?,
             _ => existing.password_hash.clone(),
+        };
+
+        // Если пароль сменен, сбрасываем must_change_password в 0 (если не указано обратное)
+        let must_change_password = if is_password_changed && dto.must_change_password.is_none() {
+            false
+        } else {
+            dto.must_change_password.unwrap_or(existing.must_change_password)
         };
 
         let full_name = dto.full_name.or(existing.full_name);
         let email = dto.email.or(existing.email);
         let is_active = dto.is_active.unwrap_or(existing.is_active);
-        let is_superuser = dto.is_superuser.unwrap_or(existing.is_superuser);
 
         sqlx::query(
             r#"
-            UPDATE users SET full_name = ?, email = ?, password_hash = ?, is_active = ?, is_superuser = ?, updated_at = ?
+            UPDATE users SET full_name = ?, email = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
@@ -324,7 +344,8 @@ impl UserService {
         .bind(email)
         .bind(password_hash)
         .bind(if is_active { 1 } else { 0 })
-        .bind(if is_superuser { 1 } else { 0 })
+        .bind(if new_is_superuser { 1 } else { 0 })
+        .bind(if must_change_password { 1 } else { 0 })
         .bind(now)
         .bind(id.to_string())
         .execute(self.db.writer())
@@ -352,19 +373,19 @@ impl UserService {
         self.get_user_by_id(id).await
     }
 
-    /// Удалить пользователя по его идентификатору
-    ///
-    /// Все связанные роли каскадно удаляются через внешние ключи SQLite (`ON DELETE CASCADE`).
-    ///
-    /// # Аргументы
-    /// * `id` — Идентификатор пользователя.
-    ///
-    /// # Возвращаемое значение
-    /// `Ok(true)` если пользователь существовал и был удален, иначе `Ok(false)`.
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса.
+    /// Удалить пользователя по его идентификатору с проверкой защиты последнего суперпользователя
     pub async fn delete_user(&self, id: Uuid) -> Result<bool> {
+        let existing = self.get_user_by_id(id).await?;
+        if existing.is_superuser {
+            let current_superusers = self.count_superusers().await?;
+            if current_superusers <= 1 {
+                return Err(AppError::validation(
+                    "id",
+                    "Cannot delete the last remaining superuser in the system",
+                ));
+            }
+        }
+
         let res = sqlx::query("DELETE FROM users WHERE id = ?")
             .bind(id.to_string())
             .execute(self.db.writer())
@@ -374,19 +395,7 @@ impl UserService {
         Ok(res.rows_affected() > 0)
     }
 
-    /// Преобразовать кортеж строки таблицы `users` в модель [`User`] с агрегацией прав доступа
-    ///
-    /// Выполняет подгрузку назначенных пользователю ролей из `user_roles`
-    /// и прав доступа из `role_permissions` с дедупликацией через хэш-множество.
-    ///
-    /// # Аргументы
-    /// * `r` — Кортеж колонок строки таблицы пользователей.
-    ///
-    /// # Возвращаемое значение
-    /// Заполненный объект [`User`].
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при ошибках чтения связанных ролей.
+    /// Преобразовать кортеж строки таблицы `users` в модель [`User`]
     async fn map_user_row(
         &self,
         r: (
@@ -395,6 +404,7 @@ impl UserService {
             Option<String>,
             Option<String>,
             String,
+            i64,
             i64,
             i64,
             String,
@@ -410,6 +420,7 @@ impl UserService {
             password_hash,
             is_active_num,
             is_superuser_num,
+            must_change_pwd_num,
             created_at_str,
             updated_at_str,
             last_login_at_str,
@@ -418,6 +429,7 @@ impl UserService {
         let id = Uuid::parse_str(&id_str).unwrap_or_default();
         let is_active = is_active_num != 0;
         let is_superuser = is_superuser_num != 0;
+        let must_change_password = must_change_pwd_num != 0;
 
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
@@ -468,6 +480,7 @@ impl UserService {
             password_hash,
             is_active,
             is_superuser,
+            must_change_password,
             roles,
             permissions,
             created_at,

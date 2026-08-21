@@ -148,6 +148,7 @@ impl Db {
                 password_hash TEXT NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 is_superuser INTEGER NOT NULL DEFAULT 0,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
@@ -157,6 +158,11 @@ impl Db {
         .execute(pool)
         .await
         .map_err(|e| AppError::database(format!("Failed to create users table: {}", e)))?;
+
+        // Миграция существующей таблицы users (если колонка must_change_password отсутствует)
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
 
         // 2. Таблицы RBAC (роли и права)
         sqlx::query(
@@ -294,6 +300,7 @@ impl Db {
 
         // Встроенные роли
         let default_roles = [
+            ("superuser", "Суперпользователь с наивысшими правами и полным управлением системой", true),
             ("admin", "Полный административный доступ ко всем сервисам", true),
             ("operator", "Оператор мониторинга и управления конфигурациями", true),
             ("viewer", "Только просмотр статусов и метрик", true),
