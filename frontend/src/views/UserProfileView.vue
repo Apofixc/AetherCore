@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
   PageHeader,
@@ -13,6 +13,8 @@ import {
 import { useI18n, type Locale } from '@/i18n'
 import { useTheme, type ThemeMode } from '@/theme'
 import { useAuthStore } from '@/stores/auth'
+import { usersApi } from '@/api/users'
+import { settingsApi } from '@/api/settings'
 
 const { t, locale, setLocale } = useI18n()
 const { theme, setTheme } = useTheme()
@@ -44,13 +46,8 @@ function updateClock() {
   }
 }
 
-onMounted(() => {
+watch(timezone, () => {
   updateClock()
-  clockTimer = window.setInterval(updateClock, 1000)
-})
-
-onUnmounted(() => {
-  if (clockTimer) clearInterval(clockTimer)
 })
 
 // Password Form State
@@ -104,10 +101,96 @@ const moduleSubscriptions = ref<ModuleSub[]>([
   }
 ])
 
-import { usersApi } from '@/api/users'
-
 // Save Notification
 const savedNotice = ref(false)
+
+async function loadPreferences() {
+  // 1. Попытка загрузки с сервера (SQLite)
+  try {
+    const serverPrefs = await settingsApi.getUserPreferences()
+    if (serverPrefs) {
+      if (serverPrefs.timezone) timezone.value = serverPrefs.timezone
+      if (serverPrefs.department) department.value = serverPrefs.department
+      if (serverPrefs.active_mute_duration) activeMuteDuration.value = serverPrefs.active_mute_duration as any
+      if (typeof serverPrefs.quiet_hours_enabled === 'boolean') quietHoursEnabled.value = serverPrefs.quiet_hours_enabled
+      if (serverPrefs.sound_info) soundInfo.value = serverPrefs.sound_info
+      if (serverPrefs.sound_success) soundSuccess.value = serverPrefs.sound_success
+      if (serverPrefs.sound_warning) soundWarning.value = serverPrefs.sound_warning
+      if (serverPrefs.sound_error) soundError.value = serverPrefs.sound_error
+      if (Array.isArray(serverPrefs.module_subscriptions) && serverPrefs.module_subscriptions.length > 0) {
+        moduleSubscriptions.value = serverPrefs.module_subscriptions.map((m) => ({
+          id: m.id,
+          nameKey: m.name_key,
+          code: m.code,
+          descKey: m.desc_key,
+          enabled: m.enabled,
+          mute: m.mute as any,
+          sound: m.sound,
+          threshold: m.threshold
+        }))
+      }
+      if (serverPrefs.theme && ['dark', 'light', 'system'].includes(serverPrefs.theme)) {
+        setTheme(serverPrefs.theme as ThemeMode)
+      }
+      if (serverPrefs.locale && ['ru', 'en'].includes(serverPrefs.locale)) {
+        setLocale(serverPrefs.locale as Locale)
+      }
+      return
+    }
+  } catch (err) {
+    console.debug('Could not load user preferences from server, using local fallback:', err)
+  }
+
+  // 2. Fallback на localStorage при отсутствии связи
+  try {
+    const saved = localStorage.getItem('nms_profile_preferences')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed.timezone) timezone.value = parsed.timezone
+      if (parsed.department) department.value = parsed.department
+      if (parsed.activeMuteDuration) activeMuteDuration.value = parsed.activeMuteDuration
+      if (typeof parsed.quietHoursEnabled === 'boolean') quietHoursEnabled.value = parsed.quietHoursEnabled
+      if (parsed.soundInfo) soundInfo.value = parsed.soundInfo
+      if (parsed.soundSuccess) soundSuccess.value = parsed.soundSuccess
+      if (parsed.soundWarning) soundWarning.value = parsed.soundWarning
+      if (parsed.soundError) soundError.value = parsed.soundError
+      if (Array.isArray(parsed.moduleSubscriptions)) moduleSubscriptions.value = parsed.moduleSubscriptions
+      if (parsed.fullName && !authStore.user?.full_name) fullName.value = parsed.fullName
+      if (parsed.email && !authStore.user?.email) email.value = parsed.email
+    }
+  } catch (e) {
+    console.error('Failed to parse nms_profile_preferences', e)
+  }
+}
+
+watch(
+  () => authStore.user,
+  (u) => {
+    if (u) {
+      if (u.full_name) fullName.value = u.full_name
+      if (u.email) email.value = u.email
+      if (u.is_superuser) {
+        role.value = 'Superuser'
+      } else if (u.roles && u.roles.length > 0) {
+        role.value = u.roles[0].charAt(0).toUpperCase() + u.roles[0].slice(1)
+      }
+    }
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  await loadPreferences()
+  if (authStore.isAuthenticated && !authStore.user) {
+    await authStore.fetchUser()
+  }
+  updateClock()
+  clockTimer = window.setInterval(updateClock, 1000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
+})
 
 async function handleSaveProfile() {
   if (authStore.user?.id) {
@@ -119,10 +202,65 @@ async function handleSaveProfile() {
       await authStore.fetchUser()
     } catch (err) {
       console.warn('Could not update profile via API, applying locally:', err)
-      authStore.user.full_name = fullName.value
-      authStore.user.email = email.value
+      if (authStore.user) {
+        authStore.user.full_name = fullName.value
+        authStore.user.email = email.value
+      }
     }
   }
+
+  const prefsPayload = {
+    timezone: timezone.value,
+    theme: theme.value,
+    locale: locale.value,
+    department: department.value,
+    active_mute_duration: activeMuteDuration.value,
+    quiet_hours_enabled: quietHoursEnabled.value,
+    quiet_schedule: '23:00 — 07:00 (GMT+3)',
+    sound_info: soundInfo.value,
+    sound_success: soundSuccess.value,
+    sound_warning: soundWarning.value,
+    sound_error: soundError.value,
+    module_subscriptions: moduleSubscriptions.value.map((m) => ({
+      id: m.id,
+      name_key: m.nameKey,
+      code: m.code,
+      desc_key: m.descKey,
+      enabled: m.enabled,
+      mute: m.mute,
+      sound: m.sound,
+      threshold: m.threshold
+    })),
+    sidebar_collapsed: false
+  }
+
+  // Сохраняем на сервере в SQLite (kv_store)
+  try {
+    await settingsApi.updateUserPreferences(prefsPayload)
+  } catch (err) {
+    console.warn('Could not save user preferences to server, saving locally:', err)
+  }
+
+  // Дублируем в localStorage для оффлайн-кэша
+  try {
+    const prefsLocal = {
+      fullName: fullName.value,
+      email: email.value,
+      department: department.value,
+      timezone: timezone.value,
+      activeMuteDuration: activeMuteDuration.value,
+      quietHoursEnabled: quietHoursEnabled.value,
+      soundInfo: soundInfo.value,
+      soundSuccess: soundSuccess.value,
+      soundWarning: soundWarning.value,
+      soundError: soundError.value,
+      moduleSubscriptions: moduleSubscriptions.value
+    }
+    localStorage.setItem('nms_profile_preferences', JSON.stringify(prefsLocal))
+  } catch (e) {
+    console.error('Failed to save nms_profile_preferences', e)
+  }
+
   savedNotice.value = true
   setTimeout(() => {
     savedNotice.value = false

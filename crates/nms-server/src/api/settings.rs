@@ -1,0 +1,597 @@
+//! # Эндпоинты настроек платформы и предпочтений (`/api/v1/settings`)
+//!
+//! Предоставляет HTTP эндпоинты для:
+//! - Получения и сохранения персональных настроек профиля пользователя (`/api/v1/settings/user-preferences`).
+//! - Получения и сохранения общесистемных политик безопасности (`/api/v1/settings/security`).
+//! - Получения и сохранения матрицы прав доступа ролей RBAC (`/api/v1/settings/permissions`).
+//! - Получения и сохранения настроек системного обслуживания и бэкапов (`/api/v1/settings/maintenance`).
+
+use crate::middleware::{AuthUser, RequestLocale};
+use crate::state::AppState;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::get;
+use axum::{Json, Router};
+use nms_common::error::ErrorResponse;
+use nms_core::auth::check_permission;
+use nms_core::db::kv::KvStore;
+use serde::{Deserialize, Serialize};
+
+type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
+
+/// Создать вложенный роутер настроек `/settings`
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/user-preferences", get(get_user_preferences_handler).put(update_user_preferences_handler))
+        .route("/security", get(get_security_policies_handler).put(update_security_policies_handler))
+        .route("/permissions", get(get_permissions_matrix_handler).put(update_permissions_matrix_handler))
+        .route("/maintenance", get(get_maintenance_settings_handler).put(update_maintenance_settings_handler))
+}
+
+// ---------------------------------------------------------------------------
+// 1. Персональные предпочтения пользователя
+// ---------------------------------------------------------------------------
+
+/// DTO подписки пользователя на модуль
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleSubscriptionDto {
+    /// Идентификатор подписки
+    pub id: String,
+    /// Ключ локализации названия
+    pub name_key: String,
+    /// Символьный код модуля
+    pub code: String,
+    /// Ключ локализации описания
+    pub desc_key: String,
+    /// Флаг активности подписки
+    pub enabled: bool,
+    /// Режим временного мьюта
+    pub mute: String,
+    /// Звуковой сигнал оповещения
+    pub sound: String,
+    /// Порог фильтрации событий
+    pub threshold: String,
+}
+
+/// DTO персональных настроек профиля пользователя
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserPreferencesDto {
+    /// Часовой пояс пользователя
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+    /// Цветовая тема интерфейса
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    /// Язык интерфейса
+    #[serde(default = "default_locale")]
+    pub locale: String,
+    /// Подразделение / отдел
+    #[serde(default)]
+    pub department: Option<String>,
+    /// Длительность режима "Не беспокоить"
+    #[serde(default = "default_mute_duration")]
+    pub active_mute_duration: String,
+    /// Флаг включения тихих часов
+    #[serde(default)]
+    pub quiet_hours_enabled: bool,
+    /// Расписание тихих часов
+    #[serde(default = "default_quiet_schedule")]
+    pub quiet_schedule: String,
+    /// Звуковой сигнал для информационных событий
+    #[serde(default = "default_sound_info")]
+    pub sound_info: String,
+    /// Звуковой сигнал для успешных операций
+    #[serde(default = "default_sound_success")]
+    pub sound_success: String,
+    /// Звуковой сигнал для предупреждений
+    #[serde(default = "default_sound_warning")]
+    pub sound_warning: String,
+    /// Звуковой сигнал для ошибок и тревог
+    #[serde(default = "default_sound_error")]
+    pub sound_error: String,
+    /// Список подписок на события модулей
+    #[serde(default = "default_module_subscriptions")]
+    pub module_subscriptions: Vec<ModuleSubscriptionDto>,
+    /// Флаг свернутого состояния боковой панели
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
+}
+
+fn default_timezone() -> String {
+    "Europe/Minsk".to_string()
+}
+fn default_theme() -> String {
+    "dark".to_string()
+}
+fn default_locale() -> String {
+    "ru".to_string()
+}
+fn default_mute_duration() -> String {
+    "none".to_string()
+}
+fn default_quiet_schedule() -> String {
+    "23:00 — 07:00 (GMT+3)".to_string()
+}
+fn default_sound_info() -> String {
+    "Soft Chime".to_string()
+}
+fn default_sound_success() -> String {
+    "Major Chord".to_string()
+}
+fn default_sound_warning() -> String {
+    "Double Beep".to_string()
+}
+fn default_sound_error() -> String {
+    "Alarm Tone".to_string()
+}
+fn default_module_subscriptions() -> Vec<ModuleSubscriptionDto> {
+    vec![
+        ModuleSubscriptionDto {
+            id: "core".to_string(),
+            name_key: "profile.systemCore".to_string(),
+            code: "core".to_string(),
+            desc_key: "profile.systemCoreDesc".to_string(),
+            enabled: true,
+            mute: "none".to_string(),
+            sound: "Default (by severity)".to_string(),
+            threshold: "profile.allEvents".to_string(),
+        },
+        ModuleSubscriptionDto {
+            id: "topology".to_string(),
+            name_key: "profile.moduleTopology".to_string(),
+            code: "wasm.topology".to_string(),
+            desc_key: "profile.moduleTopologyDesc".to_string(),
+            enabled: true,
+            mute: "none".to_string(),
+            sound: "Synth Chime".to_string(),
+            threshold: "profile.warnAndErrors".to_string(),
+        },
+    ]
+}
+
+impl Default for UserPreferencesDto {
+    fn default() -> Self {
+        Self {
+            timezone: default_timezone(),
+            theme: default_theme(),
+            locale: default_locale(),
+            department: Some("Network Operations".to_string()),
+            active_mute_duration: default_mute_duration(),
+            quiet_hours_enabled: false,
+            quiet_schedule: default_quiet_schedule(),
+            sound_info: default_sound_info(),
+            sound_success: default_sound_success(),
+            sound_warning: default_sound_warning(),
+            sound_error: default_sound_error(),
+            module_subscriptions: default_module_subscriptions(),
+            sidebar_collapsed: false,
+        }
+    }
+}
+
+/// GET /api/v1/settings/user-preferences
+async fn get_user_preferences_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> ApiResult<UserPreferencesDto> {
+    let kv = KvStore::new(state.db.clone(), format!("user:{}", claims.sub));
+    let prefs: Option<UserPreferencesDto> = kv.get("preferences").await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(prefs.unwrap_or_default()))
+}
+
+/// PUT /api/v1/settings/user-preferences
+async fn update_user_preferences_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(dto): Json<UserPreferencesDto>,
+) -> ApiResult<UserPreferencesDto> {
+    let kv = KvStore::new(state.db.clone(), format!("user:{}", claims.sub));
+    kv.set("preferences", &dto).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(dto))
+}
+
+// ---------------------------------------------------------------------------
+// 2. Политики безопасности и аутентификации
+// ---------------------------------------------------------------------------
+
+/// DTO общесистемных политик безопасности и сложности паролей
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityPoliciesDto {
+    /// Разрешить авторизацию через веб-интерфейс
+    #[serde(default = "default_true")]
+    pub web_ui_auth: bool,
+    /// Обязательная смена временного пароля
+    #[serde(default = "default_true")]
+    pub mandatory_password_change: bool,
+    /// Принудительное 2FA (TOTP)
+    #[serde(default = "default_false")]
+    pub force_2fa: bool,
+    /// Максимальное число неудачных попыток входа
+    #[serde(default = "default_max_login_attempts")]
+    pub max_login_attempts: u32,
+    /// Длительность блокировки в минутах
+    #[serde(default = "default_lockout_duration")]
+    pub lockout_duration: u32,
+    /// Время жизни сессии в часах
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl: u32,
+    /// Таймаут неактивности пользователя в минутах
+    #[serde(default = "default_inactivity_timeout")]
+    pub inactivity_timeout: u32,
+    /// Минимальная длина пароля
+    #[serde(default = "default_min_password_length")]
+    pub min_password_length: u32,
+    /// Требование заглавных букв в пароле
+    #[serde(default = "default_true")]
+    pub require_uppercase: bool,
+    /// Требование цифр в пароле
+    #[serde(default = "default_true")]
+    pub require_digits: bool,
+    /// Требование спецсимволов в пароле
+    #[serde(default = "default_true")]
+    pub require_special: bool,
+    /// Белый список разрешенных IP-адресов
+    #[serde(default = "default_ip_whitelist")]
+    pub ip_whitelist: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_false() -> bool {
+    false
+}
+fn default_max_login_attempts() -> u32 {
+    5
+}
+fn default_lockout_duration() -> u32 {
+    30
+}
+fn default_session_ttl() -> u32 {
+    12
+}
+fn default_inactivity_timeout() -> u32 {
+    30
+}
+fn default_min_password_length() -> u32 {
+    8
+}
+fn default_ip_whitelist() -> String {
+    "127.0.0.1, 192.168.1.0/24".to_string()
+}
+
+impl Default for SecurityPoliciesDto {
+    fn default() -> Self {
+        Self {
+            web_ui_auth: true,
+            mandatory_password_change: true,
+            force_2fa: false,
+            max_login_attempts: 5,
+            lockout_duration: 30,
+            session_ttl: 12,
+            inactivity_timeout: 30,
+            min_password_length: 8,
+            require_uppercase: true,
+            require_digits: true,
+            require_special: true,
+            ip_whitelist: default_ip_whitelist(),
+        }
+    }
+}
+
+/// GET /api/v1/settings/security
+async fn get_security_policies_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> ApiResult<SecurityPoliciesDto> {
+    if !claims.is_superuser {
+        check_permission(&claims, "settings.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    let policies: Option<SecurityPoliciesDto> = kv.get("security_policies").await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(policies.unwrap_or_default()))
+}
+
+/// PUT /api/v1/settings/security
+async fn update_security_policies_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(dto): Json<SecurityPoliciesDto>,
+) -> ApiResult<SecurityPoliciesDto> {
+    if !claims.is_superuser {
+        check_permission(&claims, "settings.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    kv.set("security_policies", &dto).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "settings.security.update",
+            "settings/security",
+            "success",
+            None,
+            None,
+        )
+        .await;
+
+    Ok(Json(dto))
+}
+
+// ---------------------------------------------------------------------------
+// 3. Матрица прав доступа ролей (RBAC Permissions Matrix)
+// ---------------------------------------------------------------------------
+
+/// GET /api/v1/settings/permissions
+async fn get_permissions_matrix_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> ApiResult<serde_json::Value> {
+    if !claims.is_superuser {
+        check_permission(&claims, "access.roles.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    let matrix: Option<serde_json::Value> = kv.get("permissions_matrix").await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    match matrix {
+        Some(m) => Ok(Json(m)),
+        None => Ok(Json(default_permissions_matrix())),
+    }
+}
+
+/// PUT /api/v1/settings/permissions
+async fn update_permissions_matrix_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(dto): Json<serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    if !claims.is_superuser {
+        check_permission(&claims, "access.roles.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    kv.set("permissions_matrix", &dto).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "settings.permissions.update",
+            "settings/permissions",
+            "success",
+            None,
+            None,
+        )
+        .await;
+
+    Ok(Json(dto))
+}
+
+fn default_permissions_matrix() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "id": "demo_plugin",
+            "name": "Demo Plugin",
+            "icon": "extension",
+            "items": [
+                { "id": "dp_view", "name": "Demo Plugin View", "code": "module.demo_plugin.view", "description": "Allows access to Demo Plugin module", "admin": false, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "audit_logs",
+            "name": "Audit Logs",
+            "icon": "history_edu",
+            "items": [
+                { "id": "audit_export", "name": "Export Audit Logs", "code": "audit.export", "description": "Export security audit log history", "admin": true, "operator": false, "viewer": false },
+                { "id": "audit_view", "name": "View Audit Logs", "code": "audit.view", "description": "View security audit log history", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "access_control",
+            "name": "Access Control",
+            "icon": "vpn_key",
+            "items": [
+                { "id": "access_roles_manage", "name": "Manage Roles & Permissions", "code": "access.roles.manage", "description": "Create, edit, delete access roles and assign permissions", "admin": true, "operator": false, "viewer": false },
+                { "id": "access_roles_view", "name": "View Roles & Permissions", "code": "access.roles.view", "description": "View access roles and permissions matrix", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "modules",
+            "name": "Modules",
+            "icon": "view_in_ar",
+            "items": [
+                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "Install, update, enable/disable, and remove dynamic modules", "admin": true, "operator": false, "viewer": false },
+                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "View installed modules and runtime state", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "settings",
+            "name": "Settings",
+            "icon": "settings",
+            "items": [
+                { "id": "settings_manage", "name": "Manage System Settings", "code": "settings.manage", "description": "Modify global application settings and configuration", "admin": true, "operator": false, "viewer": false },
+                { "id": "settings_view", "name": "View System Settings", "code": "settings.view", "description": "View global application settings and configuration", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "users",
+            "name": "Users",
+            "icon": "group",
+            "items": [
+                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "Create, edit, block, and delete user accounts", "admin": true, "operator": false, "viewer": false },
+                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "View user directory and profile details", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "system",
+            "name": "System",
+            "icon": "terminal",
+            "items": [
+                { "id": "system_admin", "name": "System Administration", "code": "system.admin", "description": "Log viewer, backups, active sessions management", "admin": true, "operator": false, "viewer": false },
+                { "id": "system_all", "name": "Full System Access", "code": "system.all", "description": "Full superuser privileges", "admin": false, "operator": false, "viewer": false }
+            ]
+        }
+    ])
+}
+
+// ---------------------------------------------------------------------------
+// 4. Системное обслуживание и администрирование
+// ---------------------------------------------------------------------------
+
+/// DTO настроек системного обслуживания и резервного копирования
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintenanceSettingsDto {
+    /// Флаг автобэкапа базы данных
+    #[serde(default = "default_true")]
+    pub auto_backup: bool,
+    /// Интервал автобэкапа в часах
+    #[serde(default = "default_backup_interval")]
+    pub backup_interval_hours: u32,
+    /// Срок хранения бэкапов в днях
+    #[serde(default = "default_backup_retention")]
+    pub backup_retention_days: u32,
+    /// Срок хранения журнала аудита в днях
+    #[serde(default = "default_audit_retention")]
+    pub audit_retention_days: u32,
+    /// Уровень системного логирования по умолчанию
+    #[serde(default = "default_log_level")]
+    pub default_log_level: String,
+}
+
+fn default_backup_interval() -> u32 {
+    24
+}
+fn default_backup_retention() -> u32 {
+    30
+}
+fn default_audit_retention() -> u32 {
+    90
+}
+fn default_log_level() -> String {
+    "INFO".to_string()
+}
+
+impl Default for MaintenanceSettingsDto {
+    fn default() -> Self {
+        Self {
+            auto_backup: true,
+            backup_interval_hours: default_backup_interval(),
+            backup_retention_days: default_backup_retention(),
+            audit_retention_days: default_audit_retention(),
+            default_log_level: default_log_level(),
+        }
+    }
+}
+
+/// GET /api/v1/settings/maintenance
+async fn get_maintenance_settings_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> ApiResult<MaintenanceSettingsDto> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    let maintenance: Option<MaintenanceSettingsDto> = kv.get("maintenance_settings").await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(maintenance.unwrap_or_default()))
+}
+
+/// PUT /api/v1/settings/maintenance
+async fn update_maintenance_settings_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(dto): Json<MaintenanceSettingsDto>,
+) -> ApiResult<MaintenanceSettingsDto> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let kv = KvStore::system(state.db.clone());
+    kv.set("maintenance_settings", &dto).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "settings.maintenance.update",
+            "settings/maintenance",
+            "success",
+            None,
+            None,
+        )
+        .await;
+
+    Ok(Json(dto))
+}

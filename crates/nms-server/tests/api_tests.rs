@@ -310,3 +310,206 @@ async fn test_logs_endpoints() {
     assert!(dl_content.contains("SNMP device unreachable"));
 }
 
+#[tokio::test]
+async fn test_settings_endpoints() {
+    let (app, _) = setup_test_app().await;
+
+    // 1. Авторизация под admin
+    let login_payload = serde_json::json!({
+        "username": "admin",
+        "password": "admin"
+    });
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&login_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let login_res: LoginResponse = serde_json::from_slice(&bytes).unwrap();
+    let token = login_res.token;
+
+    // 2. Тест user-preferences: GET (дефолтные)
+    let get_pref_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/user-preferences")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_pref_res.status(), StatusCode::OK);
+    let pref_bytes = get_pref_res.into_body().collect().await.unwrap().to_bytes();
+    let user_prefs: nms_server::api::settings::UserPreferencesDto =
+        serde_json::from_slice(&pref_bytes).unwrap();
+    assert_eq!(user_prefs.timezone, "Europe/Minsk");
+
+    // 3. Тест user-preferences: PUT (обновление)
+    let mut updated_prefs = user_prefs.clone();
+    updated_prefs.timezone = "Europe/Moscow".to_string();
+    updated_prefs.sound_info = "Gentle Bell".to_string();
+
+    let put_pref_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings/user-preferences")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&updated_prefs).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put_pref_res.status(), StatusCode::OK);
+
+    // Проверяем, что сохранилось в SQLite
+    let get_pref_res2 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/user-preferences")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let pref_bytes2 = get_pref_res2.into_body().collect().await.unwrap().to_bytes();
+    let user_prefs2: nms_server::api::settings::UserPreferencesDto =
+        serde_json::from_slice(&pref_bytes2).unwrap();
+    assert_eq!(user_prefs2.timezone, "Europe/Moscow");
+    assert_eq!(user_prefs2.sound_info, "Gentle Bell");
+
+    // 4. Тест security policies: GET и PUT
+    let get_sec_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/security")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_sec_res.status(), StatusCode::OK);
+    let sec_bytes = get_sec_res.into_body().collect().await.unwrap().to_bytes();
+    let sec_policies: nms_server::api::settings::SecurityPoliciesDto =
+        serde_json::from_slice(&sec_bytes).unwrap();
+    assert_eq!(sec_policies.max_login_attempts, 5);
+
+    let mut updated_sec = sec_policies.clone();
+    updated_sec.max_login_attempts = 10;
+    updated_sec.ip_whitelist = "10.0.0.0/8".to_string();
+
+    let put_sec_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings/security")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&updated_sec).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put_sec_res.status(), StatusCode::OK);
+
+    // 5. Тест permissions matrix: GET и PUT
+    let get_perm_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/permissions")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_perm_res.status(), StatusCode::OK);
+    let perm_bytes = get_perm_res.into_body().collect().await.unwrap().to_bytes();
+    let mut matrix: Vec<serde_json::Value> = serde_json::from_slice(&perm_bytes).unwrap();
+    assert!(!matrix.is_empty());
+
+    // Обновляем и сохраняем
+    matrix[0]["name"] = serde_json::json!("Updated Category");
+    let put_perm_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings/permissions")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&matrix).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put_perm_res.status(), StatusCode::OK);
+
+    // 6. Тест maintenance settings: GET и PUT
+    let get_maint_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/maintenance")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_maint_res.status(), StatusCode::OK);
+    let maint_bytes = get_maint_res.into_body().collect().await.unwrap().to_bytes();
+    let mut maint: nms_server::api::settings::MaintenanceSettingsDto =
+        serde_json::from_slice(&maint_bytes).unwrap();
+    assert_eq!(maint.auto_backup, true);
+
+    maint.backup_interval_hours = 12;
+    let put_maint_res = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings/maintenance")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&maint).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put_maint_res.status(), StatusCode::OK);
+}
+
+

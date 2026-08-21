@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
   PageHeader,
@@ -10,6 +10,7 @@ import {
   StatusBadge
 } from '@/components/common'
 import { useI18n } from '@/i18n'
+import { settingsApi } from '@/api/settings'
 
 const { t } = useI18n()
 
@@ -29,7 +30,120 @@ const ipWhitelist = ref('127.0.0.1, 192.168.1.0/24')
 
 const saveSuccess = ref(false)
 
-function applyChanges() {
+async function loadSavedSettings() {
+  // 1. Попытка загрузки с сервера (SQLite)
+  try {
+    const [policies, matrix] = await Promise.all([
+      settingsApi.getSecurityPolicies(),
+      settingsApi.getPermissionsMatrix()
+    ])
+
+    if (policies) {
+      if (typeof policies.web_ui_auth === 'boolean') webUiAuth.value = policies.web_ui_auth
+      if (typeof policies.mandatory_password_change === 'boolean') mandatoryPasswordChange.value = policies.mandatory_password_change
+      if (typeof policies.force_2fa === 'boolean') force2FA.value = policies.force_2fa
+      if (typeof policies.max_login_attempts === 'number') maxLoginAttempts.value = policies.max_login_attempts
+      if (typeof policies.lockout_duration === 'number') lockoutDuration.value = policies.lockout_duration
+      if (typeof policies.session_ttl === 'number') sessionTTL.value = policies.session_ttl
+      if (typeof policies.inactivity_timeout === 'number') inactivityTimeout.value = policies.inactivity_timeout
+      if (typeof policies.min_password_length === 'number') minPasswordLength.value = policies.min_password_length
+      if (typeof policies.require_uppercase === 'boolean') requireUppercase.value = policies.require_uppercase
+      if (typeof policies.require_digits === 'boolean') requireDigits.value = policies.require_digits
+      if (typeof policies.require_special === 'boolean') requireSpecial.value = policies.require_special
+      if (typeof policies.ip_whitelist === 'string') ipWhitelist.value = policies.ip_whitelist
+    }
+
+    if (matrix && Array.isArray(matrix) && matrix.length > 0) {
+      permissionCategories.value = matrix
+    }
+    return
+  } catch (err) {
+    console.debug('Could not load security policies from server, using local fallback:', err)
+  }
+
+  // 2. Fallback на localStorage при отсутствии связи
+  try {
+    const savedPolicies = localStorage.getItem('nms_security_policies')
+    if (savedPolicies) {
+      const p = JSON.parse(savedPolicies)
+      if (typeof p.webUiAuth === 'boolean') webUiAuth.value = p.webUiAuth
+      if (typeof p.mandatoryPasswordChange === 'boolean') mandatoryPasswordChange.value = p.mandatoryPasswordChange
+      if (typeof p.force2FA === 'boolean') force2FA.value = p.force2FA
+      if (typeof p.maxLoginAttempts === 'number') maxLoginAttempts.value = p.maxLoginAttempts
+      if (typeof p.lockoutDuration === 'number') lockoutDuration.value = p.lockoutDuration
+      if (typeof p.sessionTTL === 'number') sessionTTL.value = p.sessionTTL
+      if (typeof p.inactivityTimeout === 'number') inactivityTimeout.value = p.inactivityTimeout
+      if (typeof p.minPasswordLength === 'number') minPasswordLength.value = p.minPasswordLength
+      if (typeof p.requireUppercase === 'boolean') requireUppercase.value = p.requireUppercase
+      if (typeof p.requireDigits === 'boolean') requireDigits.value = p.requireDigits
+      if (typeof p.requireSpecial === 'boolean') requireSpecial.value = p.requireSpecial
+      if (typeof p.ipWhitelist === 'string') ipWhitelist.value = p.ipWhitelist
+    }
+
+    const savedMatrix = localStorage.getItem('nms_permissions_matrix')
+    if (savedMatrix) {
+      const parsed = JSON.parse(savedMatrix)
+      if (Array.isArray(parsed)) {
+        permissionCategories.value = parsed
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load nms_security_policies or nms_permissions_matrix', e)
+  }
+}
+
+onMounted(async () => {
+  await loadSavedSettings()
+})
+
+async function applyChanges() {
+  const policiesPayload = {
+    web_ui_auth: webUiAuth.value,
+    mandatory_password_change: mandatoryPasswordChange.value,
+    force_2fa: force2FA.value,
+    max_login_attempts: maxLoginAttempts.value,
+    lockout_duration: lockoutDuration.value,
+    session_ttl: sessionTTL.value,
+    inactivity_timeout: inactivityTimeout.value,
+    min_password_length: minPasswordLength.value,
+    require_uppercase: requireUppercase.value,
+    require_digits: requireDigits.value,
+    require_special: requireSpecial.value,
+    ip_whitelist: ipWhitelist.value
+  }
+
+  // Сохраняем на сервере в SQLite (kv_store)
+  try {
+    await Promise.all([
+      settingsApi.updateSecurityPolicies(policiesPayload),
+      settingsApi.updatePermissionsMatrix(permissionCategories.value)
+    ])
+  } catch (err) {
+    console.warn('Could not save security policies to server, saving locally:', err)
+  }
+
+  // Дублируем в localStorage
+  try {
+    const policiesLocal = {
+      webUiAuth: webUiAuth.value,
+      mandatoryPasswordChange: mandatoryPasswordChange.value,
+      force2FA: force2FA.value,
+      maxLoginAttempts: maxLoginAttempts.value,
+      lockoutDuration: lockoutDuration.value,
+      sessionTTL: sessionTTL.value,
+      inactivityTimeout: inactivityTimeout.value,
+      minPasswordLength: minPasswordLength.value,
+      requireUppercase: requireUppercase.value,
+      requireDigits: requireDigits.value,
+      requireSpecial: requireSpecial.value,
+      ipWhitelist: ipWhitelist.value
+    }
+    localStorage.setItem('nms_security_policies', JSON.stringify(policiesLocal))
+    localStorage.setItem('nms_permissions_matrix', JSON.stringify(permissionCategories.value))
+  } catch (e) {
+    console.error('Failed to save security policies', e)
+  }
+
   saveSuccess.value = true
   setTimeout(() => {
     saveSuccess.value = false
