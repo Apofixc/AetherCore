@@ -9,8 +9,7 @@ import {
   StatusBadge,
   BaseModal,
   ConfirmModal,
-  BaseInput,
-  BaseSwitch
+  BaseInput
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
@@ -1005,20 +1004,6 @@ const roleOptions = computed(() => [
           type="password"
           size="sm"
         />
-
-        <!-- Active Switch -->
-        <div class="flex items-center justify-between p-2.5 rounded-lg bg-surface-container-lowest border border-outline-variant/40">
-          <div>
-            <p class="text-xs font-semibold text-on-surface">{{ t('users.accountStatus') }}</p>
-            <p class="text-[11px] text-on-surface-variant">
-              {{ editUserForm.is_active ? t('users.activeStatus') : t('users.inactiveStatus') }}
-            </p>
-          </div>
-          <BaseSwitch
-            v-model="editUserForm.is_active"
-            :disabled="editUserForm.username === 'root'"
-          />
-        </div>
       </form>
 
       <template #footer>
