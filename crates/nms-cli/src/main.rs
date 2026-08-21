@@ -81,8 +81,16 @@ enum PluginCommands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        if cli.dev {
+            tracing_subscriber::EnvFilter::new("info,tower_http=debug,nms_server=debug")
+        } else {
+            tracing_subscriber::EnvFilter::new("info")
+        }
+    });
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     // Обработка подкоманд CLI
     if let Some(Commands::Plugin { action }) = cli.command {

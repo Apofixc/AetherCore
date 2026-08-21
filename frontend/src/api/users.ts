@@ -4,10 +4,21 @@ import type { User } from './auth'
 export interface CreateUserDto {
   username: string
   password?: string
-  full_name: string
-  email: string
-  roles: string[]
+  full_name?: string
+  email?: string
+  is_active?: boolean
+  is_superuser?: boolean
+  roles?: string[]
   permissions?: string[]
+}
+
+export interface UpdateUserDto {
+  full_name?: string
+  email?: string
+  password?: string
+  is_active?: boolean
+  is_superuser?: boolean
+  roles?: string[]
 }
 
 export const usersApi = {
@@ -20,7 +31,7 @@ export const usersApi = {
   create: async (dto: CreateUserDto): Promise<User> => {
     return api.post<User>('/api/v1/users', dto)
   },
-  update: async (id: string, dto: Partial<CreateUserDto>): Promise<User> => {
+  update: async (id: string, dto: UpdateUserDto): Promise<User> => {
     return api.put<User>(`/api/v1/users/${id}`, dto)
   },
   delete: async (id: string): Promise<void> => {

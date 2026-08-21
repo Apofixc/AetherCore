@@ -104,13 +104,24 @@ const moduleSubscriptions = ref<ModuleSub[]>([
   }
 ])
 
+import { usersApi } from '@/api/users'
+
 // Save Notification
 const savedNotice = ref(false)
 
-function handleSaveProfile() {
-  if (authStore.user) {
-    authStore.user.full_name = fullName.value
-    authStore.user.email = email.value
+async function handleSaveProfile() {
+  if (authStore.user?.id) {
+    try {
+      await usersApi.update(authStore.user.id, {
+        full_name: fullName.value,
+        email: email.value
+      })
+      await authStore.fetchUser()
+    } catch (err) {
+      console.warn('Could not update profile via API, applying locally:', err)
+      authStore.user.full_name = fullName.value
+      authStore.user.email = email.value
+    }
   }
   savedNotice.value = true
   setTimeout(() => {
@@ -118,7 +129,7 @@ function handleSaveProfile() {
   }, 3000)
 }
 
-function handleChangePassword() {
+async function handleChangePassword() {
   if (!currentPassword.value || !newPassword.value) {
     passwordStatus.value = 'Заполните все поля пароля'
     return
@@ -126,6 +137,16 @@ function handleChangePassword() {
   if (newPassword.value !== confirmPassword.value) {
     passwordStatus.value = 'Пароли не совпадают'
     return
+  }
+  if (authStore.user?.id) {
+    try {
+      await usersApi.update(authStore.user.id, {
+        password: newPassword.value
+      })
+    } catch (err: any) {
+      passwordStatus.value = err.message || 'Ошибка обновления пароля'
+      return
+    }
   }
   passwordStatus.value = 'Пароль успешно обновлен'
   currentPassword.value = ''

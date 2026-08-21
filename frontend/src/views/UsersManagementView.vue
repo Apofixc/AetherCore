@@ -139,7 +139,7 @@ const operators = ref<OperatorItem[]>([
   }
 ])
 
-onMounted(async () => {
+async function loadUsers() {
   loading.value = true
   try {
     const list = await usersApi.list()
@@ -165,10 +165,14 @@ onMounted(async () => {
       })
     }
   } catch (e) {
-    // Keep local default list if API is unreachable
+    console.warn('Failed to load users from API, using cached state:', e)
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadUsers()
 })
 
 // KPI Statistics
@@ -297,10 +301,48 @@ function handleExportJson(targetList = filteredOperators.value) {
 }
 
 // Create User
-function handleCreateUser() {
+async function handleCreateUser() {
   if (!newUserForm.value.username.trim()) return
   isSubmitting.value = true
-  setTimeout(() => {
+  try {
+    const created = await usersApi.create({
+      username: newUserForm.value.username.trim(),
+      password: newUserForm.value.password.trim() || 'operator123',
+      full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
+      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
+      roles: [newUserForm.value.role],
+      is_active: true
+    })
+
+    const role = (created.roles && created.roles.includes('superuser')) ? 'superuser'
+      : (created.roles && created.roles.includes('admin')) ? 'admin'
+      : (created.roles && created.roles.includes('operator')) ? 'operator' : 'viewer'
+    const initials = created.full_name
+      ? created.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+      : created.username.slice(0, 2).toUpperCase()
+
+    operators.value.unshift({
+      id: created.id,
+      uid: created.id,
+      username: created.username,
+      full_name: created.full_name || created.username,
+      email: created.email || `${created.username}@nms.local`,
+      role,
+      is_online: true,
+      is_active: true,
+      initials
+    })
+
+    newUserForm.value = {
+      full_name: '',
+      username: '',
+      email: '',
+      password: '',
+      role: 'operator'
+    }
+    showAddModal.value = false
+  } catch (err: any) {
+    console.error('Failed to create user via API, falling back to local creation:', err)
     const id = `UID-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
     const rawUid = `${Math.random().toString(36).substring(2, 10)}-${Math.random().toString(36).substring(2, 6)}-4966-9105-${Math.random().toString(36).substring(2, 12)}`
     const initials = newUserForm.value.full_name
@@ -327,8 +369,9 @@ function handleCreateUser() {
       role: 'operator'
     }
     showAddModal.value = false
+  } finally {
     isSubmitting.value = false
-  }, 300)
+  }
 }
 
 // Edit User
@@ -345,10 +388,20 @@ function handleOpenEdit(op: OperatorItem) {
   showEditModal.value = true
 }
 
-function handleSaveEdit() {
+async function handleSaveEdit() {
   if (!editUserForm.value.username.trim()) return
   isSubmitting.value = true
-  setTimeout(() => {
+  try {
+    await usersApi.update(editUserForm.value.id, {
+      full_name: editUserForm.value.full_name.trim(),
+      email: editUserForm.value.email.trim(),
+      is_active: editUserForm.value.is_active,
+      roles: [editUserForm.value.role],
+      ...(editUserForm.value.password.trim() ? { password: editUserForm.value.password.trim() } : {})
+    })
+  } catch (err) {
+    console.warn('Backend update failed or offline, updating locally:', err)
+  } finally {
     const index = operators.value.findIndex((op) => op.id === editUserForm.value.id)
     if (index >= 0) {
       const initials = editUserForm.value.full_name
@@ -368,7 +421,7 @@ function handleSaveEdit() {
     }
     showEditModal.value = false
     isSubmitting.value = false
-  }, 300)
+  }
 }
 
 // Delete User
@@ -378,9 +431,14 @@ function promptDeleteUser(op: OperatorItem) {
   showDeleteModal.value = true
 }
 
-function confirmDeleteUser() {
+async function confirmDeleteUser() {
   if (userToDelete.value) {
     const id = userToDelete.value.id
+    try {
+      await usersApi.delete(id)
+    } catch (err) {
+      console.warn('Backend delete failed, removing locally:', err)
+    }
     operators.value = operators.value.filter((op) => op.id !== id)
     selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
   }
@@ -395,22 +453,35 @@ function handleToggleLock(op: OperatorItem) {
   showLockModal.value = true
 }
 
-function confirmToggleLock() {
+async function confirmToggleLock() {
   if (selectedUserForAction.value) {
-    selectedUserForAction.value.is_active = !selectedUserForAction.value.is_active
-    selectedUserForAction.value.is_online = selectedUserForAction.value.is_active
+    const newActiveState = !selectedUserForAction.value.is_active
+    try {
+      await usersApi.update(selectedUserForAction.value.id, {
+        is_active: newActiveState
+      })
+    } catch (err) {
+      console.warn('Backend lock toggle failed, updating locally:', err)
+    }
+    selectedUserForAction.value.is_active = newActiveState
+    selectedUserForAction.value.is_online = newActiveState
   }
   showLockModal.value = false
 }
 
 // Bulk Actions
-function handleBulkLock(lockState: boolean) {
-  operators.value.forEach((op) => {
+async function handleBulkLock(lockState: boolean) {
+  for (const op of operators.value) {
     if (selectedUserIds.value.includes(op.id) && !isProtectedUser(op)) {
       op.is_active = lockState
       if (!lockState) op.is_online = false
+      try {
+        await usersApi.update(op.id, { is_active: lockState })
+      } catch (err) {
+        console.warn(`Failed to update user ${op.id}:`, err)
+      }
     }
-  })
+  }
 }
 
 function handleBulkExport(format: 'csv' | 'json') {
@@ -423,7 +494,18 @@ function promptBulkDelete() {
   showBulkDeleteModal.value = true
 }
 
-function confirmBulkDelete() {
+async function confirmBulkDelete() {
+  const idsToDelete = [...selectedUserIds.value]
+  for (const id of idsToDelete) {
+    const op = operators.value.find((u) => u.id === id)
+    if (op && !isProtectedUser(op)) {
+      try {
+        await usersApi.delete(id)
+      } catch (err) {
+        console.warn(`Failed to delete user ${id}:`, err)
+      }
+    }
+  }
   operators.value = operators.value.filter((op) => !(selectedUserIds.value.includes(op.id) && !isProtectedUser(op)))
   selectedUserIds.value = []
   showBulkDeleteModal.value = false

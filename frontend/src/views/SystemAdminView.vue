@@ -14,6 +14,7 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { systemApi, type SystemInfo, type LogProvider } from '@/api/system'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -36,6 +37,10 @@ interface LogEntry {
   source: string
   message: string
 }
+
+const systemInfo = ref<SystemInfo | null>(null)
+const logProviders = ref<LogProvider[]>([])
+const selectedProviderId = ref('system')
 
 // Active sessions state
 const sessions = ref<SessionItem[]>([
@@ -277,37 +282,119 @@ function handleConfirmModal() {
   showConfirmModal.value = false
 }
 
+function parseLogLine(rawLine: string, index: number): LogEntry {
+  // Parsing log formats:
+  // 1. "2026-08-20T20:14:51.123Z INFO [source] message"
+  // 2. "2026-08-20 20:14:51 | INFO | source | message"
+  // 3. Fallback generic
+  const isoMatch = rawLine.match(/^(\S+)\s+(TRACE|DEBUG|INFO|WARN|ERROR)\s+\[([^\]]+)\]\s+(.*)$/)
+  if (isoMatch) {
+    const lvl = isoMatch[2] === 'TRACE' ? 'DEBUG' : isoMatch[2] as 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
+    return {
+      id: `${index}-${Date.now()}`,
+      timestamp: isoMatch[1].replace('T', ' ').slice(0, 19),
+      level: lvl,
+      source: isoMatch[3],
+      message: isoMatch[4]
+    }
+  }
+
+  const pipeMatch = rawLine.split('|').map((s) => s.trim())
+  if (pipeMatch.length >= 4) {
+    const lvl = ['INFO', 'WARN', 'ERROR', 'DEBUG'].includes(pipeMatch[1]) ? pipeMatch[1] as any : 'INFO'
+    return {
+      id: `${index}-${Date.now()}`,
+      timestamp: pipeMatch[0],
+      level: lvl,
+      source: pipeMatch[2],
+      message: pipeMatch.slice(3).join(' | ')
+    }
+  }
+
+  return {
+    id: `${index}-${Date.now()}`,
+    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    level: rawLine.toLowerCase().includes('err') ? 'ERROR' : rawLine.toLowerCase().includes('warn') ? 'WARN' : 'INFO',
+    source: 'system',
+    message: rawLine
+  }
+}
+
+async function fetchRealLogs() {
+  try {
+    const res = await systemApi.getLogs({
+      provider: selectedProviderId.value,
+      level: selectedLogLevel.value !== 'ALL' ? selectedLogLevel.value : undefined,
+      search: logSearchQuery.value.trim() || undefined,
+      limit: 100
+    })
+    if (res && Array.isArray(res.lines) && res.lines.length > 0) {
+      logs.value = res.lines.map((line, idx) => parseLogLine(line, idx))
+      if (!isUserScrolledUp.value) {
+        scrollToBottom(false)
+      }
+    }
+  } catch (e) {
+    // API offline or error, maintain existing log lines
+  }
+}
+
+async function loadSystemData() {
+  try {
+    const [info, providers] = await Promise.all([
+      systemApi.getInfo().catch(() => null),
+      systemApi.getProviders().catch(() => [])
+    ])
+    if (info) {
+      systemInfo.value = info
+    }
+    if (providers && providers.length > 0) {
+      logProviders.value = providers
+    }
+  } catch (e) {
+    console.warn('Could not fetch system info:', e)
+  }
+  await fetchRealLogs()
+}
+
 function clearConsole() {
   logs.value = []
   notify(t('system.clearLogs'))
 }
 
-function refreshLogs() {
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
-  logs.value.unshift({
-    id: String(Date.now()),
-    timestamp: now,
-    level: 'INFO',
-    source: 'nms.system',
-    message: 'System log stream synchronized successfully.'
-  })
+async function refreshLogs() {
+  await fetchRealLogs()
   notify(t('system.refreshLogs'))
 }
 
-function downloadCurrentLog() {
-  const content = logs.value
-    .map((l) => `${l.timestamp} | ${l.level.padEnd(5)} | ${l.source} | ${l.message}`)
-    .join('\n')
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `system_${selectedLogFile.value.replace(/[^a-zA-Z0-9]/g, '_')}.log`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-  notify(t('system.downloadLogs') + ' - OK')
+async function downloadCurrentLog() {
+  try {
+    const blob = await systemApi.downloadLog(selectedProviderId.value)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `system_${selectedProviderId.value}_${new Date().toISOString().slice(0, 10)}.log`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    notify(t('system.downloadLogs') + ' - OK')
+  } catch (err) {
+    // Fallback to in-memory logs
+    const content = logs.value
+      .map((l) => `${l.timestamp} | ${l.level.padEnd(5)} | ${l.source} | ${l.message}`)
+      .join('\n')
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `system_${selectedLogFile.value.replace(/[^a-zA-Z0-9]/g, '_')}.log`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    notify(t('system.downloadLogs') + ' - OK')
+  }
 }
 
 async function copyLogLine(entry: LogEntry) {
@@ -337,12 +424,20 @@ function renderHighlightedText(text: string) {
   return safeText.replace(regex, '<mark class="bg-primary/40 text-primary-fixed px-0.5 rounded font-bold">$1</mark>')
 }
 
-const logFileOptions = [
-  '[system] backend.log (3.5 MB)',
-  '[system] error.log (1.2 MB)',
-  '[auth] access.log (0.8 MB)',
-  '[database] query.log (12.4 MB)'
-]
+const logFileOptions = computed(() => {
+  if (logProviders.value.length > 0) {
+    return logProviders.value.map((p) => ({
+      value: p.id,
+      label: `[${p.kind}] ${p.name}`
+    }))
+  }
+  return [
+    { value: 'system', label: '[system] backend.log (3.5 MB)' },
+    { value: 'error', label: '[system] error.log (1.2 MB)' },
+    { value: 'auth', label: '[auth] access.log (0.8 MB)' },
+    { value: 'database', label: '[database] query.log (12.4 MB)' }
+  ]
+})
 
 const logLevelOptions = [
   { value: 'ALL', label: 'ALL' },
@@ -353,29 +448,12 @@ const logLevelOptions = [
 ]
 
 onMounted(() => {
+  loadSystemData()
   refreshTimer = window.setInterval(() => {
-    if (isAutoRefresh.value && logs.value.length < 300) {
-      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
-      const mockEvents = [
-        { level: 'INFO' as const, source: 'nms.scheduler', message: 'Periodic telemetry heartbeat: all systems nominal' },
-        { level: 'INFO' as const, source: 'nms.messagebus', message: 'IPC message dispatched to 4 listener nodes' },
-        { level: 'DEBUG' as const, source: 'nms.kv.store', message: 'KV cache cleanup: 0 expired keys evicted' },
-        { level: 'DEBUG' as const, source: 'nms.metrics.exporter', message: 'Prometheus metrics scrape dispatched (2.1ms)' }
-      ]
-      const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)]
-      logs.value.push({
-        id: String(Date.now() + Math.random()),
-        timestamp: now,
-        level: randomEvent.level,
-        source: randomEvent.source,
-        message: randomEvent.message
-      })
-
-      if (!isUserScrolledUp.value) {
-        scrollToBottom(false)
-      }
+    if (isAutoRefresh.value) {
+      fetchRealLogs()
     }
-  }, 3000)
+  }, 4000)
 })
 
 onUnmounted(() => {
