@@ -65,17 +65,12 @@ async function loadSavedSettings() {
 async function fetchRolesAndUsers() {
   try {
     const users = await usersApi.list()
-    const superuserCount = users.filter((u) => u.is_superuser).length
-    const adminCount = users.filter((u) => !u.is_superuser && u.roles?.includes('admin')).length
-    const operatorCount = users.filter((u) => u.roles?.includes('operator')).length
-    const viewerCount = users.filter((u) => u.roles?.includes('viewer')).length
-
-    roles.value = [
-      { id: 'superuser', name: 'Superuser', description: 'Full system access and full configuration rights', usersCount: superuserCount },
-      { id: 'admin', name: 'Administrator', description: 'Administrative control, limited destructive actions', usersCount: adminCount },
-      { id: 'operator', name: 'Operator', description: 'Manage network state and configurations', usersCount: operatorCount },
-      { id: 'viewer', name: 'Viewer', description: 'Read-only access to dashboards and logs', usersCount: viewerCount }
-    ]
+    roleCounts.value = {
+      superuser: users.filter((u) => u.is_superuser).length,
+      admin: users.filter((u) => !u.is_superuser && u.roles?.includes('admin')).length,
+      operator: users.filter((u) => u.roles?.includes('operator')).length,
+      viewer: users.filter((u) => u.roles?.includes('viewer')).length
+    }
   } catch (e) {
     console.debug('Failed to load user counts for roles', e)
   }
@@ -142,19 +137,12 @@ async function applyChanges() {
 }
 
 // Roles state
-interface Role {
-  id: string
-  name: string
-  description: string
-  usersCount: number
-}
-
-const roles = ref<Role[]>([
-  { id: 'superuser', name: 'Superuser', description: 'Full system access and full configuration rights', usersCount: 0 },
-  { id: 'admin', name: 'Administrator', description: 'Administrative control, limited destructive actions', usersCount: 0 },
-  { id: 'operator', name: 'Operator', description: 'Manage network state and configurations', usersCount: 0 },
-  { id: 'viewer', name: 'Viewer', description: 'Read-only access to dashboards and logs', usersCount: 0 }
-])
+const roleCounts = ref({
+  superuser: 0,
+  admin: 0,
+  operator: 0,
+  viewer: 0
+})
 
 // Permissions Matrix
 interface PermissionItem {
@@ -443,108 +431,66 @@ const filteredAuditLogs = computed(() => {
           </div>
         </div>
 
-        <!-- SECTION 2: Roles & Permissions Group -->
+        <!-- SECTION 2: Permissions Matrix -->
         <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg flex flex-col gap-lg shadow-card-dark">
           <!-- Group Header -->
-          <div class="flex items-center gap-sm text-on-surface">
-            <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
-              <span class="material-symbols-outlined text-xl">admin_panel_settings</span>
+          <div class="flex items-center justify-between flex-wrap gap-md">
+            <div class="flex items-center gap-sm text-on-surface">
+              <div class="w-10 h-10 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shrink-0">
+                <span class="material-symbols-outlined text-xl">admin_panel_settings</span>
+              </div>
+              <div>
+                <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.permissionsMatrix') }}</h2>
+                <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.permissionsMatrixDesc') }}</p>
+              </div>
             </div>
-            <div>
-              <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.rolesManagement') }}</h2>
-              <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.rolesManagementDesc') }}</p>
-            </div>
+            <!-- Search input -->
+            <SearchInput
+              v-model="permissionsSearch"
+              :placeholder="t('accessIdentity.searchPermissions')"
+              width-class="w-64"
+            />
           </div>
 
-          <!-- Sub-card 1: Roles Management -->
+          <!-- Permissions Matrix Table -->
           <div class="bg-surface-container border border-outline-variant rounded-lg overflow-hidden flex flex-col">
-            <!-- Roles Management Header -->
-            <div class="p-md bg-surface-container-highest/40 border-b border-outline-variant flex items-center justify-between flex-wrap gap-md">
-              <div class="flex items-center gap-2.5">
-                <span class="material-symbols-outlined text-primary-fixed-dim text-lg">admin_panel_settings</span>
-                <div>
-                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.rolesManagement') }}</h3>
-                  <p class="text-[11px] text-on-surface-variant">{{ t('accessIdentity.rolesManagementDesc') }}</p>
-                </div>
-              </div>
-              <AppButton
-                variant="primary"
-                size="xs"
-                icon="add"
-              >
-                {{ t('accessIdentity.addNewRole') }}
-              </AppButton>
-            </div>
-
-            <!-- Roles Management Table -->
-            <div class="overflow-x-auto">
-              <table class="w-full text-left border-collapse">
-                <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
-                  <tr>
-                    <th class="py-3 px-lg w-1/4">{{ t('accessIdentity.roleName') }}</th>
-                    <th class="py-3 px-lg w-1/2">{{ t('accessIdentity.description') }}</th>
-                    <th class="py-3 px-lg text-center w-28">{{ t('accessIdentity.users') }}</th>
-                    <th class="py-3 px-lg text-right w-24">{{ t('accessIdentity.actions') }}</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-outline-variant/30 text-xs">
-                  <tr
-                    v-for="role in roles"
-                    :key="role.id"
-                    class="hover:bg-surface-variant/20 transition-colors group"
-                  >
-                    <td class="py-3.5 px-lg font-bold text-on-surface">
-                      <div class="flex items-center gap-2.5">
-                        <span class="material-symbols-outlined text-base text-primary-fixed-dim">shield</span>
-                        <span>{{ role.name }}</span>
-                      </div>
-                    </td>
-                    <td class="py-3.5 px-lg text-on-surface-variant">{{ role.description }}</td>
-                    <td class="py-3.5 px-lg text-center font-body-mono font-bold text-on-surface">{{ role.usersCount }}</td>
-                    <td class="py-3.5 px-lg text-right">
-                      <button
-                        type="button"
-                        class="p-1.5 hover:text-primary-fixed-dim text-on-surface-variant transition-colors rounded-lg hover:bg-surface-variant/50 cursor-pointer"
-                        title="Edit Role"
-                      >
-                        <span class="material-symbols-outlined text-base">edit</span>
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Sub-card 2: Permissions Matrix -->
-          <div class="bg-surface-container border border-outline-variant rounded-lg overflow-hidden flex flex-col">
-            <!-- Permissions Matrix Header -->
-            <div class="p-md bg-surface-container-highest/40 border-b border-outline-variant flex items-center justify-between flex-wrap gap-md">
-              <div class="flex items-center gap-2.5">
-                <span class="material-symbols-outlined text-primary-fixed-dim text-lg">grid_view</span>
-                <div>
-                  <h3 class="text-sm font-bold text-on-surface">{{ t('accessIdentity.permissionsMatrix') }}</h3>
-                  <p class="text-[11px] text-on-surface-variant">{{ t('accessIdentity.permissionsMatrixDesc') }}</p>
-                </div>
-              </div>
-              <!-- Search input -->
-              <SearchInput
-                v-model="permissionsSearch"
-                :placeholder="t('accessIdentity.searchPermissions')"
-                width-class="w-64"
-              />
-            </div>
-
-            <!-- Permissions Matrix Table -->
             <div class="overflow-x-auto">
               <table class="w-full text-left border-collapse">
                 <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
                   <tr>
                     <th class="py-3 px-lg min-w-[340px]">{{ t('accessIdentity.permission') }}</th>
-                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.superuser') }}</th>
-                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.administrator') }}</th>
-                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.operator') }}</th>
-                    <th class="py-3 px-lg text-center w-36">{{ t('accessIdentity.viewer') }}</th>
+                    <th class="py-3 px-lg text-center w-36">
+                      <div class="flex items-center justify-center gap-1.5">
+                        <span>{{ t('accessIdentity.superuser') }}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-body-mono bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
+                          {{ roleCounts.superuser }}
+                        </span>
+                      </div>
+                    </th>
+                    <th class="py-3 px-lg text-center w-36">
+                      <div class="flex items-center justify-center gap-1.5">
+                        <span>{{ t('accessIdentity.administrator') }}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-body-mono bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
+                          {{ roleCounts.admin }}
+                        </span>
+                      </div>
+                    </th>
+                    <th class="py-3 px-lg text-center w-36">
+                      <div class="flex items-center justify-center gap-1.5">
+                        <span>{{ t('accessIdentity.operator') }}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-body-mono bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
+                          {{ roleCounts.operator }}
+                        </span>
+                      </div>
+                    </th>
+                    <th class="py-3 px-lg text-center w-36">
+                      <div class="flex items-center justify-center gap-1.5">
+                        <span>{{ t('accessIdentity.viewer') }}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-body-mono bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
+                          {{ roleCounts.viewer }}
+                        </span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/30 text-xs">
