@@ -166,9 +166,23 @@ async fn update_user_handler(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUserDto>,
 ) -> ApiResult<UserResponseDto> {
-    check_permission(&claims, "users.manage").map_err(|e| {
-        (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-    })?;
+    let is_self_update = claims.sub == id;
+    if !is_self_update {
+        check_permission(&claims, "users.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    } else if !claims.is_superuser {
+        // Обычный пользователь не может сам себе менять роли, активность или флаг суперпользователя
+        if dto.roles.is_some() || dto.is_active.is_some() || dto.is_superuser.is_some() {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(
+                    AppError::forbidden("Cannot change your own roles, activity or superuser status")
+                        .to_api_response(locale),
+                ),
+            ));
+        }
+    }
 
     let target_user = state.user_service.get_user_by_id(id).await.map_err(|e| {
         (
