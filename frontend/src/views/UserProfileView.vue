@@ -84,7 +84,6 @@ const moduleSubscriptions = ref<ModuleSub[]>([])
 const savedNotice = ref(false)
 
 async function loadPreferences() {
-  // 1. Попытка загрузки с сервера (SQLite)
   try {
     const serverPrefs = await settingsApi.getUserPreferences()
     if (serverPrefs) {
@@ -96,7 +95,7 @@ async function loadPreferences() {
       if (serverPrefs.sound_success) soundSuccess.value = serverPrefs.sound_success
       if (serverPrefs.sound_warning) soundWarning.value = serverPrefs.sound_warning
       if (serverPrefs.sound_error) soundError.value = serverPrefs.sound_error
-      if (Array.isArray(serverPrefs.module_subscriptions) && serverPrefs.module_subscriptions.length > 0) {
+      if (Array.isArray(serverPrefs.module_subscriptions)) {
         moduleSubscriptions.value = serverPrefs.module_subscriptions.map((m) => ({
           id: m.id,
           nameKey: m.name_key,
@@ -114,31 +113,9 @@ async function loadPreferences() {
       if (serverPrefs.locale && ['ru', 'en'].includes(serverPrefs.locale)) {
         setLocale(serverPrefs.locale as Locale)
       }
-      return
     }
   } catch (err) {
-    console.debug('Could not load user preferences from server, using local fallback:', err)
-  }
-
-  // 2. Fallback на localStorage при отсутствии связи
-  try {
-    const saved = localStorage.getItem('nms_profile_preferences')
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      if (parsed.timezone) timezone.value = parsed.timezone
-      if (parsed.department) department.value = parsed.department
-      if (parsed.activeMuteDuration) activeMuteDuration.value = parsed.activeMuteDuration
-      if (typeof parsed.quietHoursEnabled === 'boolean') quietHoursEnabled.value = parsed.quietHoursEnabled
-      if (parsed.soundInfo) soundInfo.value = parsed.soundInfo
-      if (parsed.soundSuccess) soundSuccess.value = parsed.soundSuccess
-      if (parsed.soundWarning) soundWarning.value = parsed.soundWarning
-      if (parsed.soundError) soundError.value = parsed.soundError
-      if (Array.isArray(parsed.moduleSubscriptions)) moduleSubscriptions.value = parsed.moduleSubscriptions
-      if (parsed.fullName && !authStore.user?.full_name) fullName.value = parsed.fullName
-      if (parsed.email && !authStore.user?.email) email.value = parsed.email
-    }
-  } catch (e) {
-    console.error('Failed to parse nms_profile_preferences', e)
+    console.debug('Could not load user preferences from server:', err)
   }
 }
 
@@ -217,27 +194,7 @@ async function handleSaveProfile() {
   try {
     await settingsApi.updateUserPreferences(prefsPayload)
   } catch (err) {
-    console.warn('Could not save user preferences to server, saving locally:', err)
-  }
-
-  // Дублируем в localStorage для оффлайн-кэша
-  try {
-    const prefsLocal = {
-      fullName: fullName.value,
-      email: email.value,
-      department: department.value,
-      timezone: timezone.value,
-      activeMuteDuration: activeMuteDuration.value,
-      quietHoursEnabled: quietHoursEnabled.value,
-      soundInfo: soundInfo.value,
-      soundSuccess: soundSuccess.value,
-      soundWarning: soundWarning.value,
-      soundError: soundError.value,
-      moduleSubscriptions: moduleSubscriptions.value
-    }
-    localStorage.setItem('nms_profile_preferences', JSON.stringify(prefsLocal))
-  } catch (e) {
-    console.error('Failed to save nms_profile_preferences', e)
+    console.error('Could not save user preferences to server:', err)
   }
 
   savedNotice.value = true

@@ -43,38 +43,10 @@ const logProviders = ref<LogProvider[]>([])
 const selectedProviderId = ref('system')
 
 // Active sessions state
-const sessions = ref<SessionItem[]>([
-  {
-    id: 'sess-1',
-    username: 'root',
-    role: 'Superuser',
-    ip: '127.0.0.1',
-    time: '11:55 PM',
-    client: 'Chrome 128 / Linux',
-    isCurrent: true
-  },
-  {
-    id: 'sess-2',
-    username: 's.jenkins',
-    role: 'Administrator',
-    ip: '192.168.1.45',
-    time: '10:14 PM',
-    client: 'Firefox 129 / macOS',
-    isCurrent: false
-  },
-  {
-    id: 'sess-3',
-    username: 'm.vance',
-    role: 'Operator',
-    ip: '192.168.1.112',
-    time: '08:30 PM',
-    client: 'Edge 127 / Win11',
-    isCurrent: false
-  }
-])
+const sessions = ref<SessionItem[]>([])
 
 // System logs state
-const selectedLogFile = ref('[system] backend.log (3.5 MB)')
+const selectedLogFile = ref('[system] backend.log')
 const selectedLogLevel = ref('ALL')
 const logSearchQuery = ref('')
 const isAutoRefresh = ref(true)
@@ -104,18 +76,7 @@ const confirmModalConfig = ref<{
   action: () => {}
 })
 
-const logs = ref<LogEntry[]>([
-  { id: '1', timestamp: '2026-08-20 20:14:51', level: 'INFO', source: 'nms.scheduler', message: 'AsyncScheduler stopped.' },
-  { id: '2', timestamp: '2026-08-20 20:14:51', level: 'INFO', source: 'nms.plugin.loader', message: 'Loaded 4 WASM core dynamic modules.' },
-  { id: '3', timestamp: '2026-08-20 20:15:00', level: 'INFO', source: 'nms.scheduler', message: 'AsyncScheduler started.' },
-  { id: '4', timestamp: '2026-08-20 20:16:33', level: 'INFO', source: 'nms.messagebus', message: 'AetherCore Message Bus active on ipc://aethercore-bus' },
-  { id: '5', timestamp: '2026-08-20 20:18:44', level: 'WARN', source: 'nms.plugin.loader', message: "Module 'legacy-auth' is deprecated and will be removed in v2.0." },
-  { id: '6', timestamp: '2026-08-20 20:19:06', level: 'INFO', source: 'nms.auth.session', message: 'Operator session established for user [root] from 127.0.0.1' },
-  { id: '7', timestamp: '2026-08-20 20:20:22', level: 'INFO', source: 'nms.db.pool', message: 'SQLite database connection pool verified: 0 pending locks.' },
-  { id: '8', timestamp: '2026-08-20 20:22:41', level: 'INFO', source: 'nms.scheduler', message: 'Periodic telemetry broadcast completed (latency: 1.2ms).' },
-  { id: '9', timestamp: '2026-08-20 20:25:12', level: 'DEBUG', source: 'nms.kv.store', message: 'KV cache cleanup: 0 expired keys evicted' },
-  { id: '10', timestamp: '2026-08-20 20:26:05', level: 'INFO', source: 'nms.messagebus', message: 'IPC message dispatched to 4 listener nodes' }
-])
+const logs = ref<LogEntry[]>([])
 
 const logCounts = computed(() => {
   return {
@@ -354,6 +315,21 @@ async function loadSystemData() {
   } catch (e) {
     console.warn('Could not fetch system info:', e)
   }
+
+  if (authStore.user) {
+    sessions.value = [
+      {
+        id: `sess-${authStore.user.id.slice(0, 6)}`,
+        username: authStore.user.username,
+        role: authStore.user.is_superuser ? 'Superuser' : (authStore.user.roles?.[0] ? authStore.user.roles[0].charAt(0).toUpperCase() + authStore.user.roles[0].slice(1) : 'User'),
+        ip: '127.0.0.1',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        client: 'Web Client',
+        isCurrent: true
+      }
+    ]
+  }
+
   await fetchRealLogs()
 }
 

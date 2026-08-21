@@ -11,6 +11,8 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { settingsApi } from '@/api/settings'
+import { systemApi } from '@/api/system'
+import { usersApi } from '@/api/users'
 
 const { t } = useI18n()
 
@@ -26,12 +28,11 @@ const minPasswordLength = ref(8)
 const requireUppercase = ref(true)
 const requireDigits = ref(true)
 const requireSpecial = ref(true)
-const ipWhitelist = ref('127.0.0.1, 192.168.1.0/24')
+const ipWhitelist = ref('')
 
 const saveSuccess = ref(false)
 
 async function loadSavedSettings() {
-  // 1. Попытка загрузки с сервера (SQLite)
   try {
     const [policies, matrix] = await Promise.all([
       settingsApi.getSecurityPolicies(),
@@ -53,47 +54,59 @@ async function loadSavedSettings() {
       if (typeof policies.ip_whitelist === 'string') ipWhitelist.value = policies.ip_whitelist
     }
 
-    if (matrix && Array.isArray(matrix) && matrix.length > 0) {
+    if (matrix && Array.isArray(matrix)) {
       permissionCategories.value = matrix
     }
-    return
   } catch (err) {
-    console.debug('Could not load security policies from server, using local fallback:', err)
+    console.debug('Could not load security policies from server:', err)
   }
+}
 
-  // 2. Fallback на localStorage при отсутствии связи
+async function fetchRolesAndUsers() {
   try {
-    const savedPolicies = localStorage.getItem('nms_security_policies')
-    if (savedPolicies) {
-      const p = JSON.parse(savedPolicies)
-      if (typeof p.webUiAuth === 'boolean') webUiAuth.value = p.webUiAuth
-      if (typeof p.mandatoryPasswordChange === 'boolean') mandatoryPasswordChange.value = p.mandatoryPasswordChange
-      if (typeof p.force2FA === 'boolean') force2FA.value = p.force2FA
-      if (typeof p.maxLoginAttempts === 'number') maxLoginAttempts.value = p.maxLoginAttempts
-      if (typeof p.lockoutDuration === 'number') lockoutDuration.value = p.lockoutDuration
-      if (typeof p.sessionTTL === 'number') sessionTTL.value = p.sessionTTL
-      if (typeof p.inactivityTimeout === 'number') inactivityTimeout.value = p.inactivityTimeout
-      if (typeof p.minPasswordLength === 'number') minPasswordLength.value = p.minPasswordLength
-      if (typeof p.requireUppercase === 'boolean') requireUppercase.value = p.requireUppercase
-      if (typeof p.requireDigits === 'boolean') requireDigits.value = p.requireDigits
-      if (typeof p.requireSpecial === 'boolean') requireSpecial.value = p.requireSpecial
-      if (typeof p.ipWhitelist === 'string') ipWhitelist.value = p.ipWhitelist
-    }
+    const users = await usersApi.list()
+    const superuserCount = users.filter((u) => u.is_superuser).length
+    const adminCount = users.filter((u) => !u.is_superuser && u.roles?.includes('admin')).length
+    const operatorCount = users.filter((u) => u.roles?.includes('operator')).length
+    const viewerCount = users.filter((u) => u.roles?.includes('viewer')).length
 
-    const savedMatrix = localStorage.getItem('nms_permissions_matrix')
-    if (savedMatrix) {
-      const parsed = JSON.parse(savedMatrix)
-      if (Array.isArray(parsed)) {
-        permissionCategories.value = parsed
-      }
-    }
+    roles.value = [
+      { id: 'superuser', name: 'Superuser', description: 'Full system access and full configuration rights', usersCount: superuserCount },
+      { id: 'admin', name: 'Administrator', description: 'Administrative control, limited destructive actions', usersCount: adminCount },
+      { id: 'operator', name: 'Operator', description: 'Manage network state and configurations', usersCount: operatorCount },
+      { id: 'viewer', name: 'Viewer', description: 'Read-only access to dashboards and logs', usersCount: viewerCount }
+    ]
   } catch (e) {
-    console.error('Failed to load nms_security_policies or nms_permissions_matrix', e)
+    console.debug('Failed to load user counts for roles', e)
+  }
+}
+
+async function fetchAuditLogs() {
+  try {
+    const rawLogs = await systemApi.getAuditLogs({ limit: 50 })
+    if (Array.isArray(rawLogs)) {
+      auditLogs.value = rawLogs.map((l: any) => ({
+        id: `#LOG-${l.id ? l.id.slice(0, 6) : Math.floor(Math.random() * 10000)}`,
+        timestamp: l.created_at ? new Date(l.created_at).toLocaleString() : new Date().toLocaleString(),
+        user: l.username || 'system',
+        action: l.action || 'Action',
+        actionType: (l.action && l.action.includes('login') ? 'login' : l.action && l.action.includes('role') ? 'role' : l.action && l.action.includes('policy') ? 'policy' : l.action && l.action.includes('backup') ? 'backup' : 'policy') as any,
+        resource: l.resource || 'system',
+        details: l.status === 'success' ? `${l.action} on ${l.resource}` : `Status: ${l.status}`,
+        ip: l.ip_address || '127.0.0.1'
+      }))
+    }
+  } catch (err) {
+    console.debug('Failed to fetch audit logs:', err)
   }
 }
 
 onMounted(async () => {
-  await loadSavedSettings()
+  await Promise.all([
+    loadSavedSettings(),
+    fetchRolesAndUsers(),
+    fetchAuditLogs()
+  ])
 })
 
 async function applyChanges() {
@@ -119,29 +132,7 @@ async function applyChanges() {
       settingsApi.updatePermissionsMatrix(permissionCategories.value)
     ])
   } catch (err) {
-    console.warn('Could not save security policies to server, saving locally:', err)
-  }
-
-  // Дублируем в localStorage
-  try {
-    const policiesLocal = {
-      webUiAuth: webUiAuth.value,
-      mandatoryPasswordChange: mandatoryPasswordChange.value,
-      force2FA: force2FA.value,
-      maxLoginAttempts: maxLoginAttempts.value,
-      lockoutDuration: lockoutDuration.value,
-      sessionTTL: sessionTTL.value,
-      inactivityTimeout: inactivityTimeout.value,
-      minPasswordLength: minPasswordLength.value,
-      requireUppercase: requireUppercase.value,
-      requireDigits: requireDigits.value,
-      requireSpecial: requireSpecial.value,
-      ipWhitelist: ipWhitelist.value
-    }
-    localStorage.setItem('nms_security_policies', JSON.stringify(policiesLocal))
-    localStorage.setItem('nms_permissions_matrix', JSON.stringify(permissionCategories.value))
-  } catch (e) {
-    console.error('Failed to save security policies', e)
+    console.error('Could not save security policies to server:', err)
   }
 
   saveSuccess.value = true
@@ -159,8 +150,8 @@ interface Role {
 }
 
 const roles = ref<Role[]>([
-  { id: 'superuser', name: 'Superuser', description: 'Full system access and full configuration rights', usersCount: 1 },
-  { id: 'admin', name: 'Administrator', description: 'Administrative control, limited destructive actions', usersCount: 10 },
+  { id: 'superuser', name: 'Superuser', description: 'Full system access and full configuration rights', usersCount: 0 },
+  { id: 'admin', name: 'Administrator', description: 'Administrative control, limited destructive actions', usersCount: 0 },
   { id: 'operator', name: 'Operator', description: 'Manage network state and configurations', usersCount: 0 },
   { id: 'viewer', name: 'Viewer', description: 'Read-only access to dashboards and logs', usersCount: 0 }
 ])
@@ -184,71 +175,7 @@ interface PermissionCategory {
 }
 
 const permissionsSearch = ref('')
-
-const permissionCategories = ref<PermissionCategory[]>([
-  {
-    id: 'demo_plugin',
-    name: 'Demo Plugin',
-    icon: 'extension',
-    items: [
-      { id: 'dp_view', name: 'Demo Plugin View', code: 'module.demo_plugin.view', description: 'Allows access to Demo Plugin module', admin: false, operator: false, viewer: false }
-    ]
-  },
-  {
-    id: 'audit_logs',
-    name: 'Audit Logs',
-    icon: 'history_edu',
-    items: [
-      { id: 'audit_export', name: 'Export Audit Logs', code: 'audit.export', description: 'Export security audit log history', admin: true, operator: false, viewer: false },
-      { id: 'audit_view', name: 'View Audit Logs', code: 'audit.view', description: 'View security audit log history', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'access_control',
-    name: 'Access Control',
-    icon: 'vpn_key',
-    items: [
-      { id: 'access_roles_manage', name: 'Manage Roles & Permissions', code: 'access.roles.manage', description: 'Create, edit, delete access roles and assign permissions', admin: true, operator: false, viewer: false },
-      { id: 'access_roles_view', name: 'View Roles & Permissions', code: 'access.roles.view', description: 'View access roles and permissions matrix', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'modules',
-    name: 'Modules',
-    icon: 'view_in_ar',
-    items: [
-      { id: 'modules_manage', name: 'Manage Modules', code: 'modules.manage', description: 'Install, update, enable/disable, and remove dynamic modules', admin: true, operator: false, viewer: false },
-      { id: 'modules_view', name: 'View Modules', code: 'modules.view', description: 'View installed modules and runtime state', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'settings',
-    name: 'Settings',
-    icon: 'settings',
-    items: [
-      { id: 'settings_manage', name: 'Manage System Settings', code: 'settings.manage', description: 'Modify global application settings and configuration', admin: true, operator: false, viewer: false },
-      { id: 'settings_view', name: 'View System Settings', code: 'settings.view', description: 'View global application settings and configuration', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'users',
-    name: 'Users',
-    icon: 'group',
-    items: [
-      { id: 'users_manage', name: 'Manage Users', code: 'users.manage', description: 'Create, edit, block, and delete user accounts', admin: true, operator: false, viewer: false },
-      { id: 'users_view', name: 'View Users', code: 'users.view', description: 'View user directory and profile details', admin: true, operator: true, viewer: true }
-    ]
-  },
-  {
-    id: 'system',
-    name: 'System',
-    icon: 'terminal',
-    items: [
-      { id: 'system_admin', name: 'System Administration', code: 'system.admin', description: 'Log viewer, backups, active sessions management', admin: true, operator: false, viewer: false },
-      { id: 'system_all', name: 'Full System Access', code: 'system.all', description: 'Full superuser privileges', admin: false, operator: false, viewer: false }
-    ]
-  }
-])
+const permissionCategories = ref<PermissionCategory[]>([])
 
 const filteredCategories = computed(() => {
   if (!permissionsSearch.value.trim()) return permissionCategories.value
@@ -293,66 +220,14 @@ interface AuditLogEntry {
 }
 
 const auditSearch = ref('')
-const auditLogs = ref<AuditLogEntry[]>([
-  {
-    id: '#LOG-8492',
-    timestamp: '8/19/2026, 12:35:40 AM',
-    user: 'root',
-    action: 'Role Created',
-    actionType: 'role',
-    resource: 'role.operator',
-    details: 'New custom role defined with 12 permissions',
-    ip: '127.0.0.1'
-  },
-  {
-    id: '#LOG-8491',
-    timestamp: '8/19/2026, 12:30:15 AM',
-    user: 'admin_jdoe',
-    action: 'Login Success',
-    actionType: 'login',
-    resource: 'auth.session',
-    details: 'Web session established via password auth',
-    ip: '192.168.1.105'
-  },
-  {
-    id: '#LOG-8490',
-    timestamp: '8/19/2026, 12:14:02 AM',
-    user: 'root',
-    action: 'Policy Changed',
-    actionType: 'policy',
-    resource: 'security.rate_limit',
-    details: 'Max login attempts adjusted: 3 → 5',
-    ip: '127.0.0.1'
-  },
-  {
-    id: '#LOG-8489',
-    timestamp: '8/19/2026, 11:58:19 PM',
-    user: 'unknown',
-    action: 'Login Failed',
-    actionType: 'failed',
-    resource: 'auth.web',
-    details: "Invalid credentials for user 'admin' (Attempt 1/5)",
-    ip: '192.168.1.200'
-  },
-  {
-    id: '#LOG-8488',
-    timestamp: '8/19/2026, 11:45:00 PM',
-    user: 'root',
-    action: 'Backup Created',
-    actionType: 'backup',
-    resource: 'system.backup',
-    details: 'Automated daily snapshot created (14.2 MB)',
-    ip: '127.0.0.1'
-  }
-])
+const auditLogs = ref<AuditLogEntry[]>([])
 
 const isRefreshingLogs = ref(false)
 
-function handleRefreshLogs() {
+async function handleRefreshLogs() {
   isRefreshingLogs.value = true
-  setTimeout(() => {
-    isRefreshingLogs.value = false
-  }, 500)
+  await fetchAuditLogs()
+  isRefreshingLogs.value = false
 }
 
 function handleExportLogs() {
