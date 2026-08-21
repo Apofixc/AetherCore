@@ -30,7 +30,7 @@ interface OperatorItem {
   initials: string
 }
 
-const loading = ref(false)
+const loading = ref(true)
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const selectedUserIds = ref<string[]>([])
@@ -70,80 +70,13 @@ const editUserForm = ref({
 })
 
 // Operators list
-const operators = ref<OperatorItem[]>([
-  {
-    id: 'ROOT-001',
-    uid: '07d11e26-9f88-4966-9105-38df982b52e0',
-    username: 'admin',
-    full_name: 'System Administrator',
-    email: 'admin@nms.local',
-    role: 'admin',
-    is_online: true,
-    is_active: true,
-    initials: 'SA'
-  },
-  {
-    id: 'UID-D6A22E',
-    uid: 'a4b12c89-11ef-4230-9b34-8c7e43d1a890',
-    username: 'root',
-    full_name: 'Главный администратор (Root)',
-    email: 'root@nms.local',
-    role: 'superuser',
-    is_online: true,
-    is_active: true,
-    initials: 'GA'
-  },
-  {
-    id: 'UID-A1B2C3',
-    uid: '5e8f23d1-44ab-45c1-8d23-01a4f9b2c3d4',
-    username: 's.jenkins',
-    full_name: 'Sarah Jenkins',
-    email: 's.jenkins@nms.local',
-    role: 'admin',
-    is_online: true,
-    is_active: true,
-    initials: 'SJ'
-  },
-  {
-    id: 'UID-F4G5H6',
-    uid: '6f9a34e2-55bc-46d2-9e34-12b5a0c3d4e5',
-    username: 'm.vance',
-    full_name: 'Marcus Vance',
-    email: 'm.vance@nms.local',
-    role: 'operator',
-    is_online: false,
-    is_active: true,
-    initials: 'MV'
-  },
-  {
-    id: 'UID-J7K8L9',
-    uid: '7a0b45f3-66cd-47e3-af45-23c6b1d4e5f6',
-    username: 'e.rodriguez',
-    full_name: 'Elena Rodriguez',
-    email: 'e.rodriguez@nms.local',
-    role: 'viewer',
-    is_online: true,
-    is_active: true,
-    initials: 'ER'
-  },
-  {
-    id: 'UID-M0N1P2',
-    uid: '8b1c56a4-77de-48f4-b056-34d7c2e5f6a7',
-    username: 'd.kim',
-    full_name: 'David Kim',
-    email: 'd.kim@nms.local',
-    role: 'operator',
-    is_online: false,
-    is_active: false,
-    initials: 'DK'
-  }
-])
+const operators = ref<OperatorItem[]>([])
 
 async function loadUsers() {
   loading.value = true
   try {
     const list = await usersApi.list()
-    if (list && list.length > 0) {
+    if (list && Array.isArray(list)) {
       operators.value = list.map((u: User) => {
         const role = (u.roles && u.roles.includes('superuser')) ? 'superuser'
           : (u.roles && u.roles.includes('admin')) ? 'admin'
@@ -165,7 +98,7 @@ async function loadUsers() {
       })
     }
   } catch (e) {
-    console.warn('Failed to load users from API, using cached state:', e)
+    console.warn('Failed to load users from API:', e)
   } finally {
     loading.value = false
   }
@@ -935,7 +868,16 @@ const roleOptions = computed(() => [
                   </td>
                 </tr>
 
-                <tr v-if="filteredOperators.length === 0">
+                <tr v-if="loading && filteredOperators.length === 0">
+                  <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="6">
+                    <div class="flex flex-col items-center justify-center gap-2 py-6">
+                      <span class="material-symbols-outlined text-3xl text-primary-fixed-dim animate-spin">progress_activity</span>
+                      <p>{{ t('common.loading') }}</p>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr v-else-if="filteredOperators.length === 0">
                   <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="6">
                     <div class="flex flex-col items-center justify-center gap-2 py-6">
                       <span class="material-symbols-outlined text-3xl text-outline-variant">person_search</span>
