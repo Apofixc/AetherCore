@@ -355,7 +355,7 @@ async fn test_settings_endpoints() {
     let pref_bytes = get_pref_res.into_body().collect().await.unwrap().to_bytes();
     let user_prefs: nms_server::api::settings::UserPreferencesDto =
         serde_json::from_slice(&pref_bytes).unwrap();
-    assert_eq!(user_prefs.timezone, "Europe/Minsk");
+    assert_eq!(user_prefs.timezone, "UTC");
 
     // 3. Тест user-preferences: PUT (обновление)
     let mut updated_prefs = user_prefs.clone();

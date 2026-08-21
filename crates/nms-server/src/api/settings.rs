@@ -98,7 +98,7 @@ pub struct UserPreferencesDto {
 }
 
 fn default_timezone() -> String {
-    "Europe/Minsk".to_string()
+    "UTC".to_string()
 }
 fn default_theme() -> String {
     "dark".to_string()
@@ -125,28 +125,7 @@ fn default_sound_error() -> String {
     "Alarm Tone".to_string()
 }
 fn default_module_subscriptions() -> Vec<ModuleSubscriptionDto> {
-    vec![
-        ModuleSubscriptionDto {
-            id: "core".to_string(),
-            name_key: "profile.systemCore".to_string(),
-            code: "core".to_string(),
-            desc_key: "profile.systemCoreDesc".to_string(),
-            enabled: true,
-            mute: "none".to_string(),
-            sound: "Default (by severity)".to_string(),
-            threshold: "profile.allEvents".to_string(),
-        },
-        ModuleSubscriptionDto {
-            id: "topology".to_string(),
-            name_key: "profile.moduleTopology".to_string(),
-            code: "wasm.topology".to_string(),
-            desc_key: "profile.moduleTopologyDesc".to_string(),
-            enabled: true,
-            mute: "none".to_string(),
-            sound: "Synth Chime".to_string(),
-            threshold: "profile.warnAndErrors".to_string(),
-        },
-    ]
+    Vec::new()
 }
 
 impl Default for UserPreferencesDto {
@@ -271,7 +250,7 @@ fn default_min_password_length() -> u32 {
     8
 }
 fn default_ip_whitelist() -> String {
-    "127.0.0.1, 192.168.1.0/24".to_string()
+    String::new()
 }
 
 impl Default for SecurityPoliciesDto {
@@ -423,47 +402,12 @@ async fn update_permissions_matrix_handler(
 fn default_permissions_matrix() -> serde_json::Value {
     serde_json::json!([
         {
-            "id": "demo_plugin",
-            "name": "Demo Plugin",
-            "icon": "extension",
+            "id": "system",
+            "name": "System",
+            "icon": "terminal",
             "items": [
-                { "id": "dp_view", "name": "Demo Plugin View", "code": "module.demo_plugin.view", "description": "Allows access to Demo Plugin module", "admin": false, "operator": false, "viewer": false }
-            ]
-        },
-        {
-            "id": "audit_logs",
-            "name": "Audit Logs",
-            "icon": "history_edu",
-            "items": [
-                { "id": "audit_export", "name": "Export Audit Logs", "code": "audit.export", "description": "Export security audit log history", "admin": true, "operator": false, "viewer": false },
-                { "id": "audit_view", "name": "View Audit Logs", "code": "audit.view", "description": "View security audit log history", "admin": true, "operator": true, "viewer": true }
-            ]
-        },
-        {
-            "id": "access_control",
-            "name": "Access Control",
-            "icon": "vpn_key",
-            "items": [
-                { "id": "access_roles_manage", "name": "Manage Roles & Permissions", "code": "access.roles.manage", "description": "Create, edit, delete access roles and assign permissions", "admin": true, "operator": false, "viewer": false },
-                { "id": "access_roles_view", "name": "View Roles & Permissions", "code": "access.roles.view", "description": "View access roles and permissions matrix", "admin": true, "operator": true, "viewer": true }
-            ]
-        },
-        {
-            "id": "modules",
-            "name": "Modules",
-            "icon": "view_in_ar",
-            "items": [
-                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "Install, update, enable/disable, and remove dynamic modules", "admin": true, "operator": false, "viewer": false },
-                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "View installed modules and runtime state", "admin": true, "operator": true, "viewer": true }
-            ]
-        },
-        {
-            "id": "settings",
-            "name": "Settings",
-            "icon": "settings",
-            "items": [
-                { "id": "settings_manage", "name": "Manage System Settings", "code": "settings.manage", "description": "Modify global application settings and configuration", "admin": true, "operator": false, "viewer": false },
-                { "id": "settings_view", "name": "View System Settings", "code": "settings.view", "description": "View global application settings and configuration", "admin": true, "operator": true, "viewer": true }
+                { "id": "system_view", "name": "View System", "code": "system.view", "description": "View system status, health, and logs", "admin": true, "operator": true, "viewer": true },
+                { "id": "system_manage", "name": "Manage System", "code": "system.manage", "description": "Modify system parameters, maintenance and backups", "admin": true, "operator": false, "viewer": false }
             ]
         },
         {
@@ -471,17 +415,52 @@ fn default_permissions_matrix() -> serde_json::Value {
             "name": "Users",
             "icon": "group",
             "items": [
-                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "Create, edit, block, and delete user accounts", "admin": true, "operator": false, "viewer": false },
-                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "View user directory and profile details", "admin": true, "operator": true, "viewer": true }
+                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "View users directory and account details", "admin": true, "operator": true, "viewer": true },
+                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "Create, edit, block, and delete user accounts", "admin": true, "operator": false, "viewer": false }
             ]
         },
         {
-            "id": "system",
-            "name": "System",
-            "icon": "terminal",
+            "id": "modules",
+            "name": "Modules",
+            "icon": "view_in_ar",
             "items": [
-                { "id": "system_admin", "name": "System Administration", "code": "system.admin", "description": "Log viewer, backups, active sessions management", "admin": true, "operator": false, "viewer": false },
-                { "id": "system_all", "name": "Full System Access", "code": "system.all", "description": "Full superuser privileges", "admin": false, "operator": false, "viewer": false }
+                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "View installed plugins and module runtime state", "admin": true, "operator": true, "viewer": true },
+                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "Install, update, enable/disable dynamic WASM modules", "admin": true, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "events",
+            "name": "Events & Telemetry",
+            "icon": "sensors",
+            "items": [
+                { "id": "events_view", "name": "View Events", "code": "events.view", "description": "View real-time and historical event journal", "admin": true, "operator": true, "viewer": true }
+            ]
+        },
+        {
+            "id": "audit_logs",
+            "name": "Audit Logs",
+            "icon": "history_edu",
+            "items": [
+                { "id": "audit_view", "name": "View Audit Logs", "code": "audit.view", "description": "View security audit log history", "admin": true, "operator": true, "viewer": true },
+                { "id": "audit_export", "name": "Export Audit Logs", "code": "audit.export", "description": "Export security audit log history", "admin": true, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "access_control",
+            "name": "Access Control",
+            "icon": "vpn_key",
+            "items": [
+                { "id": "access_roles_view", "name": "View Roles & Permissions", "code": "access.roles.view", "description": "View access roles and permissions matrix", "admin": true, "operator": true, "viewer": true },
+                { "id": "access_roles_manage", "name": "Manage Roles & Permissions", "code": "access.roles.manage", "description": "Create, edit, delete access roles and assign permissions", "admin": true, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "settings",
+            "name": "Settings",
+            "icon": "settings",
+            "items": [
+                { "id": "settings_view", "name": "View System Settings", "code": "settings.view", "description": "View global application settings and configuration", "admin": true, "operator": true, "viewer": true },
+                { "id": "settings_manage", "name": "Manage System Settings", "code": "settings.manage", "description": "Modify global application settings and configuration", "admin": true, "operator": false, "viewer": false }
             ]
         }
     ])

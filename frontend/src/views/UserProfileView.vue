@@ -25,7 +25,7 @@ const fullName = ref(authStore.user?.full_name || 'Главный админис
 const department = ref('Network Operations')
 const role = ref('Superuser')
 const email = ref(authStore.user?.email || 'root@nms.local')
-const timezone = ref('Europe/Minsk')
+const timezone = ref(typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC')
 
 // Live Local Clock State
 const currentTimeString = ref('')
@@ -78,28 +78,7 @@ interface ModuleSub {
   threshold: string
 }
 
-const moduleSubscriptions = ref<ModuleSub[]>([
-  {
-    id: 'core',
-    nameKey: 'profile.systemCore',
-    code: 'core',
-    descKey: 'profile.systemCoreDesc',
-    enabled: true,
-    mute: 'none',
-    sound: 'Default (by severity)',
-    threshold: 'profile.allEvents'
-  },
-  {
-    id: 'topology',
-    nameKey: 'profile.moduleTopology',
-    code: 'wasm.topology',
-    descKey: 'profile.moduleTopologyDesc',
-    enabled: true,
-    mute: 'none',
-    sound: 'Synth Chime',
-    threshold: 'profile.warnAndErrors'
-  }
-])
+const moduleSubscriptions = ref<ModuleSub[]>([])
 
 // Save Notification
 const savedNotice = ref(false)
