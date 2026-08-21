@@ -164,7 +164,7 @@ function handleFileSelected(e: Event) {
       icon: 'upload_file',
       confirmText: t('system.restoreFromFile'),
       action: () => {
-        notify(`Файл базы данных ${file.name} успешно восстановлен`)
+        notify(t('system.restoreFromFile') + ` (${file.name}) - OK`)
       }
     }
     showConfirmModal.value = true
@@ -202,7 +202,7 @@ function requestRevokeSession(s: SessionItem) {
     confirmText: t('system.revokeSession'),
     action: () => {
       sessions.value = sessions.value.filter((item) => item.id !== s.id)
-      notify(`Сессия ${s.username} отозвана`)
+      notify(t('system.revokeSession') + ` (${s.username}) - OK`)
     }
   }
   showConfirmModal.value = true

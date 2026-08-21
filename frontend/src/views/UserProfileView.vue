@@ -205,11 +205,11 @@ async function handleSaveProfile() {
 
 async function handleChangePassword() {
   if (!currentPassword.value || !newPassword.value) {
-    passwordStatus.value = 'Заполните все поля пароля'
+    passwordStatus.value = t('auth.fillAllPasswordFields')
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    passwordStatus.value = 'Пароли не совпадают'
+    passwordStatus.value = t('auth.passwordsDoNotMatch')
     return
   }
   if (authStore.user?.id) {
@@ -218,11 +218,11 @@ async function handleChangePassword() {
         password: newPassword.value
       })
     } catch (err: any) {
-      passwordStatus.value = err.message || 'Ошибка обновления пароля'
+      passwordStatus.value = err.message || t('auth.passwordChangeError')
       return
     }
   }
-  passwordStatus.value = 'Пароль успешно обновлен'
+  passwordStatus.value = t('auth.passwordChangeSuccess')
   currentPassword.value = ''
   newPassword.value = ''
   confirmPassword.value = ''
@@ -232,7 +232,7 @@ async function handleChangePassword() {
 }
 
 function handleAutoDetectTimezone() {
-  timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Minsk'
+  timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   updateClock()
 }
 

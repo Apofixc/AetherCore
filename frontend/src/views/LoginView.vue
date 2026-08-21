@@ -38,7 +38,7 @@ async function handleLogin() {
     }
   } catch (err: any) {
     console.error('Login failed:', err)
-    errorMessage.value = err?.response?.data?.message || err?.message || 'Неверное имя пользователя или пароль'
+    errorMessage.value = err?.response?.data?.message || err?.message || t('auth.invalidCredentials')
   } finally {
     isSubmitting.value = false
   }
@@ -46,11 +46,11 @@ async function handleLogin() {
 
 async function handleSaveNewPassword() {
   if (newPassword.value.length < 4) {
-    passwordChangeError.value = 'Пароль должен быть не менее 4 символов'
+    passwordChangeError.value = t('auth.passwordTooShort')
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    passwordChangeError.value = 'Пароли не совпадают'
+    passwordChangeError.value = t('auth.passwordsDoNotMatch')
     return
   }
 
@@ -67,7 +67,7 @@ async function handleSaveNewPassword() {
     showPasswordChangeModal.value = false
     router.push('/dashboard')
   } catch (err: any) {
-    passwordChangeError.value = err.message || 'Ошибка смены пароля'
+    passwordChangeError.value = err.message || t('auth.passwordChangeError')
   } finally {
     isChangingPassword.value = false
   }
