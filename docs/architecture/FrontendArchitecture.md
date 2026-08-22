@@ -109,7 +109,7 @@ graph TD
 
 ---
 
-## 4. Блок-схема: Управление политиками безопасности и инвалидация сессий
+## 4. Блок-схема: Управление политиками безопасности и сессиями
 
 ```mermaid
 sequenceDiagram
@@ -120,7 +120,7 @@ sequenceDiagram
     participant API as ApiClient (/api/v1/settings)
     participant Core as Backend Axum
 
-    Admin->>View: Переключение web_ui_auth: false -> true
+    Admin->>View: Изменение настроек (таймауты, политики, матрица)
     Admin->>View: Клик "Применить изменения"
     
     %% Последовательное сохранение для избежания race condition
@@ -129,10 +129,15 @@ sequenceDiagram
     Core-->>API: 200 OK
     
     View->>API: 2. PUT /api/v1/settings/security (политики безопасности)
-    API->>Core: Запись web_ui_auth: true в SQLite KV Store
+    API->>Core: Запись настроек в SQLite KV Store
     Core-->>API: 200 OK
     
     View->>Store: authStore.checkAuthConfig()
-    View->>Store: authStore.logout() (удаление JWT)
-    View->>View: window.location.href = '/login' (принудительный выброс на вход)
+    
+    alt Переход: web_ui_auth включен (из выключенного состояния)
+        View->>Store: authStore.logout() (сброс анонимной сессии)
+        View->>View: window.location.href = '/login' (переход на форму авторизации)
+    else Авторизация уже была активна или осталась выключена
+        View->>View: Отображение плашки "Изменения применены!" (сессия сохраняется)
+    end
 ```

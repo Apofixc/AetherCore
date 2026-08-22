@@ -137,7 +137,7 @@ async function applyChanges() {
     await settingsApi.updateSecurityPolicies(policiesPayload)
     await authStore.checkAuthConfig()
 
-    if (isEnablingAuth || webUiAuth.value) {
+    if (isEnablingAuth) {
       authStore.logout()
       window.location.href = '/login'
       return
@@ -146,8 +146,7 @@ async function applyChanges() {
     initialWebUiAuth.value = webUiAuth.value
   } catch (err) {
     console.error('Could not save security policies to server:', err)
-    // Если авторизация была включена на сервере и вызвала 401, гарантированно переводим на логин
-    if (isEnablingAuth || webUiAuth.value) {
+    if (isEnablingAuth) {
       authStore.logout()
       window.location.href = '/login'
       return
