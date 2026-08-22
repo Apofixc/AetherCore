@@ -29,14 +29,23 @@ sequenceDiagram
     Server-->>API: 201 Created UserResponseDto
     API-->>View: Добавление в список + закрытие модалки
 
-    %% Редактирование / Блокировка
-    Admin->>View: Изменение данных / переключение блокировки
-    View->>API: usersApi.update(id, UpdateUserDto)
+    %% Редактирование роли / Сброс пароля
+    Admin->>View: Изменение роли или ввод пароля для сброса
+    View->>API: usersApi.update(id, { roles, password?, must_change_password? })
     API->>Server: PUT /api/v1/users/:id
     Server->>SQLite: UPDATE users SET ...
     SQLite-->>Server: Updated Row
     Server-->>API: 200 OK UserResponseDto
-    API-->>View: Обновление пользователя в таблице
+    API-->>View: Обновление роли в таблице + закрытие модалки
+
+    %% Блокировка / Разблокировка
+    Admin->>View: Клик по кнопке блокировки
+    View->>API: usersApi.update(id, { is_active: !current })
+    API->>Server: PUT /api/v1/users/:id
+    Server->>SQLite: UPDATE users SET is_active = ...
+    SQLite-->>Server: Updated Row
+    Server-->>API: 200 OK UserResponseDto
+    API-->>View: Переключение статуса в таблице
 
     %% Удаление
     Admin->>View: Подтверждение удаления

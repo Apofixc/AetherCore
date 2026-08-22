@@ -421,16 +421,72 @@ impl UserService {
             dto.must_change_password.unwrap_or(existing.must_change_password)
         };
 
+        let new_username = if let Some(ref req_username) = dto.username {
+            let req_username = req_username.trim();
+            if req_username.is_empty() {
+                existing.username.clone()
+            } else if req_username != existing.username {
+                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true) и не для root
+                if !existing.must_change_password || existing.username == "root" {
+                    return Err(AppError::validation(
+                        "username",
+                        "Username cannot be changed after initial setup or for root user",
+                    ));
+                }
+
+                // Валидация формата логина
+                if req_username.len() < 3 || req_username.len() > 32 {
+                    return Err(AppError::validation(
+                        "username",
+                        "Username must be between 3 and 32 characters",
+                    ));
+                }
+                if !req_username
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+                {
+                    return Err(AppError::validation(
+                        "username",
+                        "Username can only contain alphanumeric characters, underscores, hyphens, and dots",
+                    ));
+                }
+
+                // Проверка на коллизию уникальности
+                let conflict_count: (i64,) = sqlx::query_as(
+                    "SELECT COUNT(*) FROM users WHERE username = ? AND id != ?",
+                )
+                .bind(req_username)
+                .bind(id.to_string())
+                .fetch_one(self.db.reader())
+                .await
+                .map_err(|e| AppError::database(e.to_string()))?;
+
+                if conflict_count.0 > 0 {
+                    return Err(AppError::conflict(format!(
+                        "Username '{}' is already taken",
+                        req_username
+                    )));
+                }
+
+                req_username.to_string()
+            } else {
+                existing.username.clone()
+            }
+        } else {
+            existing.username.clone()
+        };
+
         let full_name = dto.full_name.or(existing.full_name);
         let email = dto.email.or(existing.email);
         let is_active = dto.is_active.unwrap_or(existing.is_active);
 
         sqlx::query(
             r#"
-            UPDATE users SET full_name = ?, email = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
+            UPDATE users SET username = ?, full_name = ?, email = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
+        .bind(new_username)
         .bind(full_name)
         .bind(email)
         .bind(password_hash)

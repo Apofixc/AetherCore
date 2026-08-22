@@ -20,6 +20,7 @@ const isSubmitting = ref(false)
 
 // Mandatory Password Change state
 const showPasswordChangeModal = ref(false)
+const customUsername = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const passwordChangeError = ref<string | null>(null)
@@ -39,6 +40,7 @@ async function handleLogin() {
   try {
     await authStore.login(operatorId.value, accessCode.value)
     if (authStore.user?.must_change_password) {
+      customUsername.value = authStore.user.username || ''
       showPasswordChangeModal.value = true
     } else {
       router.push('/dashboard')
@@ -52,6 +54,10 @@ async function handleLogin() {
 }
 
 async function handleSaveNewPassword() {
+  if (customUsername.value.trim().length < 3) {
+    passwordChangeError.value = t('auth.invalidUsernameLength')
+    return
+  }
   if (newPassword.value.length < 4) {
     passwordChangeError.value = t('auth.passwordTooShort')
     return
@@ -65,11 +71,12 @@ async function handleSaveNewPassword() {
   passwordChangeError.value = null
   try {
     if (authStore.user) {
-      await usersApi.update(authStore.user.id, {
+      const updated = await usersApi.update(authStore.user.id, {
+        username: customUsername.value.trim(),
         password: newPassword.value,
         must_change_password: false
       })
-      authStore.user.must_change_password = false
+      authStore.user = updated
     }
     showPasswordChangeModal.value = false
     router.push('/dashboard')
@@ -106,11 +113,13 @@ async function handleSaveNewPassword() {
 
       <button
         type="button"
-        class="p-2 text-on-surface-variant hover:text-primary-fixed-dim transition-colors bg-surface-container-high/80 backdrop-blur-sm border border-outline-variant/60 rounded-lg flex items-center justify-center cursor-pointer"
+        class="w-8 h-8 rounded-lg bg-surface-container-high/80 backdrop-blur-sm border border-outline-variant/60 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+        :title="isDark ? t('auth.themeLight') : t('auth.themeDark')"
         @click="toggleTheme"
-        :title="isDark ? 'Switch to Light' : 'Switch to Dark'"
       >
-        <span class="material-symbols-outlined text-sm">{{ isDark ? 'light_mode' : 'dark_mode' }}</span>
+        <span class="material-symbols-outlined text-[18px]">
+          {{ isDark ? 'light_mode' : 'dark_mode' }}
+        </span>
       </button>
     </div>
 
@@ -129,70 +138,62 @@ async function handleSaveNewPassword() {
       <div class="absolute inset-0 scanlines opacity-30"></div>
     </div>
 
-    <!-- Main Content Canvas -->
-    <main class="relative z-10 w-full max-w-md px-lg">
-      <!-- Brand Header -->
-      <div class="text-center mb-xl">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-surface-container-high border border-outline-variant shadow-glow-primary-sm mb-md overflow-hidden">
-          <img src="/logo.png" alt="AetherCore Logo" class="w-full h-full object-cover" />
+    <!-- Main Content Center -->
+    <main class="w-full max-w-sm px-4 flex flex-col items-center relative z-10">
+      <!-- Title & Branding -->
+      <div class="flex flex-col items-center gap-2 mb-6">
+        <div class="w-12 h-12 rounded-xl bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shadow-glow">
+          <span class="material-symbols-outlined text-2xl">hub</span>
         </div>
-        <h1 class="font-display-lg text-display-lg text-primary-fixed-dim tracking-wider mb-unit">{{ t('auth.title') }}</h1>
-        <p class="font-mono text-xs text-on-surface-variant">{{ t('auth.subtitle') }}</p>
+        <div class="text-center">
+          <h1 class="text-xl font-bold font-mono tracking-widest text-on-surface uppercase">{{ t('auth.title') }}</h1>
+          <p class="text-xs text-on-surface-variant font-mono tracking-wider">{{ t('auth.subtitle') }}</p>
+        </div>
       </div>
 
-      <!-- Login Card -->
-      <div class="bg-surface-container-low/90 backdrop-blur-md border border-outline-variant rounded-2xl p-lg shadow-card-dark relative overflow-hidden">
-        <!-- Subtle top accent line -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-fixed-dim to-transparent opacity-60"></div>
+      <!-- Login Form Card -->
+      <div class="w-full bg-surface-container-low border border-outline-variant/60 rounded-xl p-6 shadow-card-dark flex flex-col gap-4">
+        <!-- Error Alert -->
+        <div v-if="errorMessage" class="p-3 bg-error-container/30 border border-error text-error text-xs rounded-lg flex items-center gap-2">
+          <span class="material-symbols-outlined text-base shrink-0">error</span>
+          <span>{{ errorMessage }}</span>
+        </div>
 
-        <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
-          <!-- Error alert -->
-          <div v-if="errorMessage" class="p-sm bg-error-container/30 border border-error text-error rounded-xl text-xs font-mono">
-            {{ errorMessage }}
-          </div>
-
-          <!-- Operator ID Field -->
+        <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
+          <!-- Operator ID Input -->
           <BaseInput
-            id="operator_id"
             v-model="operatorId"
             :label="t('auth.operatorId')"
             :placeholder="t('auth.operatorIdPlaceholder')"
-            icon="person"
+            icon="badge"
             :required="true"
-            autocomplete="username"
+            :autofocus="true"
           />
 
-          <!-- Access Code Field -->
+          <!-- Access Code Input -->
           <BaseInput
-            id="access_code"
             v-model="accessCode"
-            type="password"
             :label="t('auth.accessCode')"
             :placeholder="t('auth.accessCodePlaceholder')"
-            icon="lock"
+            type="password"
+            icon="key"
             :required="true"
-            autocomplete="current-password"
           />
 
-          <!-- Auxiliary Actions -->
-          <div class="flex items-center justify-between pt-1 pb-1">
-            <label class="flex items-center gap-2 cursor-pointer">
+          <!-- Remember me & Help -->
+          <div class="flex items-center justify-between text-xs text-on-surface-variant">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
               <input
-                id="remember-me"
                 v-model="rememberMe"
                 type="checkbox"
                 class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
               />
-              <span class="text-xs text-on-surface-variant select-none">
-                {{ t('auth.rememberMe') }}
-              </span>
+              <span>{{ t('auth.rememberMe') }}</span>
             </label>
-            <a href="#" class="text-xs text-primary-fixed-dim hover:underline transition-colors select-none" @click.prevent>
-              {{ t('auth.forgotCode') }}
-            </a>
+            <a href="#" class="hover:text-primary-fixed-dim transition-colors" @click.prevent>{{ t('auth.forgotCode') }}</a>
           </div>
 
-          <!-- Primary CTA -->
+          <!-- Submit Button -->
           <AppButton
             type="submit"
             variant="primary"
@@ -207,17 +208,17 @@ async function handleSaveNewPassword() {
       </div>
     </main>
 
-    <!-- Mandatory Password Change Modal -->
+    <!-- Mandatory First-Time Account Setup Modal -->
     <BaseModal
       v-model="showPasswordChangeModal"
-      title="Обязательная смена пароля"
+      :title="t('auth.firstTimeSetupTitle')"
       icon="lock_reset"
       max-width="max-w-md"
       :show-close="false"
     >
       <form id="changePasswordForm" @submit.prevent="handleSaveNewPassword" class="flex flex-col gap-3">
         <p class="text-xs text-on-surface-variant leading-relaxed">
-          В соответствии с политиками безопасности при первом входе в систему вам необходимо задать новый постоянный пароль.
+          {{ t('auth.firstTimeSetupDescription') }}
         </p>
 
         <div v-if="passwordChangeError" class="p-2 bg-error-container/40 border border-error text-error rounded-lg text-xs font-mono">
@@ -225,8 +226,17 @@ async function handleSaveNewPassword() {
         </div>
 
         <BaseInput
+          v-model="customUsername"
+          :label="t('auth.permanentUsername')"
+          placeholder="e.g. alex.morgan"
+          :required="true"
+          :disabled="authStore.user?.username === 'root'"
+          size="sm"
+        />
+
+        <BaseInput
           v-model="newPassword"
-          label="Новый пароль"
+          :label="t('auth.newPassword')"
           placeholder="••••••••"
           type="password"
           :required="true"
@@ -235,7 +245,7 @@ async function handleSaveNewPassword() {
 
         <BaseInput
           v-model="confirmPassword"
-          label="Подтверждение пароля"
+          :label="t('auth.confirmPassword')"
           placeholder="••••••••"
           type="password"
           :required="true"
@@ -252,7 +262,7 @@ async function handleSaveNewPassword() {
           :loading="isChangingPassword"
           @click="handleSaveNewPassword"
         >
-          {{ isChangingPassword ? 'Сохранение...' : 'Установить пароль и войти' }}
+          {{ isChangingPassword ? t('users.saving') : t('auth.saveAndEnter') }}
         </AppButton>
       </template>
     </BaseModal>

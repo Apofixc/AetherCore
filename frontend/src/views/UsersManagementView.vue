@@ -64,16 +64,14 @@ const newUserForm = ref({
   must_change_password: true
 })
 
-// Form for editing user
+// Form for editing user (role and password reset only)
 const editUserForm = ref({
   id: '',
   full_name: '',
   username: '',
-  email: '',
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
-  is_active: true,
   password: '',
-  must_change_password: false
+  must_change_password: true
 })
 
 // Operators list
@@ -329,32 +327,26 @@ async function handleCreateUser() {
   }
 }
 
-// Edit User
+// Edit User (Role and Password reset only)
 function handleOpenEdit(op: OperatorItem) {
   if (!canEditUser(op)) return
   editUserForm.value = {
     id: op.id,
     full_name: op.full_name,
     username: op.username,
-    email: op.email,
     role: op.role,
-    is_active: op.is_active,
     password: '',
-    must_change_password: op.must_change_password ?? false
+    must_change_password: true
   }
   showEditModal.value = true
 }
 
 async function handleSaveEdit() {
-  if (!editUserForm.value.username.trim()) return
   isSubmitting.value = true
   try {
     await usersApi.update(editUserForm.value.id, {
-      full_name: editUserForm.value.full_name.trim(),
-      email: editUserForm.value.email.trim(),
-      is_active: editUserForm.value.is_active,
       roles: [editUserForm.value.role],
-      must_change_password: editUserForm.value.must_change_password,
+      must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : undefined,
       ...(editUserForm.value.password.trim() ? { password: editUserForm.value.password.trim() } : {})
     })
   } catch (err) {
@@ -362,20 +354,10 @@ async function handleSaveEdit() {
   } finally {
     const index = operators.value.findIndex((op) => op.id === editUserForm.value.id)
     if (index >= 0) {
-      const initials = editUserForm.value.full_name
-        ? editUserForm.value.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-        : editUserForm.value.username.slice(0, 2).toUpperCase()
-
       operators.value[index] = {
         ...operators.value[index],
-        full_name: editUserForm.value.full_name.trim() || editUserForm.value.username.trim(),
-        username: editUserForm.value.username.trim(),
-        email: editUserForm.value.email.trim(),
         role: editUserForm.value.role,
-        is_active: editUserForm.value.is_active,
-        is_online: editUserForm.value.is_active ? operators.value[index].is_online : false,
-        must_change_password: editUserForm.value.must_change_password,
-        initials
+        must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : operators.value[index].must_change_password
       }
     }
     showEditModal.value = false
@@ -1057,27 +1039,18 @@ const editRoleOptions = computed(() => {
       max-width="max-w-md"
     >
       <form id="editUserForm" @submit.prevent="handleSaveEdit" class="flex flex-col gap-3">
-        <BaseInput
-          v-model="editUserForm.full_name"
-          :label="t('users.fullName')"
-          placeholder="e.g. Alex Morgan"
-          size="sm"
-        />
+        <!-- User Info Header -->
+        <div class="p-3 bg-surface-container-high rounded-lg border border-outline-variant/50 flex items-center justify-between">
+          <div class="flex flex-col">
+            <span class="text-xs font-bold text-on-surface font-mono">@{{ editUserForm.username }}</span>
+            <span class="text-xs text-on-surface-variant">{{ editUserForm.full_name || editUserForm.username }}</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[11px] font-mono uppercase font-bold bg-surface-variant text-primary-fixed-dim">
+            {{ editUserForm.role }}
+          </span>
+        </div>
 
-        <BaseInput
-          v-model="editUserForm.username"
-          :label="t('users.username')"
-          :disabled="editUserForm.username === 'root'"
-          size="sm"
-        />
-
-        <BaseInput
-          v-model="editUserForm.email"
-          :label="t('users.email')"
-          type="email"
-          size="sm"
-        />
-
+        <!-- Role Select -->
         <BaseSelect
           v-model="editUserForm.role"
           :label="t('users.role')"
@@ -1086,24 +1059,31 @@ const editRoleOptions = computed(() => {
           size="sm"
         />
 
-        <BaseInput
-          v-model="editUserForm.password"
-          :label="t('users.newPasswordOptional')"
-          placeholder="••••••••"
-          type="password"
-          size="sm"
-        />
-
-        <label class="flex items-center gap-2 pt-1 cursor-pointer select-none">
-          <input
-            v-model="editUserForm.must_change_password"
-            type="checkbox"
-            class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
-          />
-          <span class="text-xs text-on-surface">
-            {{ t('accessIdentity.mandatoryPasswordChange') }}
+        <!-- Password Reset Section -->
+        <div class="border-t border-outline-variant/40 pt-3 flex flex-col gap-2">
+          <span class="text-xs font-semibold text-on-surface flex items-center gap-1">
+            <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">lock_reset</span>
+            {{ t('users.resetPassword') }}
           </span>
-        </label>
+          <BaseInput
+            v-model="editUserForm.password"
+            :label="t('users.newPasswordOptional')"
+            :placeholder="t('users.passwordResetPlaceholder')"
+            type="password"
+            size="sm"
+          />
+
+          <label v-if="editUserForm.password" class="flex items-center gap-2 pt-1 cursor-pointer select-none">
+            <input
+              v-model="editUserForm.must_change_password"
+              type="checkbox"
+              class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+            />
+            <span class="text-xs text-on-surface">
+              {{ t('accessIdentity.mandatoryPasswordChange') }}
+            </span>
+          </label>
+        </div>
       </form>
 
       <template #footer>

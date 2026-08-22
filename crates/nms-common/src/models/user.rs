@@ -67,6 +67,8 @@ pub struct CreateUserDto {
 /// DTO для частичного обновления учетной записи пользователя
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserDto {
+    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true)
+    pub username: Option<String>,
     /// Новое полное имя (если передано `Some`)
     pub full_name: Option<String>,
     /// Новый адрес электронной почты (если передано `Some`)

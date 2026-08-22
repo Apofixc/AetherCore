@@ -195,3 +195,66 @@ async fn test_cannot_delete_or_demote_last_superuser() {
         .await;
     assert!(deactivate_res.is_err());
 }
+
+#[tokio::test]
+async fn test_username_change_on_first_login_only() {
+    let db = Db::init_in_memory().await.unwrap();
+    let service = UserService::new(db);
+
+    service.ensure_default_admin().await.unwrap();
+
+    // Создаем пользователя с временным логином и must_change_password = true
+    let temp_user = service
+        .create_user(CreateUserDto {
+            username: "temp_op".into(),
+            password: "temp_pass".into(),
+            full_name: Some("Temporary Operator".into()),
+            email: Some("temp@test.local".into()),
+            is_active: Some(true),
+            is_superuser: Some(false),
+            must_change_password: Some(true),
+            roles: Some(vec!["operator".into()]),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(temp_user.username, "temp_op");
+    assert!(temp_user.must_change_password);
+
+    // 1. При первом входе пользователь меняет логин и пароль -> успешно
+    let updated = service
+        .update_user(
+            temp_user.id,
+            UpdateUserDto {
+                username: Some("alex_perm".into()),
+                password: Some("new_secret_pwd".into()),
+                must_change_password: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.username, "alex_perm");
+    assert!(!updated.must_change_password);
+
+    // Проверяем авторизацию под новым логином и паролем
+    let auth = service
+        .authenticate("alex_perm", "new_secret_pwd")
+        .await
+        .unwrap();
+    assert_eq!(auth.username, "alex_perm");
+
+    // 2. Вторичная попытка сменить логин (когда must_change_password уже false) -> Ошибка
+    let second_change_res = service
+        .update_user(
+            temp_user.id,
+            UpdateUserDto {
+                username: Some("another_name".into()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+    assert!(second_change_res.is_err());
+}
