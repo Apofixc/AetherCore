@@ -13,6 +13,7 @@ export interface ModuleSubscription {
 
 export interface UserPreferences {
   timezone: string
+  time_format?: string
   theme: 'dark' | 'light' | 'system' | string
   locale: 'ru' | 'en' | string
   department?: string

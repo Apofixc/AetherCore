@@ -27,6 +27,7 @@ const department = ref('Core Operations')
 const role = ref('Superuser')
 const email = ref(authStore.user?.email || 'root@aethercore.local')
 const timezone = ref(typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC')
+const timeFormat = ref<'24h_sec' | '24h_min' | '12h_sec' | '12h_min' | 'iso'>('24h_sec')
 
 // Avatar & Photo Upload State
 const avatar = ref<string | null>(null)
@@ -45,19 +46,66 @@ let clockTimer: number | null = null
 function updateClock() {
   try {
     const now = new Date()
-    currentTimeString.value = now.toLocaleTimeString('en-US', {
-      timeZone: timezone.value.includes('/') ? timezone.value : undefined,
-      hour12: true,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    }) + ` (${timezone.value})`
+    const tz = timezone.value || 'UTC'
+    const fmt = timeFormat.value || '24h_sec'
+
+    if (fmt === 'iso') {
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      })
+      const parts = formatter.formatToParts(now)
+      const getPart = (type: string) => parts.find((p) => p.type === type)?.value || ''
+      currentTimeString.value = `${getPart('year')}-${getPart('month')}-${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')} (${tz})`
+    } else if (fmt === '24h_min') {
+      currentTimeString.value =
+        now.toLocaleTimeString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          timeZone: tz,
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit'
+        }) + ` (${tz})`
+    } else if (fmt === '12h_sec') {
+      currentTimeString.value =
+        now.toLocaleTimeString('en-US', {
+          timeZone: tz,
+          hour12: true,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }) + ` (${tz})`
+    } else if (fmt === '12h_min') {
+      currentTimeString.value =
+        now.toLocaleTimeString('en-US', {
+          timeZone: tz,
+          hour12: true,
+          hour: '2-digit',
+          minute: '2-digit'
+        }) + ` (${tz})`
+    } else {
+      // 24h_sec default
+      currentTimeString.value =
+        now.toLocaleTimeString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+          timeZone: tz,
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }) + ` (${tz})`
+    }
   } catch {
-    currentTimeString.value = new Date().toLocaleTimeString('en-US', { hour12: true }) + ` (${timezone.value})`
+    currentTimeString.value =
+      new Date().toLocaleTimeString('en-US', { hour12: false }) + ` (${timezone.value})`
   }
 }
 
-watch(timezone, () => {
+watch([timezone, timeFormat], () => {
   updateClock()
 })
 
@@ -101,6 +149,7 @@ async function loadPreferences() {
     if (serverPrefs) {
       if (serverPrefs.avatar) avatar.value = serverPrefs.avatar
       if (serverPrefs.timezone) timezone.value = serverPrefs.timezone
+      if (serverPrefs.time_format) timeFormat.value = serverPrefs.time_format as any
       if (serverPrefs.department) department.value = serverPrefs.department
       if (serverPrefs.active_mute_duration) activeMuteDuration.value = serverPrefs.active_mute_duration as any
       if (typeof serverPrefs.quiet_hours_enabled === 'boolean') quietHoursEnabled.value = serverPrefs.quiet_hours_enabled
@@ -250,6 +299,7 @@ async function handleSaveProfile() {
   const prefsPayload = {
     avatar: avatar.value || '',
     timezone: timezone.value,
+    time_format: timeFormat.value,
     theme: theme.value,
     locale: locale.value,
     department: department.value,
@@ -325,10 +375,118 @@ async function handleChangePassword() {
   }
 }
 
-function handleAutoDetectTimezone() {
-  timezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+async function handleAutoDetectTimezone() {
+  const detected = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC'
+  timezone.value = detected
   updateClock()
+  try {
+    await settingsApi.updateUserPreferences({ timezone: detected })
+  } catch (err) {
+    console.debug('Could not auto-save detected timezone to server:', err)
+  }
 }
+
+function getOffsetMinutes(tz: string): number {
+  try {
+    const now = new Date()
+    const str = now.toLocaleString('en-US', { timeZone: tz })
+    const targetDate = new Date(str)
+    const utcStr = now.toLocaleString('en-US', { timeZone: 'UTC' })
+    const utcDate = new Date(utcStr)
+    return Math.round((targetDate.getTime() - utcDate.getTime()) / 60000)
+  } catch {
+    return 0
+  }
+}
+
+function formatGmtOffset(offsetMinutes: number): string {
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const abs = Math.abs(offsetMinutes)
+  const hours = Math.floor(abs / 60)
+  const mins = abs % 60
+  if (mins === 0) {
+    return `GMT${sign}${hours}`
+  }
+  return `GMT${sign}${hours}:${mins.toString().padStart(2, '0')}`
+}
+
+const FALLBACK_TIMEZONES = [
+  'UTC',
+  'Europe/London',
+  'Europe/Berlin',
+  'Europe/Paris',
+  'Europe/Kyiv',
+  'Europe/Minsk',
+  'Europe/Moscow',
+  'Europe/Samara',
+  'Europe/Yekaterinburg',
+  'Europe/Omsk',
+  'Europe/Novosibirsk',
+  'Europe/Krasnoyarsk',
+  'Europe/Irkutsk',
+  'Europe/Yakutsk',
+  'Europe/Vladivostok',
+  'Europe/Magadan',
+  'Europe/Kamchatka',
+  'Asia/Dubai',
+  'Asia/Tashkent',
+  'Asia/Almaty',
+  'Asia/Bangkok',
+  'Asia/Singapore',
+  'Asia/Hong_Kong',
+  'Asia/Shanghai',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+  'Pacific/Honolulu',
+  'America/Anchorage',
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'America/Toronto',
+  'America/Sao_Paulo',
+  'America/Buenos_Aires',
+  'Atlantic/Reykjavik'
+]
+
+const timezoneOptions = computed(() => {
+  let list: string[] = []
+  if (typeof Intl !== 'undefined' && typeof (Intl as any).supportedValuesOf === 'function') {
+    try {
+      list = (Intl as any).supportedValuesOf('timeZone')
+    } catch {
+      list = FALLBACK_TIMEZONES
+    }
+  } else {
+    list = FALLBACK_TIMEZONES
+  }
+
+  const uniqueTzs = new Set(['UTC', ...list])
+  if (timezone.value) {
+    uniqueTzs.add(timezone.value)
+  }
+
+  const optionsWithOffset = Array.from(uniqueTzs).map((tz) => {
+    const offsetMin = getOffsetMinutes(tz)
+    const offsetStr = formatGmtOffset(offsetMin)
+    return {
+      value: tz,
+      label: `${tz} (${offsetStr})`,
+      offsetMin
+    }
+  })
+
+  optionsWithOffset.sort((a, b) => {
+    if (a.offsetMin !== b.offsetMin) {
+      return a.offsetMin - b.offsetMin
+    }
+    return a.value.localeCompare(b.value)
+  })
+
+  return optionsWithOffset.map(({ value, label }) => ({ value, label }))
+})
 
 // Web Audio API Sound Synthesizer for live preview
 function playSoundEffect(type: 'info' | 'success' | 'warning' | 'error') {
@@ -394,12 +552,34 @@ const languageOptions = computed(() => [
   { value: 'zh', label: `中文 (ZH) — ${t('profile.comingSoon')}`, disabled: true }
 ])
 
-const timezoneOptions = [
-  { value: 'Europe/Minsk', label: 'Europe/Minsk (GMT+3)' },
-  { value: 'Europe/Moscow', label: 'Europe/Moscow (GMT+3)' },
-  { value: 'UTC', label: 'UTC (GMT+0)' },
-  { value: 'America/New_York', label: 'America/New_York (GMT-5)' }
-]
+const timeFormatOptions = computed(() => [
+  { value: '24h_sec', label: t('profile.timeFormat24Sec') },
+  { value: '24h_min', label: t('profile.timeFormat24Min') },
+  { value: '12h_sec', label: t('profile.timeFormat12Sec') },
+  { value: '12h_min', label: t('profile.timeFormat12Min') },
+  { value: 'iso', label: t('profile.timeFormatIso') }
+])
+
+
+async function handleTimeFormatChange(val: string) {
+  timeFormat.value = val as any
+  updateClock()
+  try {
+    await settingsApi.updateUserPreferences({ time_format: val })
+  } catch (err) {
+    console.debug('Could not auto-save time format:', err)
+  }
+}
+
+async function handleTimezoneChange(val: string) {
+  timezone.value = val
+  updateClock()
+  try {
+    await settingsApi.updateUserPreferences({ timezone: val })
+  } catch (err) {
+    console.debug('Could not auto-save timezone:', err)
+  }
+}
 
 const thresholdOptions = computed(() => [
   { value: 'profile.allEvents', label: t('profile.allEvents') },
@@ -621,6 +801,8 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
               :title="t('profile.appearanceRegionality')"
               :subtitle="t('profile.appearanceRegionalityDesc')"
               icon="tune"
+              :overflow-visible="true"
+              class="z-20 relative"
             >
               <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
                 <BaseSelect
@@ -639,25 +821,34 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                   @update:model-value="(val) => setLocale(val as Locale)"
                 />
 
-                <div class="md:col-span-2">
-                  <BaseSelect
-                    v-model="timezone"
-                    :label="t('profile.timezone')"
-                    :options="timezoneOptions"
-                    size="sm"
-                  >
-                    <template #labelRight>
-                      <button
-                        type="button"
-                        class="flex items-center gap-1 text-primary-fixed-dim text-xs cursor-pointer hover:underline"
-                        @click="handleAutoDetectTimezone"
-                      >
-                        <span class="material-symbols-outlined text-sm">auto_mode</span>
-                        <span>{{ t('profile.autoDetect') }}</span>
-                      </button>
-                    </template>
-                  </BaseSelect>
-                </div>
+                <BaseSelect
+                  :model-value="timeFormat"
+                  :label="t('profile.timeFormat')"
+                  :options="timeFormatOptions"
+                  size="sm"
+                  @update:model-value="handleTimeFormatChange"
+                />
+
+                <BaseSelect
+                  :model-value="timezone"
+                  :label="t('profile.timezone')"
+                  :options="timezoneOptions"
+                  :searchable="true"
+                  :search-placeholder="t('profile.timezoneSearchPlaceholder')"
+                  size="sm"
+                  @update:model-value="handleTimezoneChange"
+                >
+                  <template #labelRight>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 text-primary-fixed-dim text-xs cursor-pointer hover:underline"
+                      @click="handleAutoDetectTimezone"
+                    >
+                      <span class="material-symbols-outlined text-sm">auto_mode</span>
+                      <span>{{ t('profile.autoDetect') }}</span>
+                    </button>
+                  </template>
+                </BaseSelect>
               </div>
             </BaseCard>
 

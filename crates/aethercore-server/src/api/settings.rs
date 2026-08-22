@@ -60,6 +60,9 @@ pub struct UserPreferencesDto {
     /// Часовой пояс пользователя
     #[serde(default = "default_timezone")]
     pub timezone: String,
+    /// Формат времени отображения
+    #[serde(default = "default_time_format")]
+    pub time_format: String,
     /// Цветовая тема интерфейса
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -101,6 +104,9 @@ pub struct UserPreferencesDto {
 fn default_timezone() -> String {
     "UTC".to_string()
 }
+fn default_time_format() -> String {
+    "24h_sec".to_string()
+}
 fn default_theme() -> String {
     "dark".to_string()
 }
@@ -133,6 +139,7 @@ impl Default for UserPreferencesDto {
     fn default() -> Self {
         Self {
             timezone: default_timezone(),
+            time_format: default_time_format(),
             theme: default_theme(),
             locale: default_locale(),
             department: Some("Network Operations".to_string()),

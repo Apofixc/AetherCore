@@ -11,19 +11,22 @@ withDefaults(
     noPadding?: boolean
     hoverable?: boolean
     borderGlow?: boolean
+    overflowVisible?: boolean
   }>(),
   {
     noPadding: false,
     hoverable: false,
-    borderGlow: false
+    borderGlow: false,
+    overflowVisible: false
   }
 )
 </script>
 
 <template>
   <div
-    class="bg-surface-container-low border border-outline-variant rounded-lg flex flex-col transition-all duration-200 overflow-hidden shadow-card-dark"
+    class="bg-surface-container-low border border-outline-variant rounded-lg flex flex-col transition-all duration-200 shadow-card-dark"
     :class="[
+      overflowVisible ? 'overflow-visible' : 'overflow-hidden',
       hoverable ? 'hover:border-primary-fixed-dim/40' : '',
       borderGlow ? 'border-primary-fixed-dim/50 shadow-glow-primary-sm' : ''
     ]"
@@ -31,7 +34,7 @@ withDefaults(
     <!-- Header -->
     <div
       v-if="title || $slots.header"
-      class="flex items-center justify-between p-md border-b border-outline-variant bg-surface-container shrink-0 flex-wrap gap-md"
+      class="flex items-center justify-between p-md border-b border-outline-variant bg-surface-container shrink-0 flex-wrap gap-md rounded-t-lg"
     >
       <slot name="header">
         <div class="flex items-center gap-sm min-w-0">
@@ -75,7 +78,7 @@ withDefaults(
     <!-- Footer -->
     <div
       v-if="$slots.footer"
-      class="p-md bg-surface-container border-t border-outline-variant shrink-0 flex items-center justify-between flex-wrap gap-md"
+      class="p-md bg-surface-container border-t border-outline-variant shrink-0 flex items-center justify-between flex-wrap gap-md rounded-b-lg"
     >
       <slot name="footer" />
     </div>
