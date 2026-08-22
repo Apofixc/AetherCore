@@ -114,7 +114,7 @@ router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormal
     }
 
     // Проверка политики обязательного 2FA (Enforced 2FA Policy)
-    const isEnforced2fa = Boolean(authStore.authConfig?.force_2fa && authStore.user && !authStore.user.is_totp_enabled)
+    const isEnforced2fa = Boolean(authStore.is2faRequiredForCurrentUser && authStore.user && !authStore.user.is_totp_enabled)
     if (isEnforced2fa) {
       if (to.path !== '/settings/profile') {
         next('/settings/profile?setup_2fa=true')

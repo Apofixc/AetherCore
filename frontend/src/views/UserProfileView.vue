@@ -27,7 +27,7 @@ const route = useRoute()
 const router = useRouter()
 
 // Проверка политики обязательного 2FA
-const isEnforced2fa = computed(() => Boolean(authStore.authConfig?.force_2fa && !authStore.user?.is_totp_enabled))
+const isEnforced2fa = computed(() => Boolean(authStore.is2faRequiredForCurrentUser && !authStore.user?.is_totp_enabled))
 
 // Profile Form State
 const fullName = ref(authStore.user?.full_name || authStore.user?.username || 'Admin')
@@ -969,15 +969,15 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                     variant="danger"
                     size="xs"
                     icon="lock_open"
-                    :disabled="Boolean(authStore.authConfig?.force_2fa)"
-                    :title="authStore.authConfig?.force_2fa ? 'Отключение 2FA запрещено системной политикой безопасности' : ''"
+                    :disabled="Boolean(authStore.is2faRequiredForCurrentUser)"
+                    :title="authStore.is2faRequiredForCurrentUser ? t('profile.disable2faPolicyBlocked') : ''"
                     @click="showDisable2faModal = true; disableError = null; disablePassword = ''; disableCode = ''"
                   >
                     {{ t('profile.disable2fa') }}
                   </AppButton>
                 </div>
-                <span v-if="authStore.authConfig?.force_2fa" class="text-[10px] text-on-surface-variant/80 text-center">
-                  Политика безопасности: 2FA обязателен
+                <span v-if="authStore.is2faRequiredForCurrentUser" class="text-[10px] text-on-surface-variant/80 text-center">
+                  {{ t('profile.mfaPolicyRequiredNotice') }}
                 </span>
               </div>
             </BaseCard>
@@ -1482,21 +1482,21 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
             :class="setupStep === 'qr' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
           >
             <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'qr' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">1</span>
-            <span class="text-xs">QR-код</span>
+            <span class="text-xs">{{ t('profile.stepQr') }}</span>
           </div>
           <div
             class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
             :class="setupStep === 'verify' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
           >
             <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'verify' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">2</span>
-            <span class="text-xs">Проверка</span>
+            <span class="text-xs">{{ t('profile.stepVerify') }}</span>
           </div>
           <div
             class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
             :class="setupStep === 'backup' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
           >
             <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'backup' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">3</span>
-            <span class="text-xs">Резерв</span>
+            <span class="text-xs">{{ t('profile.stepBackup') }}</span>
           </div>
         </div>
 
@@ -1546,7 +1546,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
 
           <BaseInput
             v-model="verificationCode"
-            label="6-значный проверочный код"
+            :label="t('profile.totpVerificationCodeLabel')"
             placeholder="000000"
             icon="pin"
             :autofocus="true"
@@ -1695,7 +1695,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
 
         <BaseInput
           v-model="disablePassword"
-          label="Текущий пароль учетной записи"
+          :label="t('profile.currentPasswordAccountLabel')"
           type="password"
           icon="key"
           :autofocus="true"

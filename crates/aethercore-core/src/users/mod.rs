@@ -33,6 +33,7 @@ struct UserDbRow {
     pub must_change_password: i64,
     pub is_username_locked: i64,
     pub is_totp_enabled: i64,
+    pub force_2fa: Option<i64>,
     pub totp_secret: Option<String>,
     pub totp_backup_codes: Option<String>,
     pub login_count: i64,
@@ -186,8 +187,8 @@ impl UserService {
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
+            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, force_2fa, login_count, failed_login_attempts, locked_until, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -200,6 +201,7 @@ impl UserService {
         .bind(if is_superuser { 1 } else { 0 })
         .bind(if must_change_password { 1 } else { 0 })
         .bind(if is_username_locked { 1 } else { 0 })
+        .bind(dto.force_2fa.map(|v| if v { 1 } else { 0 }))
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
         .execute(self.db.writer())
@@ -241,7 +243,7 @@ impl UserService {
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<User> {
         let row: Option<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, force_2fa, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -271,7 +273,7 @@ impl UserService {
         let username_clean = username.trim().to_lowercase();
         let row: Option<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, force_2fa, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -399,7 +401,7 @@ impl UserService {
     pub async fn list_users(&self) -> Result<Vec<User>> {
         let rows: Vec<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, force_2fa, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -572,6 +574,11 @@ impl UserService {
         let email = dto.email.or(existing.email);
         let department = dto.department.or(existing.department);
         let is_active = dto.is_active.unwrap_or(existing.is_active);
+        let force_2fa_val = if dto.force_2fa.is_some() {
+            dto.force_2fa
+        } else {
+            existing.force_2fa
+        };
 
         // Обновляем запись пользователя
         let now = Utc::now().to_rfc3339();
@@ -588,6 +595,7 @@ impl UserService {
                     is_superuser = ?,
                     must_change_password = ?,
                     is_username_locked = ?,
+                    force_2fa = ?,
                     failed_login_attempts = 0,
                     locked_until = NULL,
                     updated_at = ?
@@ -603,6 +611,7 @@ impl UserService {
             .bind(if new_is_superuser { 1 } else { 0 })
             .bind(if must_change_password { 1 } else { 0 })
             .bind(if is_username_locked { 1 } else { 0 })
+            .bind(force_2fa_val.map(|v| if v { 1 } else { 0 }))
             .bind(&now)
             .bind(id.to_string())
             .execute(self.db.writer())
@@ -621,6 +630,7 @@ impl UserService {
                     is_superuser = ?,
                     must_change_password = ?,
                     is_username_locked = ?,
+                    force_2fa = ?,
                     updated_at = ?
                 WHERE id = ?
                 "#,
@@ -634,6 +644,7 @@ impl UserService {
             .bind(if new_is_superuser { 1 } else { 0 })
             .bind(if must_change_password { 1 } else { 0 })
             .bind(if is_username_locked { 1 } else { 0 })
+            .bind(force_2fa_val.map(|v| if v { 1 } else { 0 }))
             .bind(&now)
             .bind(id.to_string())
             .execute(self.db.writer())
@@ -738,6 +749,7 @@ impl UserService {
         let must_change_password = r.must_change_password != 0;
         let is_username_locked = r.is_username_locked != 0;
         let is_totp_enabled = r.is_totp_enabled != 0;
+        let force_2fa = r.force_2fa.map(|v| v != 0);
         let totp_secret = r.totp_secret;
         let totp_backup_codes = r.totp_backup_codes;
         let login_count = r.login_count;
@@ -801,6 +813,7 @@ impl UserService {
             must_change_password,
             is_username_locked,
             is_totp_enabled,
+            force_2fa,
             totp_secret,
             totp_backup_codes,
             login_count,

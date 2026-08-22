@@ -40,6 +40,18 @@ export const useAuthStore = defineStore('auth', () => {
     return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('access.roles.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
   })
 
+  const is2faRequiredForCurrentUser = computed(() => {
+    if (!user.value) return false
+    if (user.value.force_2fa === true) return true
+    if (user.value.force_2fa === false) return false
+    const scope = authConfig.value?.mfa_scope || (authConfig.value?.force_2fa ? 'all' : 'disabled')
+    if (scope === 'all') return true
+    if (scope === 'admins_only') {
+      return user.value.is_superuser || (user.value.roles?.some((r) => r === 'admin' || r === 'superuser') ?? false)
+    }
+    return false
+  })
+
   // Inactivity tracking
   let inactivityTimer: number | null = null
   const userActivityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
@@ -277,6 +289,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isSuperuser,
     currentUserRoleLevel,
+    is2faRequiredForCurrentUser,
     canManageUsers,
     canManageSecurity,
     canManageRoles,

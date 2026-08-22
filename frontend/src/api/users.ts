@@ -11,6 +11,7 @@ export interface CreateUserDto {
   is_superuser?: boolean
   must_change_password?: boolean
   is_username_locked?: boolean
+  force_2fa?: boolean | null
   roles?: string[]
   permissions?: string[]
 }
@@ -26,6 +27,7 @@ export interface UpdateUserDto {
   is_superuser?: boolean
   must_change_password?: boolean
   is_username_locked?: boolean
+  force_2fa?: boolean | null
   roles?: string[]
 }
 

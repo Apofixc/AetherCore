@@ -39,8 +39,16 @@ pub fn router() -> Router<AppState> {
 pub struct AuthConfigResponse {
     /// Требуется ли авторизация в веб-интерфейсе
     pub web_ui_auth: bool,
-    /// Принудительное 2FA
+    /// Принудительное 2FA (для обратной совместимости)
     pub force_2fa: bool,
+    /// Область действия политики 2FA ("disabled" | "admins_only" | "all")
+    pub mfa_scope: String,
+    /// Период доверия к устройствам в днях
+    pub mfa_remember_device_days: u32,
+    /// Льготный период на настройку в днях
+    pub mfa_grace_period_days: u32,
+    /// Количество резервных кодов
+    pub mfa_backup_codes_count: u32,
     /// Минимальная длина пароля
     pub min_password_length: u32,
     /// Требование заглавных букв
@@ -59,6 +67,19 @@ pub struct AuthConfigResponse {
     pub lockout_duration: u32,
 }
 
+/// Проверяет, является ли двухфакторная аутентификация обязательной для данного пользователя
+pub fn is_mfa_enforced_for_user(policy: &SecurityPoliciesDto, user: &aethercore_common::models::user::User) -> bool {
+    if let Some(enforced) = user.force_2fa {
+        return enforced;
+    }
+    match policy.mfa_scope.as_str() {
+        "all" => true,
+        "admins_only" => user.is_superuser || user.roles.iter().any(|r| r == "admin" || r == "superuser"),
+        "disabled" => policy.force_2fa,
+        _ => policy.force_2fa,
+    }
+}
+
 /// GET /api/v1/auth/config
 ///
 /// Публичный эндпоинт для проверки статуса авторизации и требований к паролю.
@@ -72,9 +93,15 @@ async fn auth_config_handler(
         .unwrap_or_default()
         .unwrap_or_default();
 
+    let force_2fa_effective = policy.force_2fa || policy.mfa_scope != "disabled";
+
     Json(AuthConfigResponse {
         web_ui_auth: policy.web_ui_auth,
-        force_2fa: policy.force_2fa,
+        force_2fa: force_2fa_effective,
+        mfa_scope: policy.mfa_scope,
+        mfa_remember_device_days: policy.mfa_remember_device_days,
+        mfa_grace_period_days: policy.mfa_grace_period_days,
+        mfa_backup_codes_count: policy.mfa_backup_codes_count,
         min_password_length: policy.min_password_length,
         require_uppercase: policy.require_uppercase,
         require_digits: policy.require_digits,
@@ -428,12 +455,20 @@ async fn setup_2fa_handler(
             (StatusCode::NOT_FOUND, Json(e.to_api_response(locale)))
         })?;
 
+    let kv = KvStore::system(state.db.clone());
+    let policy: SecurityPoliciesDto = kv
+        .get("security_policies")
+        .await
+        .unwrap_or_default()
+        .unwrap_or_default();
+
     let secret = generate_totp_secret();
     let qr_code_url = generate_qr_code_data_url(&secret, &user.username)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_api_response(locale))))?;
     let otpauth_url = generate_otpauth_url(&secret, &user.username)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_api_response(locale))))?;
-    let backup_codes = generate_backup_codes(8);
+    let count = policy.mfa_backup_codes_count.clamp(8, 16) as usize;
+    let backup_codes = generate_backup_codes(count);
 
     Ok(Json(TotpSetupResponse {
         secret,
@@ -529,12 +564,6 @@ async fn disable_2fa_handler(
         .unwrap_or_default()
         .unwrap_or_default();
 
-    if policy.force_2fa {
-        let err = AppError::forbidden("Cannot disable 2FA when mandatory 2FA policy is enforced by administrator")
-            .with_i18n_key("core.auth.force_2fa_active");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
-    }
-
     let user = state
         .user_service
         .get_user_by_id(claims.sub)
@@ -542,6 +571,12 @@ async fn disable_2fa_handler(
         .map_err(|e| {
             (StatusCode::NOT_FOUND, Json(e.to_api_response(locale)))
         })?;
+
+    if is_mfa_enforced_for_user(&policy, &user) {
+        let err = AppError::forbidden("Cannot disable 2FA when mandatory 2FA policy is enforced by administrator")
+            .with_i18n_key("core.auth.force_2fa_active");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    }
 
     let mut is_authorized = false;
     if let Some(ref pwd) = req.password {
@@ -625,9 +660,17 @@ async fn regenerate_backup_codes_handler(
         }
     }
 
+    let kv = KvStore::system(state.db.clone());
+    let policy: SecurityPoliciesDto = kv
+        .get("security_policies")
+        .await
+        .unwrap_or_default()
+        .unwrap_or_default();
+    let count = policy.mfa_backup_codes_count.clamp(8, 16) as usize;
+
     let raw_codes = state
         .user_service
-        .regenerate_backup_codes(user.id, 8)
+        .regenerate_backup_codes(user.id, count)
         .await
         .map_err(|e| {
             (StatusCode::BAD_REQUEST, Json(e.to_api_response(locale)))

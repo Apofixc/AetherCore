@@ -588,7 +588,7 @@ async function handleSaveNewPassword() {
             :autofocus="true"
           />
           <div class="flex items-center justify-between">
-            <span class="text-[11px] text-on-surface-variant">Разрешены буквы, цифры, точки, дефис и подчеркивание (3-32 симв.)</span>
+            <span class="text-[11px] text-on-surface-variant">{{ t('auth.usernameHintRules') }}</span>
             <button
               type="button"
               class="text-xs text-primary-fixed-dim hover:underline cursor-pointer"
@@ -619,7 +619,7 @@ async function handleSaveNewPassword() {
 
           <!-- Password Requirements Checklist -->
           <div class="bg-surface-container p-3 rounded-lg border border-outline-variant/60 flex flex-col gap-1.5">
-            <span class="text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">Требования к паролю:</span>
+            <span class="text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">{{ t('auth.passwordRequirementsTitle') }}</span>
             <div class="grid grid-cols-2 gap-1.5 text-xs">
               <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant/60'">
                 <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>

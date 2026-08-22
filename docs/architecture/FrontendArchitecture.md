@@ -625,24 +625,118 @@ sequenceDiagram
 * **When**: Пользователь нажимает «Отключить 2FA», вводит текущий пароль в модальном окне и подтверждает действие.
 * **Then**: Статус 2FA в профиле и на сервере сбрасывается в «Отключен», секрет и бэкап-коды удаляются из БД.
 
-### 10.4. Механизм принудительного MFA (Enforced / Mandatory 2FA)
+### 10.4. Механизм гибкого управления и принудительного MFA (MFA Scope & Per-User Override)
 
-В системе реализован сквозной трехконтурный контроль обязательного использования 2FA:
+В системе реализован трехуровневый сквозной механизм управления требованиями двухфакторной аутентификации:
 
-1. **Контур системных политик (`AccessIdentityView.vue`)**:
-   - Главный администратор включает тумблер `force_2fa` в разделе настроек доступа.
-   - Состояние сохраняется в `kv_store` (ключ `security_policies`).
-   - При изменении конфигурация немедленно транслируется через `GET /api/v1/auth/config`.
+```mermaid
+graph TD
+    subgraph L1["1. Уровень глобальных политик (Access & Identity)"]
+        SCOPE["Выбор MFA Scope<br/>(disabled / admins_only / all)"]
+        PARS["Параметры безопасности<br/>- Доверие устройств (0-90 дн)<br/>- Льготный период (0-30 дн)<br/>- Бэкап-коды (8-16 шт)"]
+    end
 
-2. **Контур серверной защиты (`auth.rs`)**:
-   - При попытке отключения 2FA (`POST /api/v1/auth/2fa/disable`), если в политиках активен `force_2fa: true`, сервер возвращает `403 Forbidden` с ключом ошибки `core.auth.force_2fa_active`.
-   - Даже прямой HTTP-запрос в обход UI не сможет сбросить второй фактор.
+    subgraph L2["2. Уровень пользователя (Users Management)"]
+        USER_FLAG{"User force_2fa<br/>(Персональный флаг)"}
+        USER_ENFORCE["Enforced (Обязательно)"]
+        USER_EXEMPT["Exempt (Исключение)"]
+        USER_AUTO["Auto / Default (По политике)"]
+    end
 
-3. **Контур онбординга интерфейса (`LoginView.vue` + `UserProfileView.vue`)**:
-   - Если пользователь входит в систему, когда в политике активен `force_2fa: true`, а в его учетной записи `is_totp_enabled == false`:
-   - `LoginView.vue` перенаправляет пользователя на маршрут `/settings/profile?setup_2fa=true`.
-   - `UserProfileView.vue` перехватывает query-параметр и автоматически запускает мастер настройки 2FA (QR-код -> подтверждение кодом -> сохранение бэкап-кодов).
-   - Пользователь не попадает на `/dashboard` до тех пор, пока 2FA не будет привязан к его учетной записи.
+    subgraph L3["3. Клиентский роутинг и шлюз безопасности (Frontend)"]
+        STORE["authStore.is2faRequiredForCurrentUser"]
+        GUARD{"Router Navigation Guard<br/>(isEnforced2fa && !user.is_totp_enabled)"}
+        BLOCKED["Блокирующий редирект на<br/>/settings/profile?setup_2fa=true"]
+        MODAL["Модальное окно TOTP мастера<br/>(Запрет закрытия и обхода)"]
+        LOGOUT_BTN["Кнопка 'Выйти из системы'"]
+        ACCESS_GRANTED["Доступ открыт к Dashboard и модулям"]
+    end
+
+    SCOPE --> USER_AUTO
+    USER_FLAG -->|Some true| USER_ENFORCE
+    USER_FLAG -->|Some false| USER_EXEMPT
+    USER_FLAG -->|None| USER_AUTO
+
+    USER_ENFORCE -->|Требовать 2FA| STORE
+    USER_EXEMPT -->|Освобожден от 2FA| STORE
+    USER_AUTO -->|Сверка с MFA Scope| STORE
+
+    STORE --> GUARD
+    GUARD -->|Да, 2FA не настроен| BLOCKED
+    BLOCKED --> MODAL
+    MODAL --> LOGOUT_BTN
+    GUARD -->|Нет, 2FA настроен / не требуется| ACCESS_GRANTED
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Администратор
+    actor Operator as Оператор
+    participant UI as Vue Frontend (Router / Guard)
+    participant Store as Pinia (authStore)
+    participant API as AetherCore REST API
+    participant DB as SQLite DB
+
+    %% Сценарий 1: Настройка глобальной политики MFA Scope
+    Note over Admin, DB: 1. Настройка области действия MFA (MFA Scope)
+    Admin->>UI: Переход в раздел "Доступ и авторизация"
+    UI->>API: GET /api/v1/settings/security
+    API-->>UI: SecurityPoliciesDto { mfa_scope: "admins_only", ... }
+    Admin->>UI: Выбор режима "Только администраторы" и сохранение
+    UI->>API: PUT /api/v1/settings/security { mfa_scope: "admins_only", force_2fa: true }
+    API->>DB: Сохранение security_policies в kv_store
+    DB-->>API: OK
+    API-->>UI: 200 OK
+
+    %% Сценарий 2: Персональное переопределение требования для оператора
+    Note over Admin, DB: 2. Персональное переопределение для конкретного пользователя
+    Admin->>UI: Раздел "Управление пользователями" -> Редактирование оператора
+    Admin->>UI: Селектор 2FA -> "Обязательно требовать 2FA" (Enforced)
+    UI->>API: PUT /api/v1/users/:id { force_2fa: true }
+    API->>DB: UPDATE users SET force_2fa = 1 WHERE id = :id
+    DB-->>API: OK
+    API-->>UI: 200 OK
+
+    %% Сценарий 3: Блокирующий вход и Navigation Guard
+    Note over Operator, DB: 3. Вход пользователя с обязательным 2FA
+    Operator->>UI: Вход по логину и паролю
+    UI->>Store: login(username, password)
+    Store->>API: POST /api/v1/auth/login
+    API-->>Store: 200 OK { token, user: { is_totp_enabled: false, force_2fa: true } }
+    Store->>Store: is2faRequiredForCurrentUser = true
+    UI->>UI: Router Navigation Guard проверяет /dashboard
+    UI-->>Operator: Блокирующий редирект на /settings/profile?setup_2fa=true
+    UI-->>Operator: Открытие модального окна настройки TOTP (ESC и клик вне окна заблокированы)
+    Operator->>UI: Завершение привязки 2FA (QR -> OTP -> Backup Codes)
+    UI->>API: POST /api/v1/auth/2fa/enable
+    API-->>UI: 200 OK { success: true }
+    UI->>Store: user.is_totp_enabled = true
+    UI-->>Operator: Разблокировка навигации и переход на /dashboard
+```
+
+### 10.5. Расширенные тест-кейсы для верификации (Given-When-Then)
+
+#### ТК-MFA-1: Обязательный MFA для администраторов (`admins_only`)
+* **Given**: В политиках безопасности выставлен `mfa_scope = "admins_only"`. Учетная запись `admin` (роль Admin) не имеет настроенного 2FA (`is_totp_enabled = false`, `force_2fa = null`).
+* **When**: Пользователь `admin` входит в систему и пытается перейти на любой рабочий экран (`/dashboard`, `/modules`, `/users`).
+* **Then**: Глобальный Navigation Guard роутера блокирует переход, перенаправляет на `/settings/profile?setup_2fa=true` и открывает блокирующее модальное окно привязки аутентификатора. В карточке профиля кнопка «Отключить 2FA» неактивна с подсказкой о политике безопасности.
+
+#### ТК-MFA-2: Персональное исключение оператора (`force_2fa = false`)
+* **Given**: В системе действует строгий режим `mfa_scope = "all"`, но конкретному служебному оператору администратором выставлено исключение `force_2fa = false` (Exempt).
+* **When**: Оператор авторизуется в веб-интерфейсе.
+* **Then**: Роутер не блокирует доступ к дашборду, в таблице пользователей у оператора отображается серый бейдж «Исключение», а в профиле статус 2FA отображается как «Опционально».
+
+#### ТК-MFA-3: Персональное принуждение оператора (`force_2fa = true`)
+* **Given**: Глобальный режим `mfa_scope = "disabled"` (2FA доброволен для всех). Для оператора администратором установлен персональный флаг `force_2fa = true` (Enforced).
+* **When**: Оператор входит в аккаунт без привязанного 2FA.
+* **Then**: `authStore.is2faRequiredForCurrentUser` возвращает `true`, оператор немедленно направляется на обязательную первичную привязку 2FA до получения доступа к рабочим функциям.
+
+#### ТК-MFA-4: Динамический размер пула резервных кодов (8–16 шт)
+* **Given**: Администратор в `AccessIdentityView.vue` настроил параметр `mfa_backup_codes_count = 12`.
+* **When**: Любой пользователь запускает настройку 2FA или перевыпуск резервных кодов в профиле.
+* **Then**: Сервер генерирует ровно 12 одноразовых кодов восстановления, и в интерфейсе модального окна и скачиваемом `.txt` файле отображаются все 12 кодов.
+
 
 
 

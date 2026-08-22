@@ -25,6 +25,10 @@ const initialWebUiAuth = ref(true)
 const webUiAuth = ref(true)
 const mandatoryPasswordChange = ref(true)
 const force2FA = ref(false)
+const mfaScope = ref<'disabled' | 'admins_only' | 'all'>('disabled')
+const mfaRememberDeviceDays = ref(30)
+const mfaGracePeriodDays = ref(0)
+const mfaBackupCodesCount = ref(8)
 const maxLoginAttempts = ref(5)
 const lockoutDuration = ref(30)
 const sessionTTL = ref(12)
@@ -45,6 +49,14 @@ async function loadSavedSettings() {
       initialWebUiAuth.value = cfg.web_ui_auth
     }
     if (typeof cfg.force_2fa === 'boolean') force2FA.value = cfg.force_2fa
+    if (cfg.mfa_scope) {
+      mfaScope.value = cfg.mfa_scope
+    } else if (cfg.force_2fa) {
+      mfaScope.value = 'all'
+    }
+    if (typeof cfg.mfa_remember_device_days === 'number') mfaRememberDeviceDays.value = cfg.mfa_remember_device_days
+    if (typeof cfg.mfa_grace_period_days === 'number') mfaGracePeriodDays.value = cfg.mfa_grace_period_days
+    if (typeof cfg.mfa_backup_codes_count === 'number') mfaBackupCodesCount.value = cfg.mfa_backup_codes_count
     if (typeof cfg.max_login_attempts === 'number') maxLoginAttempts.value = cfg.max_login_attempts
     if (typeof cfg.lockout_duration === 'number') lockoutDuration.value = cfg.lockout_duration
     if (typeof cfg.session_ttl === 'number') sessionTTL.value = cfg.session_ttl
@@ -68,6 +80,14 @@ async function loadSavedSettings() {
       }
       if (typeof policies.mandatory_password_change === 'boolean') mandatoryPasswordChange.value = policies.mandatory_password_change
       if (typeof policies.force_2fa === 'boolean') force2FA.value = policies.force_2fa
+      if (policies.mfa_scope) {
+        mfaScope.value = policies.mfa_scope
+      } else if (policies.force_2fa) {
+        mfaScope.value = 'all'
+      }
+      if (typeof policies.mfa_remember_device_days === 'number') mfaRememberDeviceDays.value = policies.mfa_remember_device_days
+      if (typeof policies.mfa_grace_period_days === 'number') mfaGracePeriodDays.value = policies.mfa_grace_period_days
+      if (typeof policies.mfa_backup_codes_count === 'number') mfaBackupCodesCount.value = policies.mfa_backup_codes_count
       if (typeof policies.max_login_attempts === 'number') maxLoginAttempts.value = policies.max_login_attempts
       if (typeof policies.lockout_duration === 'number') lockoutDuration.value = policies.lockout_duration
       if (typeof policies.session_ttl === 'number') sessionTTL.value = policies.session_ttl
@@ -135,7 +155,11 @@ async function applyChanges() {
   const policiesPayload = {
     web_ui_auth: webUiAuth.value,
     mandatory_password_change: mandatoryPasswordChange.value,
-    force_2fa: force2FA.value,
+    force_2fa: mfaScope.value !== 'disabled',
+    mfa_scope: mfaScope.value,
+    mfa_remember_device_days: mfaRememberDeviceDays.value,
+    mfa_grace_period_days: mfaGracePeriodDays.value,
+    mfa_backup_codes_count: mfaBackupCodesCount.value,
     max_login_attempts: maxLoginAttempts.value,
     lockout_duration: lockoutDuration.value,
     session_ttl: sessionTTL.value,
@@ -333,8 +357,8 @@ const filteredAuditLogs = computed(() => {
             </div>
           </div>
 
-          <!-- Row 1: 3 Global Auth Toggles -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+          <!-- Row 1: Global Auth Toggles -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
             <BaseSwitch
               v-model="webUiAuth"
               :label="t('accessIdentity.webUiAuth')"
@@ -348,13 +372,112 @@ const filteredAuditLogs = computed(() => {
               :description="t('accessIdentity.mandatoryPasswordChangeDesc')"
               icon="lock_reset"
             />
+          </div>
 
-            <BaseSwitch
-              v-model="force2FA"
-              :label="t('accessIdentity.force2FA')"
-              :description="t('accessIdentity.force2FADesc')"
-              icon="phonelink_lock"
-            />
+          <!-- MFA / Two-Factor Authentication Dedicated Policy Box -->
+          <div class="p-md bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-md">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2.5">
+                <span class="material-symbols-outlined text-primary-fixed-dim text-lg">phonelink_lock</span>
+                <div>
+                  <h3 class="text-xs font-bold uppercase tracking-wider text-on-surface">{{ t('accessIdentity.mfaPolicySettings') }}</h3>
+                  <p class="text-[11px] text-on-surface-variant mt-0.5">{{ t('accessIdentity.mfaPolicySettingsDesc') }}</p>
+                </div>
+              </div>
+              <span
+                class="px-2 py-0.5 text-[11px] font-bold rounded uppercase tracking-wider"
+                :class="mfaScope === 'disabled' ? 'bg-surface-container-high text-on-surface-variant' : mfaScope === 'admins_only' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-primary-fixed-dim/10 text-primary-fixed-dim border border-primary-fixed-dim/20'"
+              >
+                {{ mfaScope === 'disabled' ? t('accessIdentity.mfaScopeDisabled') : mfaScope === 'admins_only' ? t('accessIdentity.mfaScopeAdminsOnly') : t('accessIdentity.mfaScopeAll') }}
+              </span>
+            </div>
+
+            <!-- Scope Selector (3 Options) -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">{{ t('accessIdentity.mfaScope') }}</label>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  class="p-3 rounded-lg border text-left flex flex-col gap-1 transition-all"
+                  :class="mfaScope === 'disabled' ? 'bg-primary-fixed-dim/10 border-primary-fixed-dim text-on-surface' : 'bg-surface-container-high/40 border-outline-variant/60 text-on-surface-variant hover:border-outline-variant hover:bg-surface-container-high'"
+                  @click="mfaScope = 'disabled'"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-base" :class="mfaScope === 'disabled' ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">lock_open</span>
+                    <span class="text-xs font-bold">{{ t('accessIdentity.mfaScopeDisabled') }}</span>
+                  </div>
+                  <p class="text-[11px] opacity-75">{{ t('accessIdentity.mfaScopeDisabledDesc') }}</p>
+                </button>
+
+                <button
+                  type="button"
+                  class="p-3 rounded-lg border text-left flex flex-col gap-1 transition-all"
+                  :class="mfaScope === 'admins_only' ? 'bg-primary-fixed-dim/10 border-primary-fixed-dim text-on-surface' : 'bg-surface-container-high/40 border-outline-variant/60 text-on-surface-variant hover:border-outline-variant hover:bg-surface-container-high'"
+                  @click="mfaScope = 'admins_only'"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-base" :class="mfaScope === 'admins_only' ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">admin_panel_settings</span>
+                    <span class="text-xs font-bold">{{ t('accessIdentity.mfaScopeAdminsOnly') }}</span>
+                  </div>
+                  <p class="text-[11px] opacity-75">{{ t('accessIdentity.mfaScopeAdminsOnlyDesc') }}</p>
+                </button>
+
+                <button
+                  type="button"
+                  class="p-3 rounded-lg border text-left flex flex-col gap-1 transition-all"
+                  :class="mfaScope === 'all' ? 'bg-primary-fixed-dim/10 border-primary-fixed-dim text-on-surface' : 'bg-surface-container-high/40 border-outline-variant/60 text-on-surface-variant hover:border-outline-variant hover:bg-surface-container-high'"
+                  @click="mfaScope = 'all'"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-base" :class="mfaScope === 'all' ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">security</span>
+                    <span class="text-xs font-bold">{{ t('accessIdentity.mfaScopeAll') }}</span>
+                  </div>
+                  <p class="text-[11px] opacity-75">{{ t('accessIdentity.mfaScopeAllDesc') }}</p>
+                </button>
+              </div>
+            </div>
+
+            <!-- Detailed MFA Parameters Grid -->
+            <div class="pt-2 border-t border-outline-variant/50 grid grid-cols-1 md:grid-cols-3 gap-md">
+              <div class="flex items-center justify-between gap-2 p-2 rounded bg-surface-container-high/30 border border-outline-variant/30">
+                <div>
+                  <div class="text-xs text-on-surface font-medium">{{ t('accessIdentity.rememberDeviceDays') }}</div>
+                  <div class="text-[10px] text-on-surface-variant">{{ t('accessIdentity.rememberDeviceDaysDesc') }}</div>
+                </div>
+                <NumberInput
+                  v-model="mfaRememberDeviceDays"
+                  :min="0"
+                  :max="90"
+                  width-class="w-16"
+                />
+              </div>
+
+              <div class="flex items-center justify-between gap-2 p-2 rounded bg-surface-container-high/30 border border-outline-variant/30">
+                <div>
+                  <div class="text-xs text-on-surface font-medium">{{ t('accessIdentity.gracePeriodDays') }}</div>
+                  <div class="text-[10px] text-on-surface-variant">{{ t('accessIdentity.gracePeriodDaysDesc') }}</div>
+                </div>
+                <NumberInput
+                  v-model="mfaGracePeriodDays"
+                  :min="0"
+                  :max="30"
+                  width-class="w-16"
+                />
+              </div>
+
+              <div class="flex items-center justify-between gap-2 p-2 rounded bg-surface-container-high/30 border border-outline-variant/30">
+                <div>
+                  <div class="text-xs text-on-surface font-medium">{{ t('accessIdentity.backupCodesCount') }}</div>
+                  <div class="text-[10px] text-on-surface-variant">{{ t('accessIdentity.backupCodesCountDesc') }}</div>
+                </div>
+                <NumberInput
+                  v-model="mfaBackupCodesCount"
+                  :min="8"
+                  :max="16"
+                  width-class="w-16"
+                />
+              </div>
+            </div>
           </div>
 
           <!-- Row 2: Rate Limiting & Session Lifecycle Grid -->

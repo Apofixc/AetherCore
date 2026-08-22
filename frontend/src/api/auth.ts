@@ -11,6 +11,7 @@ export interface User {
   must_change_password?: boolean
   is_username_locked?: boolean
   is_totp_enabled?: boolean
+  force_2fa?: boolean | null
   roles: string[]
   permissions: string[]
   created_at?: string
@@ -30,6 +31,10 @@ export interface LoginResponse {
 export interface AuthConfig {
   web_ui_auth: boolean
   force_2fa: boolean
+  mfa_scope?: 'disabled' | 'admins_only' | 'all'
+  mfa_remember_device_days?: number
+  mfa_grace_period_days?: number
+  mfa_backup_codes_count?: number
   min_password_length: number
   require_uppercase: boolean
   require_digits: boolean

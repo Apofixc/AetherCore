@@ -33,6 +33,10 @@ export interface SecurityPolicies {
   web_ui_auth: boolean
   mandatory_password_change: boolean
   force_2fa: boolean
+  mfa_scope?: 'disabled' | 'admins_only' | 'all'
+  mfa_remember_device_days?: number
+  mfa_grace_period_days?: number
+  mfa_backup_codes_count?: number
   max_login_attempts: number
   lockout_duration: number
   session_ttl: number

@@ -32,6 +32,8 @@ interface OperatorItem {
   is_online: boolean
   is_active: boolean
   must_change_password?: boolean
+  is_totp_enabled?: boolean
+  force_2fa?: boolean | null
   initials: string
   avatar?: string | null
 }
@@ -73,6 +75,7 @@ const newUserForm = ref({
   department: '',
   password: '',
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
+  force_2fa: 'default' as 'default' | 'enforce' | 'exempt',
   must_change_password: true
 })
 
@@ -82,9 +85,55 @@ const editUserForm = ref({
   full_name: '',
   username: '',
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
+  force_2fa: 'default' as 'default' | 'enforce' | 'exempt',
   password: '',
   must_change_password: true
 })
+
+const mfaEnforceOptions = computed(() => [
+  { value: 'default', label: t('users.mfaPolicyDefault') },
+  { value: 'enforce', label: t('users.mfaPolicyEnforced') },
+  { value: 'exempt', label: t('users.mfaPolicyExempt') }
+])
+
+function getMfaBadgeInfo(op: OperatorItem) {
+  if (op.is_totp_enabled) {
+    return {
+      label: t('users.mfaStatusActive'),
+      colorClass: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30',
+      icon: 'verified_user'
+    }
+  }
+  if (op.force_2fa === false) {
+    return {
+      label: t('users.mfaStatusExempt'),
+      colorClass: 'bg-surface-variant/40 text-on-surface-variant border border-outline-variant/40',
+      icon: 'remove_moderator'
+    }
+  }
+  if (op.force_2fa === true) {
+    return {
+      label: t('users.mfaStatusRequired'),
+      colorClass: 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
+      icon: 'warning'
+    }
+  }
+  const policy = securityPolicies.value
+  const scope = policy?.mfa_scope || (policy?.force_2fa ? 'all' : 'disabled')
+  const isEnforced = scope === 'all' || (scope === 'admins_only' && (op.role === 'admin' || op.role === 'superuser'))
+  if (isEnforced) {
+    return {
+      label: t('users.mfaStatusRequired'),
+      colorClass: 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
+      icon: 'warning'
+    }
+  }
+  return {
+    label: t('users.mfaStatusOptional'),
+    colorClass: 'bg-surface-variant/40 text-on-surface-variant border border-outline-variant/40',
+    icon: 'lock_open'
+  }
+}
 
 // Operators list & Security Policies
 const operators = ref<OperatorItem[]>([])
@@ -161,6 +210,8 @@ async function loadUsers() {
           is_online: Boolean(u.is_active),
           is_active: Boolean(u.is_active),
           must_change_password: Boolean(u.must_change_password),
+          is_totp_enabled: Boolean(u.is_totp_enabled),
+          force_2fa: u.force_2fa,
           initials
         }
       })
@@ -348,6 +399,7 @@ function openAddModal() {
     department: '',
     password: '',
     role: 'operator',
+    force_2fa: 'default',
     must_change_password: true
   }
   showAddModal.value = true
@@ -364,6 +416,7 @@ async function handleCreateUser() {
   formError.value = null
   try {
     const isSuper = newUserForm.value.role === 'superuser'
+    const force2faVal = newUserForm.value.force_2fa === 'enforce' ? true : newUserForm.value.force_2fa === 'exempt' ? false : null
     const created = await usersApi.create({
       username: newUserForm.value.username.trim(),
       password: newUserForm.value.password.trim() || 'Operator123!',
@@ -373,6 +426,7 @@ async function handleCreateUser() {
       roles: [newUserForm.value.role],
       is_superuser: isSuper,
       is_active: true,
+      force_2fa: force2faVal,
       must_change_password: newUserForm.value.must_change_password
     })
 
@@ -392,6 +446,8 @@ async function handleCreateUser() {
       is_online: true,
       is_active: true,
       must_change_password: Boolean(created.must_change_password),
+      is_totp_enabled: false,
+      force_2fa: force2faVal,
       initials
     })
 
@@ -404,7 +460,7 @@ async function handleCreateUser() {
   }
 }
 
-// Edit User (Role and Password reset only)
+// Edit User (Role, 2FA override and Password reset)
 function handleOpenEdit(op: OperatorItem) {
   if (!canEditUser(op)) return
   editFormError.value = null
@@ -413,6 +469,7 @@ function handleOpenEdit(op: OperatorItem) {
     full_name: op.full_name,
     username: op.username,
     role: op.role,
+    force_2fa: op.force_2fa === true ? 'enforce' : op.force_2fa === false ? 'exempt' : 'default',
     password: '',
     must_change_password: true
   }
@@ -425,9 +482,11 @@ async function handleSaveEdit() {
   editFormError.value = null
   try {
     const isSuper = editUserForm.value.role === 'superuser'
+    const force2faVal = editUserForm.value.force_2fa === 'enforce' ? true : editUserForm.value.force_2fa === 'exempt' ? false : null
     await usersApi.update(editUserForm.value.id, {
       roles: [editUserForm.value.role],
       is_superuser: isSuper,
+      force_2fa: force2faVal,
       must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : undefined,
       ...(editUserForm.value.password.trim() ? { password: editUserForm.value.password.trim() } : {})
     })
@@ -436,6 +495,7 @@ async function handleSaveEdit() {
       operators.value[index] = {
         ...operators.value[index],
         role: editUserForm.value.role,
+        force_2fa: force2faVal,
         must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : operators.value[index].must_change_password
       }
     }
@@ -865,6 +925,9 @@ const editRoleOptions = computed(() => {
                       </span>
                     </div>
                   </th>
+                  <th class="py-3 px-md">
+                    <span>{{ t('users.mfaCol') }}</span>
+                  </th>
                   <th class="py-3 px-md text-right">
                     {{ t('users.actionsCol') }}
                   </th>
@@ -980,6 +1043,17 @@ const editRoleOptions = computed(() => {
                     >
                       {{ op.is_online ? t('users.online') : t('users.offline') }}
                     </StatusBadge>
+                  </td>
+
+                  <!-- 2FA / MFA Status Badge -->
+                  <td class="py-3 px-md">
+                    <div
+                      class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium"
+                      :class="getMfaBadgeInfo(op).colorClass"
+                    >
+                      <span class="material-symbols-outlined text-[13px]">{{ getMfaBadgeInfo(op).icon }}</span>
+                      <span>{{ getMfaBadgeInfo(op).label }}</span>
+                    </div>
                   </td>
 
                   <!-- Action Buttons -->
@@ -1118,6 +1192,13 @@ const editRoleOptions = computed(() => {
           size="sm"
         />
 
+        <BaseSelect
+          v-model="newUserForm.force_2fa"
+          :label="t('users.mfaEnforcement')"
+          :options="mfaEnforceOptions"
+          size="sm"
+        />
+
         <label class="flex items-center gap-2 pt-1 cursor-pointer select-none">
           <input
             v-model="newUserForm.must_change_password"
@@ -1181,6 +1262,14 @@ const editRoleOptions = computed(() => {
           :label="t('users.role')"
           :options="editRoleOptions"
           :disabled="editUserForm.username === 'root' || (editUserForm.role === 'superuser' && superuserCount <= 1)"
+          size="sm"
+        />
+
+        <!-- 2FA Override Select -->
+        <BaseSelect
+          v-model="editUserForm.force_2fa"
+          :label="t('users.mfaEnforcement')"
+          :options="mfaEnforceOptions"
           size="sm"
         />
 

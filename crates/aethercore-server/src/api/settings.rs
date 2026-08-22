@@ -282,8 +282,41 @@ async fn update_security_policies_handler(
         return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
     }
 
+    if dto.mfa_remember_device_days > 90 {
+        let err = aethercore_common::error::AppError::validation(
+            "mfa_remember_device_days",
+            "Remember device duration cannot exceed 90 days",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    if dto.mfa_grace_period_days > 30 {
+        let err = aethercore_common::error::AppError::validation(
+            "mfa_grace_period_days",
+            "MFA grace period cannot exceed 30 days",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    if dto.mfa_backup_codes_count < 8 || dto.mfa_backup_codes_count > 16 {
+        let err = aethercore_common::error::AppError::validation(
+            "mfa_backup_codes_count",
+            "MFA backup codes count must be between 8 and 16",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    let mut final_dto = dto;
+    if !["disabled", "admins_only", "all"].contains(&final_dto.mfa_scope.as_str()) {
+        final_dto.mfa_scope = "disabled".to_string();
+    }
+    // Синхронизация флага обратной совместимости
+    if final_dto.mfa_scope != "disabled" {
+        final_dto.force_2fa = true;
+    }
+
     let kv = KvStore::system(state.db.clone());
-    kv.set("security_policies", &dto).await.map_err(|e| {
+    kv.set("security_policies", &final_dto).await.map_err(|e| {
         (
             StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             Json(e.to_api_response(locale)),
@@ -303,7 +336,7 @@ async fn update_security_policies_handler(
         )
         .await;
 
-    Ok(Json(dto))
+    Ok(Json(final_dto))
 }
 
 // ---------------------------------------------------------------------------

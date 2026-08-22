@@ -198,6 +198,9 @@ impl Db {
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN locked_until TEXT")
             .execute(pool)
             .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN force_2fa INTEGER")
+            .execute(pool)
+            .await;
 
         // 2. Таблицы RBAC (роли и права)
         sqlx::query(

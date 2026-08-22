@@ -37,6 +37,9 @@ pub struct User {
     pub is_username_locked: bool,
     /// Включена ли двухфакторная аутентификация (TOTP)
     pub is_totp_enabled: bool,
+    /// Персональное требование 2FA: None = по политике, Some(true) = обязательно, Some(false) = исключение
+    #[serde(default)]
+    pub force_2fa: Option<bool>,
     /// Секретный ключ TOTP в формате Base32 (исключается из сериализации)
     #[serde(skip_serializing)]
     pub totp_secret: Option<String>,
@@ -71,9 +74,21 @@ pub struct SecurityPoliciesDto {
     /// Обязательная смена пароля при первом входе
     #[serde(default = "default_true")]
     pub mandatory_password_change: bool,
-    /// Принудительная двухфакторная аутентификация
+    /// Принудительная двухфакторная аутентификация (обратная совместимость)
     #[serde(default = "default_false")]
     pub force_2fa: bool,
+    /// Область действия политики 2FA: "disabled" | "admins_only" | "all"
+    #[serde(default = "default_mfa_scope")]
+    pub mfa_scope: String,
+    /// Период доверия к устройствам в днях (0 = запрашивать всегда)
+    #[serde(default = "default_zero")]
+    pub mfa_remember_device_days: u32,
+    /// Льготный период на настройку 2FA в днях (0 = немедленно)
+    #[serde(default = "default_zero")]
+    pub mfa_grace_period_days: u32,
+    /// Количество генерируемых резервных кодов (8-16)
+    #[serde(default = "default_backup_codes_count")]
+    pub mfa_backup_codes_count: u32,
     /// Максимальное число неудачных попыток входа
     #[serde(default = "default_max_login_attempts")]
     pub max_login_attempts: u32,
@@ -109,6 +124,15 @@ fn default_true() -> bool {
 fn default_false() -> bool {
     false
 }
+fn default_mfa_scope() -> String {
+    "disabled".to_string()
+}
+fn default_zero() -> u32 {
+    0
+}
+fn default_backup_codes_count() -> u32 {
+    8
+}
 fn default_max_login_attempts() -> u32 {
     5
 }
@@ -134,6 +158,10 @@ impl Default for SecurityPoliciesDto {
             web_ui_auth: true,
             mandatory_password_change: true,
             force_2fa: false,
+            mfa_scope: default_mfa_scope(),
+            mfa_remember_device_days: 0,
+            mfa_grace_period_days: 0,
+            mfa_backup_codes_count: 8,
             max_login_attempts: 5,
             lockout_duration: 30,
             session_ttl: 12,
@@ -168,6 +196,8 @@ pub struct CreateUserDto {
     pub must_change_password: Option<bool>,
     /// Зафиксирован ли логин (по умолчанию `false`)
     pub is_username_locked: Option<bool>,
+    /// Персональное требование 2FA: None = по политике, Some(true) = обязательно, Some(false) = исключение
+    pub force_2fa: Option<bool>,
     /// Список назначаемых ролей (по умолчанию `["viewer"]`)
     pub roles: Option<Vec<String>>,
 }
@@ -195,6 +225,8 @@ pub struct UpdateUserDto {
     pub must_change_password: Option<bool>,
     /// Зафиксировать логин от дальнейших изменений
     pub is_username_locked: Option<bool>,
+    /// Персональное требование 2FA: None = по политике, Some(true) = обязательно, Some(false) = исключение
+    pub force_2fa: Option<bool>,
     /// Новый список назначенных ролей (перезаписывает предыдущий набор)
     pub roles: Option<Vec<String>>,
 }
@@ -222,6 +254,8 @@ pub struct UserResponseDto {
     pub is_username_locked: bool,
     /// Включена ли двухфакторная аутентификация
     pub is_totp_enabled: bool,
+    /// Персональное требование 2FA: None = по политике, Some(true) = обязательно, Some(false) = исключение
+    pub force_2fa: Option<bool>,
     /// Количество успешных аутентификаций
     pub login_count: i64,
     /// Список назначенных ролей
@@ -247,6 +281,7 @@ impl From<User> for UserResponseDto {
             must_change_password: u.must_change_password,
             is_username_locked: u.is_username_locked,
             is_totp_enabled: u.is_totp_enabled,
+            force_2fa: u.force_2fa,
             login_count: u.login_count,
             roles: u.roles,
             permissions: u.permissions,

@@ -260,3 +260,66 @@ async fn test_full_2fa_lifecycle_and_login_flow() {
     assert!(final_login.success);
     assert!(!final_login.requires_2fa);
 }
+
+#[tokio::test]
+async fn test_mfa_scope_and_per_user_override() {
+    let (app, state) = setup_test_app().await;
+
+    // 1. Создание обычного оператора
+    let operator = state
+        .user_service
+        .create_user(aethercore_common::models::user::CreateUserDto {
+            username: "operator1".to_string(),
+            password: "Operator123!".to_string(),
+            full_name: Some("Operator One".to_string()),
+            email: Some("op1@aethercore.local".to_string()),
+            department: None,
+            is_active: Some(true),
+            is_superuser: Some(false),
+            must_change_password: Some(false),
+            is_username_locked: Some(false),
+            force_2fa: None,
+            roles: Some(vec!["operator".to_string()]),
+        })
+        .await
+        .unwrap();
+
+    let root_user = state
+        .user_service
+        .get_user_by_username("root")
+        .await
+        .unwrap();
+
+    // 2. Тестирование логики is_mfa_enforced_for_user при mfa_scope = "admins_only"
+    let mut policy = aethercore_common::models::user::SecurityPoliciesDto::default();
+    policy.mfa_scope = "admins_only".to_string();
+
+    assert!(aethercore_server::api::auth::is_mfa_enforced_for_user(&policy, &root_user));
+    assert!(!aethercore_server::api::auth::is_mfa_enforced_for_user(&policy, &operator));
+
+    // 3. Персональное требование 2FA для оператора (force_2fa = Some(true))
+    let mut operator_enforced = operator.clone();
+    operator_enforced.force_2fa = Some(true);
+    assert!(aethercore_server::api::auth::is_mfa_enforced_for_user(&policy, &operator_enforced));
+
+    // 4. Персональное освобождение администратора (force_2fa = Some(false))
+    let mut root_exempt = root_user.clone();
+    root_exempt.force_2fa = Some(false);
+    assert!(!aethercore_server::api::auth::is_mfa_enforced_for_user(&policy, &root_exempt));
+
+    // 5. Проверка GET /api/v1/auth/config
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/auth/config")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let auth_cfg: aethercore_server::api::auth::AuthConfigResponse = serde_json::from_slice(&body).unwrap();
+    assert_eq!(auth_cfg.mfa_scope, "disabled");
+    assert_eq!(auth_cfg.mfa_remember_device_days, 0);
+    assert_eq!(auth_cfg.mfa_grace_period_days, 0);
+    assert_eq!(auth_cfg.mfa_backup_codes_count, 8);
+}
