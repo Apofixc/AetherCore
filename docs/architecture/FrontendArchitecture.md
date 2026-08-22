@@ -331,3 +331,88 @@ graph TD
     CheckSavePerm -- "Да" --> ApplyBtnActive["Кнопка 'Применить изменения' активна"]
 ```
 
+---
+
+## 8. Блок-схема: Персональные настройки оператора, часовой пояс, формат времени и Searchable Select
+
+```mermaid
+graph TD
+    Mount(["Монтирование UserProfileView.vue"]) --> LoadPrefs["Загрузка профиля и предпочтений:<br/>1. authStore.fetchUser()<br/>2. settingsApi.getUserPreferences()"]
+
+    LoadPrefs --> ApplyState["Инициализация локального состояния Vue:<br/>• timezone (дефолт UTC / сохраненный)<br/>• time_format (24h_sec / 24h_min / 12h_sec / 12h_min / iso)<br/>• theme (dark / light / system)<br/>• locale (ru / en)<br/>• department, email, full_name"]
+
+    ApplyState --> StartClock["Запуск таймера живых часов<br/>clockTimer = setInterval(updateClock, 1000)"]
+    StartClock --> RenderClock["Форматирование часов по правилам:<br/>Intl.DateTimeFormat(locale, { timeZone, hour12, ... })<br/>+ суффикс (Timezone)"]
+
+    %% Взаимодействие с часовым поясом
+    ApplyState --> TimezoneCard["Карточка 'Внешний вид и региональность'<br/>BaseCard (:overflow-visible='true')"]
+    TimezoneCard --> BaseSelectTz["Searchable BaseSelect (:searchable='true')"]
+
+    BaseSelectTz --> ClickTzTrigger{"Клик по полю выбора пояса?"}
+    ClickTzTrigger -- "Да" --> OpenDropdown["Открытие всплывающего popover (z-[100])<br/>• Фокус на строке поиска<br/>• Генерация списка IANA Intl.supportedValuesOf('timeZone')<br/>• Расчет актуального смещения (GMT±X)"]
+
+    OpenDropdown --> SearchInput["Ввод запроса в строку поиска<br/>(город, регион, IANA код или GMT)"]
+    SearchInput --> FilterList["Мгновенная реактивная фильтрация списка<br/>filteredOptions"]
+    FilterList --> SelectTzItem["Выбор часового пояса оператором"]
+    SelectTzItem --> UpdateTz["1. timezone.value = selectedTz<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ timezone })"]
+
+    %% Кнопка автоопределения
+    TimezoneCard --> ClickAutoDetect{"Клик 'Автоопределение'?"}
+    ClickAutoDetect -- "Да" --> ReadClientTz["Чтение Intl.DateTimeFormat().resolvedOptions().timeZone"]
+    ReadClientTz --> UpdateTz
+
+    %% Взаимодействие с форматом времени
+    TimezoneCard --> SelectTimeFmt["Выбор формата времени (time_format):<br/>24h_sec / 24h_min / 12h_sec / 12h_min / iso"]
+    SelectTimeFmt --> UpdateFmt["1. timeFormat.value = selectedFmt<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ time_format })"]
+
+    %% Полное сохранение профиля
+    TimezoneCard --> ClickSaveAll{"Клик 'Сохранить изменения'?"}
+    ClickSaveAll -- "Да" --> SaveChain["Сквозное сохранение:<br/>1. usersApi.update(id, { full_name, email }) -> SQLite users table<br/>2. settingsApi.updateUserPreferences(payload) -> SQLite kv_store (user:{id})<br/>3. authStore.fetchUser() -> обновление сессии Pinia<br/>4. Анимация кнопки: savedNotice = true"]
+```
+
+### Диаграмма последовательности: Выбор и синхронизация региональных настроек (Timezone & Time Format)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Оператор
+    participant UI as UserProfileView.vue
+    participant Select as BaseSelect.vue (Searchable)
+    participant API as ApiClient (/api/v1/settings)
+    participant Core as Backend Axum (SettingsHandler)
+    participant DB as SQLite DB (KV Store)
+
+    Note over Operator, DB: 1. Открытие страницы и получение настроек
+    Operator->>UI: Переход в /settings/profile
+    UI->>API: GET /api/v1/settings/user-preferences
+    API->>Core: get_user_preferences_handler()
+    Core->>DB: KvStore::get("user:{id}:preferences")
+    DB-->>Core: { timezone, time_format, theme, locale, ... }
+    Core-->>API: 200 OK (UserPreferencesDto)
+    API-->>UI: Применение предпочтений
+    UI->>UI: updateClock() -> Live Clock в заголовке профиля
+
+    Note over Operator, DB: 2. Поиск и выбор часового пояса внутри списка
+    Operator->>Select: Клик по выпадающему списку часового пояса
+    Select->>Select: isOpen = true, расчет смещений GMT для 430+ зон
+    Operator->>Select: Ввод "Minsk" в строку поиска
+    Select->>Select: Реактивная фильтрация -> Europe/Minsk (GMT+3)
+    Operator->>Select: Клик по "Europe/Minsk (GMT+3)"
+    Select-->>UI: emit("update:modelValue", "Europe/Minsk")
+    UI->>UI: updateClock() (пересчет живых часов)
+    UI->>API: PUT /api/v1/settings/user-preferences { timezone: "Europe/Minsk" }
+    API->>Core: update_user_preferences_handler()
+    Core->>DB: KvStore::set("user:{id}:preferences")
+    DB-->>Core: Успешно
+    Core-->>API: 200 OK
+
+    Note over Operator, DB: 3. Смена формата отображения времени
+    Operator->>UI: Выбор формата времени (например, "12h_sec")
+    UI->>UI: updateClock() (мгновенное переключение на 12-часовой формат с AM/PM)
+    UI->>API: PUT /api/v1/settings/user-preferences { time_format: "12h_sec" }
+    API->>Core: update_user_preferences_handler()
+    Core->>DB: KvStore::set("user:{id}:preferences")
+    DB-->>Core: Успешно
+    Core-->>API: 200 OK
+```
+
