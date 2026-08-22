@@ -38,3 +38,4 @@ agent/
 .gemini/
 GEMINI.md
 .stitch/
+.playwright-mcp/
