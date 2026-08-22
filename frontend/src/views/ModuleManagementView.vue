@@ -137,7 +137,7 @@ const filterOptions = computed(() => [
 
           <div class="px-md mt-md">
             <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider mb-sm">
-              {{ t('dashboard.nmsModules') }}
+              {{ t('dashboard.platformModules') }}
             </h3>
             <div class="flex flex-col gap-xs">
               <router-link
@@ -415,7 +415,7 @@ const filterOptions = computed(() => [
               <div v-else class="p-lg flex flex-col items-center justify-center min-h-[380px] text-center bg-surface-container-lowest/50 relative overflow-hidden">
                 <!-- Visual Mesh Network Canvas -->
                 <div class="w-full max-w-2xl py-6 flex flex-col items-center gap-8 relative z-10">
-                  <!-- Central Hub: NMS Core Bus -->
+                  <!-- Central Hub: AetherCore Bus -->
                   <div class="px-6 py-3 rounded-xl bg-surface-container-highest border-2 border-primary-fixed-dim text-primary-fixed-dim shadow-glow-primary-md flex items-center gap-3">
                     <span class="material-symbols-outlined text-2xl animate-pulse">hub</span>
                     <div class="text-left">

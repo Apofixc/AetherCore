@@ -34,7 +34,7 @@
   "core.auth.cannot_delete_self": "Нельзя удалить собственного пользователя",
   "core.auth.cannot_disable_root": "Нельзя отключить или удалить единственного суперадминистратора",
 
-  "core.modules.file_must_be_zip": "Файл должен быть ZIP архивом (.nms-plugin)",
+  "core.modules.file_must_be_zip": "Файл должен быть ZIP архивом (.aether-plugin)",
   "core.modules.missing_manifest": "В архиве отсутствует manifest.yaml",
   "core.modules.invalid_manifest": "Невалидный manifest.yaml: {details}",
   "core.modules.not_found": "Модуль '{module_id}' не найден",

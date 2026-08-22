@@ -9,7 +9,7 @@ const dictionaries: Record<Locale, Record<string, any>> = {
   en
 }
 
-const savedLocale = (localStorage.getItem('nms_locale') as Locale) || 'ru'
+const savedLocale = ((localStorage.getItem('aether_locale') || localStorage.getItem('nms_locale')) as Locale) || 'ru'
 const currentLocale = ref<Locale>(savedLocale in dictionaries ? savedLocale : 'ru')
 
 /**
@@ -53,7 +53,7 @@ export function t(path: string, params?: Record<string, string | number>): strin
 export function setLocale(locale: Locale) {
   if (locale in dictionaries) {
     currentLocale.value = locale
-    localStorage.setItem('nms_locale', locale)
+    localStorage.setItem('aether_locale', locale)
     document.documentElement.lang = locale
   }
 }

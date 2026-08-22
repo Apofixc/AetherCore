@@ -51,7 +51,7 @@ impl PluginManager {
 
     /// Сканировать каталог модулей, разрешить зависимости и загрузить плагины в порядке DAG
     ///
-    /// Поддерживает как упакованные архивы (`.nms-plugin`, `.zip`), так и распакованные папки плагинов.
+    /// Поддерживает как упакованные архивы (`.aether-plugin`, `.nms-plugin`, `.zip`), так и распакованные папки плагинов.
     ///
     /// # Аргументы
     /// * `modules_dir` — Путь к каталогу с плагинами на диске.
@@ -74,7 +74,7 @@ impl PluginManager {
                 let path = entry.path();
                 if path.is_file() {
                     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-                    if ext == "nms-plugin" || ext == "zip" {
+                    if ext == "aether-plugin" || ext == "nms-plugin" || ext == "zip" {
                         match tokio::fs::read(&path).await {
                             Ok(bytes) => match PluginPackage::from_zip_bytes(&bytes) {
                                 Ok(pkg) => {

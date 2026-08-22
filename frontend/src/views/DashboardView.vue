@@ -93,13 +93,13 @@ async function handleRefresh() {
           style="background-image: radial-gradient(circle at 1px 1px, rgba(115, 212, 232, 0.15) 1px, transparent 0px); background-size: 24px 24px;"
         ></div>
 
-        <!-- NMS Modules Widget -->
+        <!-- Platform Modules Widget -->
         <div class="widget-card rounded-lg flex flex-col shadow-card-dark overflow-hidden border border-outline-variant bg-surface-container relative z-10 w-full max-w-[420px]">
           <!-- Widget Header -->
           <div class="px-md py-sm border-b border-outline-variant flex items-center justify-between bg-surface-container-high/50">
             <div class="flex items-center gap-sm">
               <span class="material-symbols-outlined text-primary-fixed-dim text-[18px]">grid_view</span>
-              <h3 class="font-title-sm text-sm text-on-surface">{{ t('dashboard.nmsModules') }}</h3>
+              <h3 class="font-title-sm text-sm text-on-surface">{{ t('dashboard.platformModules') }}</h3>
             </div>
             <div class="flex items-center gap-md">
               <span class="px-2 py-0.5 rounded text-[10px] font-label-caps uppercase tracking-wider bg-primary-fixed-dim/10 text-primary-fixed-dim border border-primary-fixed-dim/20">

@@ -95,7 +95,7 @@ async function loadUsers() {
           uid: u.id,
           username: u.username,
           full_name: u.full_name || u.username,
-          email: u.email || `${u.username}@nms.local`,
+          email: u.email || `${u.username}@aethercore.local`,
           department: u.department,
           role,
           is_online: Boolean(u.is_active),
@@ -259,7 +259,7 @@ async function handleCreateUser() {
       username: newUserForm.value.username.trim(),
       password: newUserForm.value.password.trim() || 'Operator123!',
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
-      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
+      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@aethercore.local`,
       department: newUserForm.value.department.trim() || undefined,
       roles: [newUserForm.value.role],
       is_active: true,
@@ -276,7 +276,7 @@ async function handleCreateUser() {
       uid: created.id,
       username: created.username,
       full_name: created.full_name || created.username,
-      email: created.email || `${created.username}@nms.local`,
+      email: created.email || `${created.username}@aethercore.local`,
       department: created.department,
       role,
       is_online: true,
@@ -306,7 +306,7 @@ async function handleCreateUser() {
       uid: rawUid,
       username: newUserForm.value.username.trim(),
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
-      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
+      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@aethercore.local`,
       department: newUserForm.value.department.trim() || undefined,
       role: newUserForm.value.role,
       is_online: true,
@@ -980,7 +980,7 @@ const editRoleOptions = computed(() => {
         <BaseInput
           v-model="newUserForm.email"
           :label="t('users.email')"
-          placeholder="a.morgan@nms.local"
+          placeholder="a.morgan@aethercore.local"
           type="email"
           size="sm"
         />

@@ -125,6 +125,7 @@ export const ru = {
     mainDesktop: 'Основной',
     newDesktop: 'Новый рабочий стол',
     nmsModules: 'Модули платформы',
+    platformModules: 'Модули платформы',
     systemBadge: 'СИСТЕМА',
     moduleSummary: 'Сводка состояния модулей',
     loadedCount: '{active} / {total} Загружено',

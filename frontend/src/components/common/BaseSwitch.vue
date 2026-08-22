@@ -66,7 +66,7 @@ function toggle() {
       </div>
     </div>
 
-    <!-- Exact NMS Peer Toggle -->
+    <!-- Exact AetherCore Peer Toggle -->
     <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1" @click.stop>
       <input
         class="sr-only peer"

@@ -1,7 +1,7 @@
-//! # Исполняемый файл nms и CLI утилита платформы (aethercore-cli)
+//! # Исполняемый файл и CLI утилита платформы (aethercore-cli)
 //!
 //! Точка входа для запуска ядра в режимах Server, Dev и Safe-Mode,
-//! а также сборки и упаковки плагинов (`nms plugin pack <dir> -o <output>`).
+//! а также сборки и упаковки плагинов (`aethercore plugin pack <dir> -o <output>`).
 
 use clap::{Parser, Subcommand};
 use aethercore_common::config::AppConfig;
@@ -43,10 +43,10 @@ struct Cli {
     safe_mode: bool,
 
     /// Путь к файлу базы данных SQLite
-    #[arg(long, default_value = "data/nms.db")]
+    #[arg(long, default_value = "data/aethercore.db")]
     db: PathBuf,
 
-    /// Каталог хранения и сканирования плагинов (.nms-plugin)
+    /// Каталог хранения и сканирования плагинов (.aether-plugin)
     #[arg(long, default_value = "modules")]
     modules_dir: PathBuf,
 
@@ -58,7 +58,7 @@ struct Cli {
 /// Набор поддерживаемых подкоманд CLI
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Управление модулями и плагинами (.nms-plugin)
+    /// Управление модулями и плагинами (.aether-plugin)
     Plugin {
         /// Действие с плагином
         #[command(subcommand)]
@@ -69,11 +69,11 @@ enum Commands {
 /// Подкоманды управления пакетами плагинов
 #[derive(Subcommand, Debug)]
 enum PluginCommands {
-    /// Упаковка каталога разработки в ZIP архив .nms-plugin
+    /// Упаковка каталога разработки в ZIP архив .aether-plugin
     Pack {
         /// Путь к каталогу исходных файлов плагина
         dir: String,
-        /// Путь к выходному файлу .nms-plugin
+        /// Путь к выходному файлу .aether-plugin
         #[arg(short, long)]
         output: String,
     },

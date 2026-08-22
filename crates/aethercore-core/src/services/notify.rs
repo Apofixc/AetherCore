@@ -76,13 +76,13 @@ impl NotifyService {
     pub async fn send_alert(&self, alert: AlertMessage, webhook_url: Option<&str>) -> Result<()> {
         match alert.severity {
             AlertSeverity::Info => {
-                info!(target: "nms::notify", "[INFO] [{}] {}: {}", alert.source, alert.title, alert.body);
+                info!(target: "aethercore::notify", "[INFO] [{}] {}: {}", alert.source, alert.title, alert.body);
             }
             AlertSeverity::Warning => {
-                warn!(target: "nms::notify", "[WARN] [{}] {}: {}", alert.source, alert.title, alert.body);
+                warn!(target: "aethercore::notify", "[WARN] [{}] {}: {}", alert.source, alert.title, alert.body);
             }
             AlertSeverity::Critical => {
-                error!(target: "nms::notify", "[CRITICAL] [{}] {}: {}", alert.source, alert.title, alert.body);
+                error!(target: "aethercore::notify", "[CRITICAL] [{}] {}: {}", alert.source, alert.title, alert.body);
             }
         }
 

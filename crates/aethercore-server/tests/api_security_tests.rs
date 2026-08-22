@@ -81,7 +81,7 @@ async fn test_api_privilege_escalation_protection() {
                 username: "reg_admin".into(),
                 password: "AdminPassword123!".into(),
                 full_name: Some("Regular Admin".into()),
-                email: Some("reg_admin@nms.local".into()),
+                email: Some("reg_admin@aethercore.local".into()),
                 is_active: Some(true),
                 is_superuser: Some(false),
                 must_change_password: Some(false),

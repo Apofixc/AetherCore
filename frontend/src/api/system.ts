@@ -71,7 +71,7 @@ export const systemApi = {
     return api.get<LogQueryResult>(`/api/v1/system/logs${qStr ? `?${qStr}` : ''}`)
   },
   downloadLog: async (provider = 'system'): Promise<Blob> => {
-    const token = localStorage.getItem('nms_token')
+    const token = localStorage.getItem('aether_token') || localStorage.getItem('nms_token')
     const headers: HeadersInit = {}
     if (token) {
       headers['Authorization'] = `Bearer ${token}`

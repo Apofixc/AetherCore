@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 
 export type ThemeMode = 'dark' | 'light' | 'system'
 
-const savedTheme = (typeof localStorage !== 'undefined' ? localStorage.getItem('nms_theme') : null) as ThemeMode | null
+const savedTheme = (typeof localStorage !== 'undefined' ? (localStorage.getItem('aether_theme') || localStorage.getItem('nms_theme')) : null) as ThemeMode | null
 const currentTheme = ref<ThemeMode>(
   savedTheme && ['dark', 'light', 'system'].includes(savedTheme) ? savedTheme : 'dark'
 )
@@ -51,7 +51,7 @@ applyTheme(currentTheme.value)
 export function setTheme(theme: ThemeMode) {
   currentTheme.value = theme
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('nms_theme', theme)
+    localStorage.setItem('aether_theme', theme)
   }
   applyTheme(theme)
 }

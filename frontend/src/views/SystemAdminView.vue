@@ -184,7 +184,7 @@ function requestRotateAudit() {
         id: String(Date.now()),
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
         level: 'INFO',
-        source: 'nms.audit.rotator',
+        source: 'aethercore.audit.rotator',
         message: 'Audit log rotated: active log archived to audit_archive_2026_08.db'
       })
       notify(t('system.rotateAudit') + ' - OK')

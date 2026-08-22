@@ -195,7 +195,7 @@ function handleLogout() {
           <!-- User info -->
           <div class="px-4 py-2.5">
             <p class="text-xs font-bold text-on-surface">{{ authStore.user?.full_name || t('auth.adminUser') }}</p>
-            <p class="text-[10px] font-body-mono text-on-surface-variant mt-0.5">{{ authStore.user?.email || 'root@nms.local' }}</p>
+            <p class="text-[10px] font-body-mono text-on-surface-variant mt-0.5">{{ authStore.user?.email || 'root@aethercore.local' }}</p>
           </div>
 
           <!-- Navigation Links -->

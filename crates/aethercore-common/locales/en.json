@@ -34,7 +34,7 @@
   "core.auth.cannot_delete_self": "Cannot delete your own user account",
   "core.auth.cannot_disable_root": "Cannot disable or delete the root superuser account",
 
-  "core.modules.file_must_be_zip": "File must be a ZIP archive (.nms-plugin)",
+  "core.modules.file_must_be_zip": "File must be a ZIP archive (.aether-plugin)",
   "core.modules.missing_manifest": "Package archive is missing manifest.yaml",
   "core.modules.invalid_manifest": "Invalid manifest.yaml: {details}",
   "core.modules.not_found": "Module '{module_id}' not found",

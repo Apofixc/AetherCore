@@ -23,9 +23,9 @@ const authStore = useAuthStore()
 
 // Profile Form State
 const fullName = ref(authStore.user?.full_name || authStore.user?.username || 'Admin')
-const department = ref('Network Operations')
+const department = ref('Core Operations')
 const role = ref('Superuser')
-const email = ref(authStore.user?.email || 'root@nms.local')
+const email = ref(authStore.user?.email || 'root@aethercore.local')
 const timezone = ref(typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC')
 
 // Avatar & Photo Upload State

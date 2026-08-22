@@ -6,7 +6,7 @@ import { api } from '@/api/client'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(
-    localStorage.getItem('nms_token') || sessionStorage.getItem('nms_token')
+    localStorage.getItem('aether_token') || localStorage.getItem('nms_token') || sessionStorage.getItem('aether_token') || sessionStorage.getItem('nms_token')
   )
   const authConfig = ref<AuthConfig | null>(null)
   const loading = ref(false)
@@ -74,7 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
           id: '07611e2c-97b8-496c-91c5-30af70cba860',
           username: 'admin',
           full_name: 'System Administrator',
-          email: 'admin@nms.local',
+          email: 'admin@aethercore.local',
           is_active: true,
           is_superuser: true,
           must_change_password: false,
@@ -103,11 +103,15 @@ export const useAuthStore = defineStore('auth', () => {
       api.setToken(response.token)
 
       if (rememberMe) {
-        localStorage.setItem('nms_token', response.token)
-        localStorage.setItem('nms_remembered_operator', operatorId)
+        localStorage.setItem('aether_token', response.token)
+        localStorage.setItem('aether_remembered_operator', operatorId)
+        localStorage.removeItem('nms_token')
+        sessionStorage.removeItem('aether_token')
         sessionStorage.removeItem('nms_token')
       } else {
-        sessionStorage.setItem('nms_token', response.token)
+        sessionStorage.setItem('aether_token', response.token)
+        sessionStorage.removeItem('nms_token')
+        localStorage.removeItem('aether_token')
         localStorage.removeItem('nms_token')
       }
 
@@ -156,7 +160,9 @@ export const useAuthStore = defineStore('auth', () => {
     stopInactivityTracker()
     token.value = null
     user.value = null
+    localStorage.removeItem('aether_token')
     localStorage.removeItem('nms_token')
+    sessionStorage.removeItem('aether_token')
     sessionStorage.removeItem('nms_token')
     api.setToken(null)
   }

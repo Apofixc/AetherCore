@@ -74,7 +74,7 @@ interface rpc-handler {
     handle-rpc: func(method: string, payload-json: string) -> result<string, string>;
 }
 
-/// Полный мир плагина NMSNext-Gen
+/// Полный мир плагина AetherCore
 world plugin {
     // Импорты ядра
     import events;

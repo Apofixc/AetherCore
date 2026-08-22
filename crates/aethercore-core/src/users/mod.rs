@@ -51,7 +51,7 @@ impl UserService {
             sqlx::query(
                 r#"
                 INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
-                VALUES (?, 'admin', 'System Administrator', 'admin@nms.local', 'Network Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
+                VALUES (?, 'admin', 'System Administrator', 'admin@aethercore.local', 'Core Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
                 "#,
             )
             .bind(id.to_string())

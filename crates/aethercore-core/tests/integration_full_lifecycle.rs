@@ -27,7 +27,7 @@ async fn test_full_platform_lifecycle() {
     let admin = user_service.authenticate("admin", "admin").await.unwrap();
     assert!(admin.is_superuser);
 
-    // 4. Загрузка реального .nms-plugin архива из каталога modules/
+    // 4. Загрузка реального .aether-plugin архива из каталога modules/
     let modules_dir = Path::new("../../modules");
     let fallback_dir = Path::new("modules");
     let actual_dir = if modules_dir.exists() {

@@ -8,13 +8,14 @@ export interface ApiResponse<T = any> {
 
 class ApiClient {
   private get token(): string | null {
-    return localStorage.getItem('nms_token')
+    return localStorage.getItem('aether_token') || localStorage.getItem('nms_token')
   }
 
   public setToken(token: string | null) {
     if (token) {
-      localStorage.setItem('nms_token', token)
+      localStorage.setItem('aether_token', token)
     } else {
+      localStorage.removeItem('aether_token')
       localStorage.removeItem('nms_token')
     }
   }
@@ -30,7 +31,7 @@ class ApiClient {
       headers.set('Authorization', `Bearer ${this.token}`)
     }
 
-    const currentLocale = localStorage.getItem('nms_locale') || 'ru'
+    const currentLocale = localStorage.getItem('aether_locale') || localStorage.getItem('nms_locale') || 'ru'
     if (!headers.has('Accept-Language')) {
       headers.set('Accept-Language', currentLocale)
     }

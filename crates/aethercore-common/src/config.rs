@@ -1,6 +1,6 @@
 //! # Конфигурация платформы (AppConfig)
 //!
-//! Модуль содержит структуры конфигурации для всех компонентов NMSNext-Gen:
+//! Модуль содержит структуры конфигурации для всех компонентов AetherCore:
 //! сетевого сервера ([`ServerConfig`]), базы данных SQLite ([`DatabaseConfig`]),
 //! подсистемы безопасности и JWT ([`SecurityConfig`]), песочницы Wasm-плагинов ([`PluginsConfig`])
 //! и интернационализации ([`I18nConfig`]).
@@ -91,7 +91,7 @@ impl Default for ServerConfig {
 /// Конфигурация базы данных SQLite (Single-Writer / Multi-Reader)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
-    /// Путь к файлу базы данных SQLite на диске (по умолчанию `"data/nms.db"`)
+    /// Путь к файлу базы данных SQLite на диске (по умолчанию `"data/aethercore.db"`)
     #[serde(default = "default_db_path")]
     pub path: PathBuf,
     /// Максимальный размер пула соединений на параллельное чтение (по умолчанию `10`)
@@ -103,7 +103,7 @@ pub struct DatabaseConfig {
 }
 
 fn default_db_path() -> PathBuf {
-    PathBuf::from("data/nms.db")
+    PathBuf::from("data/aethercore.db")
 }
 
 fn default_max_read_connections() -> u32 {
