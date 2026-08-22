@@ -70,6 +70,9 @@ export const useAuthStore = defineStore('auth', () => {
       return u
     } catch (err) {
       logout()
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
       return null
     } finally {
       loading.value = false

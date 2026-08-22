@@ -35,10 +35,11 @@ class ApiClient {
       headers
     })
 
-    if (response.status === 401 && endpoint.includes('/auth/me')) {
-      // Истек токен при проверке профиля
+    if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/config')) {
+      // Токен истек или отсутствует для защищенного маршрута
+      this.setToken(null)
       if (window.location.pathname !== '/login') {
-        this.setToken(null)
+        window.location.href = '/login'
       }
     }
 

@@ -130,23 +130,28 @@ async function applyChanges() {
     ip_whitelist: ipWhitelist.value
   }
 
-  // Сохраняем на сервере в SQLite (kv_store)
   try {
-    await Promise.all([
-      settingsApi.updateSecurityPolicies(policiesPayload),
-      settingsApi.updatePermissionsMatrix(permissionCategories.value)
-    ])
+    // 1. Сохраняем сначала матрицу прав, пока сессия валидна
+    await settingsApi.updatePermissionsMatrix(permissionCategories.value)
+    // 2. Затем сохраняем политики безопасности
+    await settingsApi.updateSecurityPolicies(policiesPayload)
     await authStore.checkAuthConfig()
 
-    if (isEnablingAuth) {
+    if (isEnablingAuth || webUiAuth.value) {
       authStore.logout()
-      router.push('/login')
+      window.location.href = '/login'
       return
     }
 
     initialWebUiAuth.value = webUiAuth.value
   } catch (err) {
     console.error('Could not save security policies to server:', err)
+    // Если авторизация была включена на сервере и вызвала 401, гарантированно переводим на логин
+    if (isEnablingAuth || webUiAuth.value) {
+      authStore.logout()
+      window.location.href = '/login'
+      return
+    }
   }
 
   saveSuccess.value = true
