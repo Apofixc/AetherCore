@@ -335,6 +335,7 @@ export const en = {
     fullName: 'Full Name',
     username: 'Username (Login)',
     email: 'Email Address',
+    department: 'Department',
     password: 'Password',
     newPasswordOptional: 'New Password (leave empty to keep current)',
     resetPassword: 'Reset Password',

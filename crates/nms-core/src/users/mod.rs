@@ -49,6 +49,7 @@ impl UserService {
                 password: "admin".to_string(),
                 full_name: Some("System Administrator".to_string()),
                 email: Some("admin@nms.local".to_string()),
+                department: Some("Network Operations".to_string()),
                 is_active: Some(true),
                 is_superuser: Some(true),
                 must_change_password: Some(false),
@@ -150,14 +151,15 @@ impl UserService {
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(id.to_string())
         .bind(&username)
         .bind(&dto.full_name)
         .bind(&dto.email)
+        .bind(&dto.department)
         .bind(&password_hash)
         .bind(if is_active { 1 } else { 0 })
         .bind(if is_superuser { 1 } else { 0 })
@@ -206,6 +208,7 @@ impl UserService {
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
             String,
             i64,
             i64,
@@ -215,7 +218,7 @@ impl UserService {
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -248,6 +251,7 @@ impl UserService {
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
             String,
             i64,
             i64,
@@ -257,7 +261,7 @@ impl UserService {
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -323,6 +327,7 @@ impl UserService {
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
             String,
             i64,
             i64,
@@ -332,7 +337,7 @@ impl UserService {
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -426,8 +431,10 @@ impl UserService {
             if req_username.is_empty() {
                 existing.username.clone()
             } else if req_username != existing.username {
-                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true) и не для root
-                if !existing.must_change_password || existing.username == "root" {
+                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true или last_login_at == None) и не для root
+                let can_change_username = (existing.must_change_password || existing.last_login_at.is_none())
+                    && existing.username != "root";
+                if !can_change_username {
                     return Err(AppError::validation(
                         "username",
                         "Username cannot be changed after initial setup or for root user",
@@ -478,17 +485,19 @@ impl UserService {
 
         let full_name = dto.full_name.or(existing.full_name);
         let email = dto.email.or(existing.email);
+        let department = dto.department.or(existing.department);
         let is_active = dto.is_active.unwrap_or(existing.is_active);
 
         sqlx::query(
             r#"
-            UPDATE users SET username = ?, full_name = ?, email = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
+            UPDATE users SET username = ?, full_name = ?, email = ?, department = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
         .bind(new_username)
         .bind(full_name)
         .bind(email)
+        .bind(department)
         .bind(password_hash)
         .bind(if is_active { 1 } else { 0 })
         .bind(if new_is_superuser { 1 } else { 0 })
@@ -573,6 +582,7 @@ impl UserService {
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
             String,
             i64,
             i64,
@@ -587,6 +597,7 @@ impl UserService {
             username,
             full_name,
             email,
+            department,
             password_hash,
             is_active_num,
             is_superuser_num,
@@ -647,6 +658,7 @@ impl UserService {
             username,
             full_name,
             email,
+            department,
             password_hash,
             is_active,
             is_superuser,

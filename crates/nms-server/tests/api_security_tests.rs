@@ -86,6 +86,7 @@ async fn test_api_privilege_escalation_protection() {
                 is_superuser: Some(false),
                 must_change_password: Some(false),
                 roles: Some(vec!["admin".into()]),
+                ..Default::default()
             })
             .unwrap(),
         ))
@@ -129,12 +130,10 @@ async fn test_api_privilege_escalation_protection() {
             serde_json::to_string(&CreateUserDto {
                 username: "super_backdoor".into(),
                 password: "password123".into(),
-                full_name: None,
-                email: None,
                 is_active: Some(true),
                 is_superuser: Some(true),
-                must_change_password: None,
                 roles: Some(vec!["superuser".into()]),
+                ..Default::default()
             })
             .unwrap(),
         ))

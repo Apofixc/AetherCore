@@ -335,6 +335,7 @@ export const ru = {
     fullName: 'Полное имя',
     username: 'Имя пользователя (Логин)',
     email: 'Электронная почта',
+    department: 'Департамент',
     password: 'Пароль',
     newPasswordOptional: 'Новый пароль (оставьте пустым, если не меняется)',
     resetPassword: 'Сброс пароля',

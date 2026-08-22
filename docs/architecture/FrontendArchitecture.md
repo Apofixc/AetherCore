@@ -54,19 +54,19 @@ sequenceDiagram
     UI->>Store: login(operatorId, accessCode)
     Store->>API: POST /api/v1/auth/login
     API->>Core: Аутентификация Argon2id + генерация JWT
-    Core-->>API: 200 OK { token, user: { must_change_password, ... } }
+    Core-->>API: 200 OK { token, user: { last_login_at, must_change_password, ... } }
     API-->>Store: Сохранение токена и профиля
     Store-->>UI: Успешный вход
 
-    alt must_change_password == true (Первый вход)
+    alt Первый вход: !last_login_at || must_change_password == true
         UI->>UI: Блокировка входа в Dashboard<br/>Открытие модалки "Первичная настройка"
-        User->>UI: Ввод постоянного логина (опционально) + новый пароль
-        UI->>API: PUT /api/v1/users/:id { username, password, must_change_password: false }
-        API->>Core: Валидация логина (уникальность) + Argon2id hash
+        User->>UI: Ввод постоянного логина (опционально) + новый пароль (обязателен, если must_change_password)
+        UI->>API: PUT /api/v1/users/:id { username, password?, must_change_password?: false }
+        API->>Core: Валидация логина (уникальность, смена до первого входа) + Argon2id hash
         Core-->>API: 200 OK (updated user)
         API-->>UI: Профиль обновлен
         UI->>UI: router.push('/dashboard')
-    else must_change_password == false
+    else Последующие входы
         UI->>UI: router.push('/dashboard')
     end
 ```
@@ -82,7 +82,7 @@ graph TD
 
     %% Добавление
     DisplayTable --> ActionAdd[Клик 'Добавить пользователя']
-    ActionAdd --> FillNew[Заполнение: ФИО, логин, email, пароль, роль]
+    ActionAdd --> FillNew[Заполнение: ФИО, логин, email, департамент, пароль, роль]
     FillNew --> PolicyCheck{Политика mandatory_password_change?}
     PolicyCheck -- Да --> FlagTrue[must_change_password = true]
     PolicyCheck -- Нет --> FlagManual[По выбору чекбокса]

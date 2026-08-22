@@ -28,6 +28,7 @@ async fn test_user_crud_and_auth() {
             is_superuser: Some(false),
             must_change_password: Some(true),
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -55,12 +56,10 @@ async fn test_superusers_quota_limit_4() {
         .create_user(CreateUserDto {
             username: "super2".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -70,12 +69,10 @@ async fn test_superusers_quota_limit_4() {
         .create_user(CreateUserDto {
             username: "super3".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -85,12 +82,10 @@ async fn test_superusers_quota_limit_4() {
         .create_user(CreateUserDto {
             username: "super4".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -102,12 +97,10 @@ async fn test_superusers_quota_limit_4() {
         .create_user(CreateUserDto {
             username: "super5".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await;
 
@@ -118,12 +111,10 @@ async fn test_superusers_quota_limit_4() {
         .create_user(CreateUserDto {
             username: "regular".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(false),
-            must_change_password: None,
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -203,58 +194,52 @@ async fn test_username_change_on_first_login_only() {
 
     service.ensure_default_admin().await.unwrap();
 
-    // Создаем пользователя с временным логином и must_change_password = true
-    let temp_user = service
+    // Создаем пользователя с временным логином, департаментом и must_change_password = false
+    let user_no_pwd_req = service
         .create_user(CreateUserDto {
-            username: "temp_op".into(),
-            password: "temp_pass".into(),
-            full_name: Some("Temporary Operator".into()),
-            email: Some("temp@test.local".into()),
+            username: "op_initial".into(),
+            password: "init_password".into(),
+            full_name: Some("Initial Operator".into()),
+            email: Some("initial@test.local".into()),
+            department: Some("Core Network".into()),
             is_active: Some(true),
             is_superuser: Some(false),
-            must_change_password: Some(true),
+            must_change_password: Some(false),
             roles: Some(vec!["operator".into()]),
         })
         .await
         .unwrap();
 
-    assert_eq!(temp_user.username, "temp_op");
-    assert!(temp_user.must_change_password);
+    assert_eq!(user_no_pwd_req.department, Some("Core Network".to_string()));
+    assert!(user_no_pwd_req.last_login_at.is_none());
 
-    // 1. При первом входе пользователь меняет логин и пароль -> успешно
-    let updated = service
+    // До первого логина смена логина разрешена (первичная настройка аккаунта)
+    let updated_user = service
         .update_user(
-            temp_user.id,
+            user_no_pwd_req.id,
             UpdateUserDto {
-                username: Some("alex_perm".into()),
-                password: Some("new_secret_pwd".into()),
-                must_change_password: Some(false),
+                username: Some("op_final".into()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
+    assert_eq!(updated_user.username, "op_final");
+    assert_eq!(updated_user.department, Some("Core Network".to_string()));
 
-    assert_eq!(updated.username, "alex_perm");
-    assert!(!updated.must_change_password);
+    // Выполняем аутентификацию (фиксируется last_login_at)
+    let authenticated = service.authenticate("op_final", "init_password").await.unwrap();
+    assert_eq!(authenticated.username, "op_final");
 
-    // Проверяем авторизацию под новым логином и паролем
-    let auth = service
-        .authenticate("alex_perm", "new_secret_pwd")
-        .await
-        .unwrap();
-    assert_eq!(auth.username, "alex_perm");
-
-    // 2. Вторичная попытка сменить логин (когда must_change_password уже false) -> Ошибка
-    let second_change_res = service
+    // После успешной аутентификации смена логина уже запрещена
+    let after_login_change = service
         .update_user(
-            temp_user.id,
+            user_no_pwd_req.id,
             UpdateUserDto {
-                username: Some("another_name".into()),
+                username: Some("op_forbidden".into()),
                 ..Default::default()
             },
         )
         .await;
-
-    assert!(second_change_res.is_err());
+    assert!(after_login_change.is_err());
 }

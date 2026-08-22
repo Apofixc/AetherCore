@@ -25,6 +25,7 @@ interface OperatorItem {
   username: string
   full_name: string
   email: string
+  department?: string
   role: 'superuser' | 'admin' | 'operator' | 'viewer'
   is_online: boolean
   is_active: boolean
@@ -59,6 +60,7 @@ const newUserForm = ref({
   full_name: '',
   username: '',
   email: '',
+  department: '',
   password: '',
   role: 'operator' as 'superuser' | 'admin' | 'operator' | 'viewer',
   must_change_password: true
@@ -95,6 +97,7 @@ async function loadUsers() {
           username: u.username,
           full_name: u.full_name || u.username,
           email: u.email || `${u.username}@nms.local`,
+          department: u.department,
           role,
           is_online: Boolean(u.is_active),
           is_active: Boolean(u.is_active),
@@ -258,6 +261,7 @@ async function handleCreateUser() {
       password: newUserForm.value.password.trim() || 'operator123',
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
+      department: newUserForm.value.department.trim() || undefined,
       roles: [newUserForm.value.role],
       is_active: true,
       must_change_password: newUserForm.value.must_change_password
@@ -276,6 +280,7 @@ async function handleCreateUser() {
       username: created.username,
       full_name: created.full_name || created.username,
       email: created.email || `${created.username}@nms.local`,
+      department: created.department,
       role,
       is_online: true,
       is_active: true,
@@ -287,6 +292,7 @@ async function handleCreateUser() {
       full_name: '',
       username: '',
       email: '',
+      department: '',
       password: '',
       role: 'operator',
       must_change_password: true
@@ -306,6 +312,7 @@ async function handleCreateUser() {
       username: newUserForm.value.username.trim(),
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
+      department: newUserForm.value.department.trim() || undefined,
       role: newUserForm.value.role,
       is_online: true,
       is_active: true,
@@ -317,6 +324,7 @@ async function handleCreateUser() {
       full_name: '',
       username: '',
       email: '',
+      department: '',
       password: '',
       role: 'operator',
       must_change_password: true
@@ -979,6 +987,13 @@ const editRoleOptions = computed(() => {
           :label="t('users.email')"
           placeholder="a.morgan@nms.local"
           type="email"
+          size="sm"
+        />
+
+        <BaseInput
+          v-model="newUserForm.department"
+          :label="t('users.department')"
+          placeholder="e.g. Network Operations"
           size="sm"
         />
 

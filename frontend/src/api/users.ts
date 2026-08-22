@@ -6,6 +6,7 @@ export interface CreateUserDto {
   password?: string
   full_name?: string
   email?: string
+  department?: string
   is_active?: boolean
   is_superuser?: boolean
   must_change_password?: boolean
@@ -17,6 +18,7 @@ export interface UpdateUserDto {
   username?: string
   full_name?: string
   email?: string
+  department?: string
   password?: string
   is_active?: boolean
   is_superuser?: boolean

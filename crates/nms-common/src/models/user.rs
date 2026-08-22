@@ -22,6 +22,8 @@ pub struct User {
     pub full_name: Option<String>,
     /// Контактный адрес электронной почты
     pub email: Option<String>,
+    /// Подразделение / Департамент
+    pub department: Option<String>,
     /// Хэш пароля в формате PHC (Argon2id), исключается из прямой JSON-сериализации
     #[serde(skip_serializing)]
     pub password_hash: String,
@@ -44,7 +46,7 @@ pub struct User {
 }
 
 /// DTO для регистрации/создания нового пользователя в системе
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreateUserDto {
     /// Уникальное имя пользователя (логин, минимум 1 символ)
     pub username: String,
@@ -54,6 +56,8 @@ pub struct CreateUserDto {
     pub full_name: Option<String>,
     /// Контактный адрес электронной почты
     pub email: Option<String>,
+    /// Подразделение / Департамент
+    pub department: Option<String>,
     /// Флаг активности учетной записи (по умолчанию `true`)
     pub is_active: Option<bool>,
     /// Флаг суперпользователя (по умолчанию `false`)
@@ -67,12 +71,14 @@ pub struct CreateUserDto {
 /// DTO для частичного обновления учетной записи пользователя
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserDto {
-    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true)
+    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true или last_login_at = None)
     pub username: Option<String>,
     /// Новое полное имя (если передано `Some`)
     pub full_name: Option<String>,
     /// Новый адрес электронной почты (если передано `Some`)
     pub email: Option<String>,
+    /// Подразделение / Департамент
+    pub department: Option<String>,
     /// Новый открытый пароль (будет перехэширован алгоритмом Argon2id, если передан непустым)
     pub password: Option<String>,
     /// Новый статус активности аккаунта
@@ -96,6 +102,8 @@ pub struct UserResponseDto {
     pub full_name: Option<String>,
     /// Электронная почта
     pub email: Option<String>,
+    /// Подразделение / Департамент
+    pub department: Option<String>,
     /// Флаг активности учетной записи
     pub is_active: bool,
     /// Флаг суперпользователя
@@ -119,6 +127,7 @@ impl From<User> for UserResponseDto {
             username: u.username,
             full_name: u.full_name,
             email: u.email,
+            department: u.department,
             is_active: u.is_active,
             is_superuser: u.is_superuser,
             must_change_password: u.must_change_password,

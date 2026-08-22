@@ -145,6 +145,7 @@ impl Db {
                 username TEXT NOT NULL UNIQUE,
                 full_name TEXT,
                 email TEXT,
+                department TEXT,
                 password_hash TEXT NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 is_superuser INTEGER NOT NULL DEFAULT 0,
@@ -159,8 +160,11 @@ impl Db {
         .await
         .map_err(|e| AppError::database(format!("Failed to create users table: {}", e)))?;
 
-        // Миграция существующей таблицы users (если колонка must_change_password отсутствует)
+        // Миграции существующей таблицы users
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN department TEXT")
             .execute(pool)
             .await;
 

@@ -24,12 +24,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "ADMIN".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(false),
-            must_change_password: None,
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await;
     assert!(dup_res.is_err(), "Должно блокировать дубликаты без учета регистра");
@@ -41,12 +39,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "hacker".into(),
             password: "123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(false),
-            must_change_password: None,
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await;
     assert!(short_pwd.is_err(), "Пароли короче 4 символов должны отклоняться");
@@ -55,12 +51,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "   ".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(false),
-            must_change_password: None,
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await;
     assert!(empty_user.is_err(), "Пустой логин должен отклоняться");
@@ -107,12 +101,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "super_2".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -121,12 +113,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "super_3".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -135,12 +125,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "super_4".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -152,12 +140,10 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "super_5".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(true),
-            must_change_password: None,
             roles: Some(vec!["superuser".into()]),
+            ..Default::default()
         })
         .await;
     assert!(s5_attack.is_err(), "5-й суперпользователь не должен создаваться");
@@ -169,12 +155,11 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .create_user(CreateUserDto {
             username: "regular_user".into(),
             password: "password123".into(),
-            full_name: None,
-            email: None,
             is_active: Some(true),
             is_superuser: Some(false),
             must_change_password: Some(true),
             roles: Some(vec!["viewer".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();

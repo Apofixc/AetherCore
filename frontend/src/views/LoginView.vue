@@ -39,7 +39,8 @@ async function handleLogin() {
   errorMessage.value = null
   try {
     await authStore.login(operatorId.value, accessCode.value)
-    if (authStore.user?.must_change_password) {
+    const isFirstLogin = !authStore.user?.last_login_at || authStore.user?.must_change_password
+    if (isFirstLogin && authStore.user && authStore.user.username !== 'root') {
       customUsername.value = authStore.user.username || ''
       showPasswordChangeModal.value = true
     } else {
@@ -58,24 +59,33 @@ async function handleSaveNewPassword() {
     passwordChangeError.value = t('auth.invalidUsernameLength')
     return
   }
-  if (newPassword.value.length < 4) {
-    passwordChangeError.value = t('auth.passwordTooShort')
-    return
-  }
-  if (newPassword.value !== confirmPassword.value) {
-    passwordChangeError.value = t('auth.passwordsDoNotMatch')
-    return
+
+  const isMandatoryPassword = Boolean(authStore.user?.must_change_password)
+  const hasPasswordInput = newPassword.value.length > 0 || confirmPassword.value.length > 0
+
+  if (isMandatoryPassword || hasPasswordInput) {
+    if (newPassword.value.length < 4) {
+      passwordChangeError.value = t('auth.passwordTooShort')
+      return
+    }
+    if (newPassword.value !== confirmPassword.value) {
+      passwordChangeError.value = t('auth.passwordsDoNotMatch')
+      return
+    }
   }
 
   isChangingPassword.value = true
   passwordChangeError.value = null
   try {
     if (authStore.user) {
-      const updated = await usersApi.update(authStore.user.id, {
-        username: customUsername.value.trim(),
-        password: newPassword.value,
-        must_change_password: false
-      })
+      const payload: { username: string; password?: string; must_change_password?: boolean } = {
+        username: customUsername.value.trim()
+      }
+      if (hasPasswordInput) {
+        payload.password = newPassword.value
+        payload.must_change_password = false
+      }
+      const updated = await usersApi.update(authStore.user.id, payload)
       authStore.user = updated
     }
     showPasswordChangeModal.value = false
@@ -236,19 +246,20 @@ async function handleSaveNewPassword() {
 
         <BaseInput
           v-model="newPassword"
-          :label="t('auth.newPassword')"
-          placeholder="••••••••"
+          :label="authStore.user?.must_change_password ? t('auth.newPassword') : t('users.newPasswordOptional')"
+          :placeholder="authStore.user?.must_change_password ? '••••••••' : t('users.passwordResetPlaceholder')"
           type="password"
-          :required="true"
+          :required="Boolean(authStore.user?.must_change_password)"
           size="sm"
         />
 
         <BaseInput
+          v-if="authStore.user?.must_change_password || newPassword.length > 0"
           v-model="confirmPassword"
           :label="t('auth.confirmPassword')"
           placeholder="••••••••"
           type="password"
-          :required="true"
+          :required="Boolean(authStore.user?.must_change_password)"
           size="sm"
         />
       </form>
