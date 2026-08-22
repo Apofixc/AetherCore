@@ -33,6 +33,8 @@ pub struct User {
     pub is_superuser: bool,
     /// Требуется ли обязательная смена пароля при следующем входе
     pub must_change_password: bool,
+    /// Зафиксирован ли логин (запрет дальнейшей смены логина после первичной настройки)
+    pub is_username_locked: bool,
     /// Список назначенных пользователю ролей (например, `["admin"]`, `["viewer"]`)
     pub roles: Vec<String>,
     /// Агрегированный дедуплицированный список прав доступа (из назначенных ролей и индивидуальных прав)
@@ -156,6 +158,8 @@ pub struct CreateUserDto {
     pub is_superuser: Option<bool>,
     /// Требовать ли обязательную смену пароля при первом входе
     pub must_change_password: Option<bool>,
+    /// Зафиксирован ли логин (по умолчанию `false`)
+    pub is_username_locked: Option<bool>,
     /// Список назначаемых ролей (по умолчанию `["viewer"]`)
     pub roles: Option<Vec<String>>,
 }
@@ -163,7 +167,7 @@ pub struct CreateUserDto {
 /// DTO для частичного обновления учетной записи пользователя
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserDto {
-    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true или login_count <= 1)
+    /// Новый логин (разрешено менять только если is_username_locked == false)
     pub username: Option<String>,
     /// Новое полное имя (если передано `Some`)
     pub full_name: Option<String>,
@@ -181,6 +185,8 @@ pub struct UpdateUserDto {
     pub is_superuser: Option<bool>,
     /// Требовать ли обязательную смену пароля при следующем входе
     pub must_change_password: Option<bool>,
+    /// Зафиксировать логин от дальнейших изменений
+    pub is_username_locked: Option<bool>,
     /// Новый список назначенных ролей (перезаписывает предыдущий набор)
     pub roles: Option<Vec<String>>,
 }
@@ -204,6 +210,8 @@ pub struct UserResponseDto {
     pub is_superuser: bool,
     /// Флаг обязательной смены пароля
     pub must_change_password: bool,
+    /// Флаг фиксации логина (запрет смены)
+    pub is_username_locked: bool,
     /// Количество успешных аутентификаций
     pub login_count: i64,
     /// Список назначенных ролей
@@ -227,6 +235,7 @@ impl From<User> for UserResponseDto {
             is_active: u.is_active,
             is_superuser: u.is_superuser,
             must_change_password: u.must_change_password,
+            is_username_locked: u.is_username_locked,
             login_count: u.login_count,
             roles: u.roles,
             permissions: u.permissions,

@@ -150,6 +150,7 @@ impl Db {
                 is_active INTEGER NOT NULL DEFAULT 1,
                 is_superuser INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
+                is_username_locked INTEGER NOT NULL DEFAULT 0,
                 login_count INTEGER NOT NULL DEFAULT 0,
                 failed_login_attempts INTEGER NOT NULL DEFAULT 0,
                 locked_until TEXT,
@@ -165,6 +166,12 @@ impl Db {
 
         // Миграции существующей таблицы users
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN is_username_locked INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("UPDATE users SET is_username_locked = 1 WHERE username = 'root' OR last_login_at IS NOT NULL")
             .execute(pool)
             .await;
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN department TEXT")

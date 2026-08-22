@@ -50,8 +50,8 @@ impl UserService {
 
             sqlx::query(
                 r#"
-                INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
-                VALUES (?, 'root', 'Root Administrator', 'root@aethercore.local', 'Core Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
+                INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at)
+                VALUES (?, 'root', 'Root Administrator', 'root@aethercore.local', 'Core Operations', ?, 1, 1, 0, 1, 0, 0, NULL, ?, ?)
                 "#,
             )
             .bind(id.to_string())
@@ -81,7 +81,7 @@ impl UserService {
     /// # Ошибки
     /// Возвращает [`AppError`] при ошибке чтения из базы данных.
     pub async fn count_superusers(&self) -> Result<i64> {
-        let count_row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_superuser = 1")
+        let count_row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_superuser = 1 AND is_active = 1")
             .fetch_one(self.db.reader())
             .await
             .map_err(|e| AppError::database(e.to_string()))?;
@@ -158,12 +158,13 @@ impl UserService {
         let now = Utc::now();
         let is_active = dto.is_active.unwrap_or(true);
         let must_change_password = dto.must_change_password.unwrap_or(policy.mandatory_password_change);
+        let is_username_locked = dto.is_username_locked.unwrap_or(false);
 
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
+            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -175,6 +176,7 @@ impl UserService {
         .bind(if is_active { 1 } else { 0 })
         .bind(if is_superuser { 1 } else { 0 })
         .bind(if must_change_password { 1 } else { 0 })
+        .bind(if is_username_locked { 1 } else { 0 })
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
         .execute(self.db.writer())
@@ -226,13 +228,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -272,13 +275,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -416,13 +420,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -446,6 +451,7 @@ impl UserService {
     /// 3. Запрет понижения роли единственного оставшегося суперпользователя ($\ge 1$).
     /// 4. Проверка сложности пароля согласно `SecurityPoliciesDto` при его обновлении.
     /// 5. Автоматический сброс флага `must_change_password`, `failed_login_attempts` и `locked_until` при установке нового пароля.
+    /// 6. Разрешение смены логина строго до момента его фиксации (`is_username_locked == false`) и запрет смены для `root`.
     ///
     /// # Аргументы
     /// * `id` — Идентификатор пользователя ([`Uuid`]).
@@ -537,14 +543,15 @@ impl UserService {
             dto.must_change_password.unwrap_or(existing.must_change_password)
         };
 
+        let mut is_username_locked = dto.is_username_locked.unwrap_or(existing.is_username_locked);
+
         let new_username = if let Some(ref req_username) = dto.username {
             let req_username = req_username.trim();
             if req_username.is_empty() {
                 existing.username.clone()
             } else if req_username != existing.username {
-                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true или login_count <= 1) и не для root
-                let can_change_username = (existing.must_change_password || existing.login_count <= 1)
-                    && existing.username != "root";
+                // Смена логина разрешена ТОЛЬКО если логин еще не зафиксирован (is_username_locked == false) и не для root
+                let can_change_username = !existing.is_username_locked && existing.username != "root";
                 if !can_change_username {
                     return Err(AppError::validation(
                         "username",
@@ -579,6 +586,8 @@ impl UserService {
                     }
                 }
 
+                // При успешной смене логина фиксируем его навсегда
+                is_username_locked = true;
                 req_username.to_string()
             } else {
                 existing.username.clone()
@@ -606,6 +615,7 @@ impl UserService {
                     is_active = ?,
                     is_superuser = ?,
                     must_change_password = ?,
+                    is_username_locked = ?,
                     failed_login_attempts = 0,
                     locked_until = NULL,
                     updated_at = ?
@@ -620,6 +630,7 @@ impl UserService {
             .bind(if is_active { 1 } else { 0 })
             .bind(if new_is_superuser { 1 } else { 0 })
             .bind(if must_change_password { 1 } else { 0 })
+            .bind(if is_username_locked { 1 } else { 0 })
             .bind(&now)
             .bind(id.to_string())
             .execute(self.db.writer())
@@ -637,6 +648,7 @@ impl UserService {
                     is_active = ?,
                     is_superuser = ?,
                     must_change_password = ?,
+                    is_username_locked = ?,
                     updated_at = ?
                 WHERE id = ?
                 "#,
@@ -649,6 +661,7 @@ impl UserService {
             .bind(if is_active { 1 } else { 0 })
             .bind(if new_is_superuser { 1 } else { 0 })
             .bind(if must_change_password { 1 } else { 0 })
+            .bind(if is_username_locked { 1 } else { 0 })
             .bind(&now)
             .bind(id.to_string())
             .execute(self.db.writer())
@@ -754,6 +767,7 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             Option<String>,
             String,
             String,
@@ -770,6 +784,7 @@ impl UserService {
             is_active_num,
             is_superuser_num,
             must_change_pwd_num,
+            is_username_locked_num,
             login_count,
             failed_login_attempts,
             locked_until_str,
@@ -782,6 +797,7 @@ impl UserService {
         let is_active = is_active_num != 0;
         let is_superuser = is_superuser_num != 0;
         let must_change_password = must_change_pwd_num != 0;
+        let is_username_locked = is_username_locked_num != 0;
 
         let locked_until = locked_until_str.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
@@ -839,6 +855,7 @@ impl UserService {
             is_active,
             is_superuser,
             must_change_password,
+            is_username_locked,
             login_count,
             failed_login_attempts,
             locked_until,

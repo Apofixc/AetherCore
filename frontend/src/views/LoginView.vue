@@ -52,9 +52,22 @@ const canChangeUsername = computed(() => {
   return (
     Boolean(authStore.user) &&
     authStore.user?.username !== 'root' &&
-    (!authStore.user?.last_login_at || (authStore.user?.login_count ?? 0) <= 1)
+    !authStore.user?.is_username_locked
   )
 })
+
+const mustChangePassword = computed(() => {
+  return Boolean(authStore.user?.must_change_password)
+})
+
+const needsOnboardingModal = computed(() => {
+  return (canChangeUsername.value || mustChangePassword.value) && authStore.user?.username !== 'root'
+})
+
+function handleCancelSetup() {
+  showPasswordChangeModal.value = false
+  authStore.logout()
+}
 
 function goToNextStep() {
   passwordChangeErrorKey.value = null
@@ -70,7 +83,11 @@ function goToNextStep() {
       passwordChangeErrorKey.value = 'auth.invalidCredentials'
       return
     }
-    wizardStep.value = 'password'
+    if (mustChangePassword.value) {
+      wizardStep.value = 'password'
+    } else {
+      handleSaveNewPassword()
+    }
   }
 }
 
@@ -84,7 +101,11 @@ function handleKeepCurrentUsername() {
   if (authStore.user?.username) {
     customUsername.value = authStore.user.username
   }
-  goToNextStep()
+  if (mustChangePassword.value) {
+    goToNextStep()
+  } else {
+    handleSaveNewPassword()
+  }
 }
 
 // Password complexity rules check
@@ -128,9 +149,8 @@ async function handleLogin() {
   errorRawMessage.value = null
   try {
     await authStore.login(operatorId.value, accessCode.value, rememberMe.value)
-    const isFirstLogin = !authStore.user?.last_login_at || authStore.user?.must_change_password
-    if (isFirstLogin && authStore.user && authStore.user.username !== 'root') {
-      customUsername.value = authStore.user.username || ''
+    if (needsOnboardingModal.value) {
+      customUsername.value = authStore.user?.username || ''
       wizardStep.value = canChangeUsername.value ? 'username' : 'password'
       showPasswordChangeModal.value = true
     } else {
@@ -162,9 +182,14 @@ async function handleSaveNewPassword() {
       wizardStep.value = 'username'
       return
     }
+    if (!/^[a-zA-Z0-9._-]+$/.test(uname)) {
+      passwordChangeErrorKey.value = 'auth.invalidCredentials'
+      wizardStep.value = 'username'
+      return
+    }
   }
 
-  const isMandatoryPassword = Boolean(authStore.user?.must_change_password)
+  const isMandatoryPassword = mustChangePassword.value
   const hasPasswordInput = newPassword.value.length > 0 || confirmPassword.value.length > 0
 
   if (isMandatoryPassword || hasPasswordInput) {
@@ -197,8 +222,10 @@ async function handleSaveNewPassword() {
   passwordChangeErrorRaw.value = null
   try {
     if (authStore.user) {
-      const payload: { username: string; password?: string; must_change_password?: boolean } = {
-        username: customUsername.value.trim()
+      const payload: { username?: string; password?: string; must_change_password?: boolean; is_username_locked?: boolean } = {}
+      if (canChangeUsername.value) {
+        payload.username = customUsername.value.trim()
+        payload.is_username_locked = true
       }
       if (hasPasswordInput) {
         payload.password = newPassword.value
@@ -375,18 +402,20 @@ async function handleSaveNewPassword() {
       </template>
     </BaseModal>
 
-    <!-- Mandatory First-Time Account Setup Modal (Multi-step Wizard) -->
+    <!-- Mandatory First-Time Account Setup / Password Change Modal -->
     <BaseModal
       v-model="showPasswordChangeModal"
-      :title="t('auth.firstTimeSetupTitle')"
+      :title="canChangeUsername ? t('auth.firstTimeSetupTitle') : t('auth.passwordChangeRequiredTitle')"
       icon="admin_panel_settings"
       max-width="max-w-lg"
       :scrollable="false"
       :show-close="false"
+      :close-on-esc="false"
+      :close-on-click-outside="false"
     >
       <div class="flex flex-col gap-4">
-        <!-- Step Progress Bar & Indicators (if username change is allowed) -->
-        <div v-if="canChangeUsername" class="grid grid-cols-2 gap-2 border-b border-outline-variant/40 pb-3">
+        <!-- Step Progress Bar & Indicators (only if both username and password changes are required) -->
+        <div v-if="canChangeUsername && mustChangePassword" class="grid grid-cols-2 gap-2 border-b border-outline-variant/40 pb-3">
           <div
             class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
             :class="wizardStep === 'username' ? 'bg-surface-container-high/80 border border-primary-fixed-dim/30 text-on-surface' : 'opacity-60 text-on-surface-variant'"
@@ -434,7 +463,7 @@ async function handleSaveNewPassword() {
             placeholder="e.g. alex.morgan"
             :required="true"
             size="sm"
-            @keydown.enter.prevent="goToNextStep"
+            @keydown.enter.prevent="mustChangePassword ? goToNextStep() : handleSaveNewPassword()"
           />
 
           <button
@@ -450,7 +479,7 @@ async function handleSaveNewPassword() {
         <!-- STEP 2: PASSWORD -->
         <div v-if="wizardStep === 'password' || !canChangeUsername" class="flex flex-col gap-3">
           <p class="text-xs text-on-surface-variant leading-relaxed">
-            {{ t('auth.wizardStepPasswordDesc') }}
+            {{ canChangeUsername ? t('auth.wizardStepPasswordDesc') : t('auth.passwordChangeRequiredDesc') }}
           </p>
 
           <BaseInput
@@ -497,10 +526,10 @@ async function handleSaveNewPassword() {
 
       <template #footer>
         <div class="flex items-center justify-between w-full">
-          <!-- Back button on step 2 -->
+          <!-- Back button on step 2 (if multi-step) OR Cancel button -->
           <div>
             <AppButton
-              v-if="wizardStep === 'password' && canChangeUsername"
+              v-if="wizardStep === 'password' && canChangeUsername && mustChangePassword"
               variant="secondary"
               size="sm"
               :uppercase="false"
@@ -509,12 +538,22 @@ async function handleSaveNewPassword() {
             >
               {{ t('auth.wizardBack') }}
             </AppButton>
+
+            <AppButton
+              v-else
+              variant="ghost"
+              size="sm"
+              :uppercase="false"
+              @click="handleCancelSetup"
+            >
+              {{ t('common.cancel') }}
+            </AppButton>
           </div>
 
-          <!-- Forward button on step 1 OR Final Save on step 2 -->
+          <!-- Forward button on step 1 (if mustChangePassword) OR Final Save -->
           <div class="ml-auto">
             <AppButton
-              v-if="wizardStep === 'username' && canChangeUsername"
+              v-if="wizardStep === 'username' && canChangeUsername && mustChangePassword"
               variant="primary"
               size="sm"
               :uppercase="false"

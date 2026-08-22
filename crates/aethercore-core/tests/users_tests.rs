@@ -206,18 +206,16 @@ async fn test_username_change_on_first_login_only() {
             is_superuser: Some(false),
             must_change_password: Some(false),
             roles: Some(vec!["operator".into()]),
+            ..Default::default()
         })
         .await
         .unwrap();
 
     assert_eq!(user_no_pwd_req.department, Some("Core Network".to_string()));
     assert_eq!(user_no_pwd_req.login_count, 0);
+    assert_eq!(user_no_pwd_req.is_username_locked, false);
 
-    // Выполняем 1-ю аутентификацию при первом входе (login_count становится 1)
-    let authenticated = service.authenticate("op_initial", "InitPassword123!").await.unwrap();
-    assert_eq!(authenticated.username, "op_initial");
-
-    // В первой сессии смена логина разрешена (первичная настройка аккаунта)
+    // В первой сессии смена логина разрешена (is_username_locked == false)
     let updated_user = service
         .update_user(
             user_no_pwd_req.id,
@@ -230,12 +228,9 @@ async fn test_username_change_on_first_login_only() {
         .unwrap();
     assert_eq!(updated_user.username, "op_final");
     assert_eq!(updated_user.department, Some("Core Network".to_string()));
+    assert_eq!(updated_user.is_username_locked, true);
 
-    // Выполняем 2-ю аутентификацию под новым логином (login_count становится 2)
-    let second_auth = service.authenticate("op_final", "InitPassword123!").await.unwrap();
-    assert_eq!(second_auth.username, "op_final");
-
-    // После завершения первичной настройки и повторного входа смена логина навсегда заблокирована
+    // После фиксации логина повторная смена навсегда заблокирована
     let after_login_change = service
         .update_user(
             user_no_pwd_req.id,
@@ -246,6 +241,19 @@ async fn test_username_change_on_first_login_only() {
         )
         .await;
     assert!(after_login_change.is_err());
+
+    // Даже если администратор сбрасывает пароль (must_change_password = true), смена логина остается заблокированной
+    let after_pwd_reset_change = service
+        .update_user(
+            user_no_pwd_req.id,
+            UpdateUserDto {
+                username: Some("op_forbidden2".into()),
+                must_change_password: Some(true),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(after_pwd_reset_change.is_err());
 }
 
 #[tokio::test]

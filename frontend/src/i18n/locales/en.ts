@@ -72,6 +72,8 @@ export const en = {
     passwordChangeError: 'Failed to change password',
     firstTimeSetupTitle: 'First-Time Account Setup',
     firstTimeSetupDescription: 'Complete step-by-step account configuration to continue.',
+    passwordChangeRequiredTitle: 'Mandatory Password Change',
+    passwordChangeRequiredDesc: 'An administrator has required a password update for your account.',
     wizardStepUsername: 'Permanent Username',
     wizardStepUsernameDesc: 'Set a personalized username for signing in. The username is configured once during initial setup.',
     wizardStepPassword: 'New Password',

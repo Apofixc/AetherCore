@@ -9,6 +9,7 @@ export interface User {
   is_active: boolean
   is_superuser: boolean
   must_change_password?: boolean
+  is_username_locked?: boolean
   roles: string[]
   permissions: string[]
   created_at?: string

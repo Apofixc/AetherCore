@@ -72,6 +72,8 @@ export const ru = {
     passwordChangeError: 'Ошибка смены пароля',
     firstTimeSetupTitle: 'Первичная настройка учетной записи',
     firstTimeSetupDescription: 'Пройдите пошаговую настройку учетной записи для продолжения работы.',
+    passwordChangeRequiredTitle: 'Обязательная смена пароля',
+    passwordChangeRequiredDesc: 'Администратор запросил смену пароля для вашей учетной записи.',
     wizardStepUsername: 'Постоянный логин',
     wizardStepUsernameDesc: 'Задайте персональный логин для входа. Логин устанавливается один раз при первом входе.',
     wizardStepPassword: 'Новый пароль',

@@ -117,7 +117,7 @@ graph TD
 
 ## 4. Блок-схема и Sequence-диаграмма: Пошаговый мастер первичной настройки (Onboarding Wizard)
 
-### А. Блок-схема состояний мастера первого входа
+### А. Блок-схема состояний онбординга и авторизации
 
 ```mermaid
 graph TD
@@ -127,31 +127,35 @@ graph TD
     CheckRoot -- Да (username == 'root') --> DashDirect[Прямой переход на /dashboard]
     
     %% Обычный пользователь
-    CheckRoot -- Нет --> CheckFirstLogin{Первый вход (!last_login_at)<br/>или must_change_password?}
-    CheckFirstLogin -- Нет --> DashDirect
+    CheckRoot -- Нет --> EvalConditions{Проверка статуса аккаунта}
     
-    %% Запуск мастера
-    CheckFirstLogin -- Да --> CheckCanChangeUname{Разрешена смена логина?<br/>(login_count <= 1)}
+    EvalConditions -->|!is_username_locked && must_change_password| FullWizard[Двухшаговый мастер: Шаг 1 Логин -> Шаг 2 Пароль]
+    EvalConditions -->|!is_username_locked && !must_change_password| UsernameOnly[Окно настройки логина: Логин -> Сохранить]
+    EvalConditions -->|is_username_locked && must_change_password| PasswordOnly[Окно смены пароля: Новый пароль -> Сохранить]
+    EvalConditions -->|is_username_locked && !must_change_password| DashDirect
     
     %% Шаг 1: Логин
-    CheckCanChangeUname -- Да --> Step1[Шаг 1: Выбор постоянного логина]
+    FullWizard --> Step1[Шаг 1: Выбор постоянного логина]
+    UsernameOnly --> Step1Solo[Шаг 1: Выбор постоянного логина]
+    
     Step1 --> UserStep1Action{Действие пользователя}
     UserStep1Action -- "Оставить текущий" --> SetCurrentUname[Сохранить текущий username] --> Step2[Шаг 2: Новый постоянный пароль]
     UserStep1Action -- "Ввод логина + Далее" --> ValidateUname{Валидация логина<br/>(3-32 симв., [a-z0-9._-])}
     ValidateUname -- Невалиден --> ShowUnameErr[Ошибка формата логина] --> Step1
     ValidateUname -- Валиден --> Step2
     
-    %% Шаг 2: Пароль (если смена логина недоступна, сразу сюда)
-    CheckCanChangeUname -- Нет --> Step2
+    UsernameOnly --> UserStep1SoloAction{Действие пользователя}
+    UserStep1SoloAction -- "Сохранить и войти" --> SaveUsernameSolo[PUT /api/v1/users/:id<br/>{ username, is_username_locked: true }] --> GoDash
+    
+    %% Шаг 2: Пароль
+    PasswordOnly --> Step2Solo[Окно обязательной смены пароля]
+    Step2Solo --> SavePwdSolo[Ввод пароля + Сохранить] --> SendUpdateSolo[PUT /api/v1/users/:id<br/>{ password, must_change_password: false }] --> GoDash
+    
     Step2 --> UserStep2Action{Действие пользователя}
     UserStep2Action -- "Клик Назад" --> Step1
-    UserStep2Action -- "Ввод пароля + Сохранить и войти" --> ValidatePwd{Пароль указан или обязателен?}
-    
-    ValidatePwd -- Обязателен или заполнен --> CheckComplexity{Чек-лист сложности:<br/>Длина, Заглавные, Цифры, Спецсимволы + Совпадение}
-    CheckComplexity -- Ошибка --> ShowPwdErr[Отображение ошибок в форме] --> Step2
-    CheckComplexity -- Успех --> SendUpdate[PUT /api/v1/users/:id<br/>{ username?, password?, must_change_password: false }]
-    
-    ValidatePwd -- Не обязателен и пуст --> SendUpdate
+    UserStep2Action -- "Ввод пароля + Сохранить и войти" --> ValidatePwd{Чек-лист сложности:<br/>Длина, Заглавные, Цифры, Спецсимволы + Совпадение}
+    ValidatePwd -- Ошибка --> ShowPwdErr[Отображение ошибок в форме] --> Step2
+    ValidatePwd -- Успех --> SendUpdate[PUT /api/v1/users/:id<br/>{ username, password, is_username_locked: true, must_change_password: false }]
     
     SendUpdate --> UpdateResult{Ответ API}
     UpdateResult -- Ошибка (409/422) --> ShowApiErr[Вывод ошибки в модальном окне] --> Step2
@@ -169,45 +173,52 @@ sequenceDiagram
     participant API as ApiClient (/api/v1/users)
     participant Core as Backend UserService
 
-    Note over User, Core: Вход пользователя (не root) при первом входе (!last_login_at || must_change_password)
-    UI->>UI: Открытие модального окна мастера (wizardStep = 'username')
+    Note over User, Core: Вход пользователя (не root) при !is_username_locked || must_change_password
+    UI->>UI: Открытие модального окна мастера
     
-    %% Шаг 1: Логин
-    rect rgb(30, 41, 59)
-        Note over User, UI: Шаг 1: Персонализация логина
-        User->>UI: Ввод нового постоянного логина (или клик "Оставить текущий")
-        User->>UI: Клик "Далее" (wizardNext)
-        UI->>UI: Локальная валидация (длина 3-32, regex a-z0-9._-)
-        UI->>UI: Переключение на wizardStep = 'password'
-    end
-
-    %% Шаг 2: Пароль
-    rect rgb(30, 41, 59)
-        Note over User, UI: Шаг 2: Установка постоянного пароля
-        alt Пользователь хочет скорректировать логин
-            User->>UI: Клик "Назад" (wizardBack)
-            UI->>UI: Возврат на wizardStep = 'username'
-            User->>UI: Корректировка логина и повторный клик "Далее"
-        end
-
-        User->>UI: Ввод нового пароля и подтверждения
-        loop Динамическая проверка сложности
-            UI->>UI: Проверка passwordRequirements
-            UI->>User: Интерактивная подсветка чек-листа политики безопасности
+    alt Доступна смена логина (!is_username_locked)
+        rect rgb(30, 41, 59)
+            Note over User, UI: Шаг 1: Персонализация логина
+            User->>UI: Ввод нового постоянного логина (или клик "Оставить текущий")
+            alt Требуется также смена пароля
+                User->>UI: Клик "Далее" (wizardNext)
+                UI->>UI: Локальная валидация (длина 3-32, regex a-z0-9._-)
+                UI->>UI: Переключение на wizardStep = 'password'
+            else Смена пароля отключена
+                User->>UI: Клик "Сохранить и войти"
+                UI->>API: PUT /api/v1/users/:id { username: "new_login", is_username_locked: true }
+            end
         end
     end
 
-    %% Финальное атомарное сохранение
-    Note over User, Core: Финальное сохранение на последнем шаге
-    User->>UI: Клик "Сохранить и войти" (Единая финальная кнопка)
-    UI->>API: PUT /api/v1/users/:id { username: "new_login", password: "NewPassword123!", must_change_password: false }
+    alt Требуется смена пароля (must_change_password)
+        rect rgb(30, 41, 59)
+            Note over User, UI: Шаг 2: Установка постоянного пароля
+            alt Пользователь хочет скорректировать логин (если был Шаг 1)
+                User->>UI: Клик "Назад" (wizardBack)
+                UI->>UI: Возврат на wizardStep = 'username'
+                User->>UI: Корректировка логина и повторный клик "Далее"
+            end
+
+            User->>UI: Ввод нового пароля и подтверждения
+            loop Динамическая проверка сложности
+                UI->>UI: Проверка passwordRequirements
+                UI->>User: Интерактивная подсветка чек-листа политики безопасности
+            end
+        end
+    end
+
+    %% Финальное сохранение
+    Note over User, Core: Финальное сохранение учетных данных
+    User->>UI: Клик "Сохранить и войти"
+    UI->>API: PUT /api/v1/users/:id { username?, password?, is_username_locked: true, must_change_password: false }
     API->>Core: update_user (валидация логина + сложность пароля + Argon2id hash)
     
     alt Ошибка валидации или конфликт логина (409/422)
         Core-->>API: 409 Conflict / 422 Unprocessable Entity
         API-->>UI: Отображение сообщения об ошибке
     else Успешное сохранение
-        Core->>Core: UPDATE users SET username = ..., password_hash = ..., must_change_password = 0
+        Core->>Core: UPDATE users SET username = ..., password_hash = ..., is_username_locked = 1, must_change_password = 0
         Core-->>API: 200 OK (UserResponseDto)
         API-->>Store: authStore.user = updated
         API-->>UI: 200 OK
