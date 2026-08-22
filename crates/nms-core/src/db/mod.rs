@@ -151,6 +151,8 @@ impl Db {
                 is_superuser INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 login_count INTEGER NOT NULL DEFAULT 0,
+                failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
@@ -169,6 +171,12 @@ impl Db {
             .execute(pool)
             .await;
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN locked_until TEXT")
             .execute(pool)
             .await;
 

@@ -54,6 +54,92 @@ where
 /// Если авторизация веб-интерфейса отключена, автоматически предоставляет права Суперпользователя.
 pub struct AuthUser(pub JwtClaims);
 
+use std::net::IpAddr;
+
+/// Извлечь IP-адрес клиента из HTTP-заголовков (X-Forwarded-For, X-Real-IP)
+pub fn extract_client_ip(headers: &axum::http::HeaderMap) -> String {
+    if let Some(xff) = headers.get("x-forwarded-for").and_then(|h| h.to_str().ok()) {
+        if let Some(first_ip) = xff.split(',').next() {
+            let trimmed = first_ip.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    if let Some(real_ip) = headers.get("x-real-ip").and_then(|h| h.to_str().ok()) {
+        let trimmed = real_ip.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    "127.0.0.1".to_string()
+}
+
+/// Проверить, разрешен ли IP-адрес согласно белому списку
+pub fn is_ip_allowed(client_ip: &str, whitelist: &str) -> bool {
+    let trimmed = whitelist.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    let client_ip_clean = client_ip.trim();
+    if client_ip_clean.is_empty() {
+        return true;
+    }
+
+    // Localhost всегда разрешен (Anti-Lockout)
+    if client_ip_clean == "127.0.0.1" || client_ip_clean == "::1" || client_ip_clean == "localhost" {
+        return true;
+    }
+
+    let client_parsed: IpAddr = match client_ip_clean.parse() {
+        Ok(ip) => ip,
+        Err(_) => return false,
+    };
+
+    // Разделители: запятая, точка с запятой или пробел
+    for entry in trimmed.split([',', ';', ' ']) {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+
+        // Поддержка точного IP
+        if let Ok(ip) = entry.parse::<IpAddr>() {
+            if ip == client_parsed {
+                return true;
+            }
+        }
+
+        // Поддержка CIDR подсетей (например 192.168.1.0/24)
+        if let Some((net_str, mask_str)) = entry.split_once('/') {
+            if let (Ok(net_ip), Ok(prefix_len)) = (net_str.parse::<IpAddr>(), mask_str.parse::<u8>()) {
+                match (client_parsed, net_ip) {
+                    (IpAddr::V4(c), IpAddr::V4(n)) if prefix_len <= 32 => {
+                        let mask = if prefix_len == 0 { 0u32 } else { !0u32 << (32 - prefix_len) };
+                        let c_u32 = u32::from(c);
+                        let n_u32 = u32::from(n);
+                        if (c_u32 & mask) == (n_u32 & mask) {
+                            return true;
+                        }
+                    }
+                    (IpAddr::V6(c), IpAddr::V6(n)) if prefix_len <= 128 => {
+                        let mask = if prefix_len == 0 { 0u128 } else { !0u128 << (128 - prefix_len) };
+                        let c_u128 = u128::from(c);
+                        let n_u128 = u128::from(n);
+                        if (c_u128 & mask) == (n_u128 & mask) {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    false
+}
+
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: HasJwtManager + Send + Sync,
@@ -61,31 +147,38 @@ where
     type Rejection = AuthErrorResponse;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|h| h.to_str().ok());
-
-        let token = match auth_header {
-            Some(header_val) if header_val.starts_with("Bearer ") => {
-                Some(&header_val["Bearer ".len()..])
-            }
-            _ => None,
-        };
-
-        if let Some(t) = token {
-            let claims = state
-                .jwt_manager()
-                .verify_token(t)
-                .map_err(AuthErrorResponse)?;
-            return Ok(AuthUser(claims));
-        }
-
-        // Если заголовок отсутствует, проверяем политику web_ui_auth в KV Store
+        // Проверка IP Whitelist при наличии подключения к БД
         if let Some(db) = state.db() {
             let kv = nms_core::db::kv::KvStore::system(db.clone());
-            if let Ok(Some(policies)) = kv.get::<serde_json::Value>("security_policies").await {
-                if policies.get("web_ui_auth").and_then(|v| v.as_bool()) == Some(false) {
+            if let Ok(Some(policies)) = kv.get::<nms_common::models::user::SecurityPoliciesDto>("security_policies").await {
+                let client_ip = extract_client_ip(&parts.headers);
+                if !is_ip_allowed(&client_ip, &policies.ip_whitelist) {
+                    return Err(AuthErrorResponse(AppError::forbidden(
+                        "Client IP is not allowed by security policy whitelist",
+                    )));
+                }
+
+                let auth_header = parts
+                    .headers
+                    .get(AUTHORIZATION)
+                    .and_then(|h| h.to_str().ok());
+
+                let token = match auth_header {
+                    Some(header_val) if header_val.starts_with("Bearer ") => {
+                        Some(&header_val["Bearer ".len()..])
+                    }
+                    _ => None,
+                };
+
+                if let Some(t) = token {
+                    let claims = state
+                        .jwt_manager()
+                        .verify_token(t)
+                        .map_err(AuthErrorResponse)?;
+                    return Ok(AuthUser(claims));
+                }
+
+                if !policies.web_ui_auth {
                     return Ok(AuthUser(JwtClaims {
                         sub: uuid::Uuid::nil(),
                         username: "anonymous_admin".to_string(),
@@ -106,6 +199,26 @@ where
                     }));
                 }
             }
+        }
+
+        let auth_header = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|h| h.to_str().ok());
+
+        let token = match auth_header {
+            Some(header_val) if header_val.starts_with("Bearer ") => {
+                Some(&header_val["Bearer ".len()..])
+            }
+            _ => None,
+        };
+
+        if let Some(t) = token {
+            let claims = state
+                .jwt_manager()
+                .verify_token(t)
+                .map_err(AuthErrorResponse)?;
+            return Ok(AuthUser(claims));
         }
 
         Err(AuthErrorResponse(AppError::unauthorized(

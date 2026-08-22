@@ -5,11 +5,11 @@
 //! контроль лимитов суперпользователей, правила защиты от случайной блокировки (Anti-Lockout)
 //! и проверку учетных данных при аутентификации.
 
-use crate::auth::{hash_password, verify_password};
+use crate::auth::{hash_password, validate_password_complexity, verify_password};
 use crate::db::Db;
 use chrono::{DateTime, Utc};
 use nms_common::error::{AppError, Result};
-use nms_common::models::user::{CreateUserDto, UpdateUserDto, User};
+use nms_common::models::user::{CreateUserDto, SecurityPoliciesDto, UpdateUserDto, User};
 use std::collections::HashSet;
 use tracing::info;
 use uuid::Uuid;
@@ -44,18 +44,28 @@ impl UserService {
 
         if count_row.0 == 0 {
             info!("No users found in database. Initializing default admin user: 'admin'");
-            self.create_user(CreateUserDto {
-                username: "admin".to_string(),
-                password: "admin".to_string(),
-                full_name: Some("System Administrator".to_string()),
-                email: Some("admin@nms.local".to_string()),
-                department: Some("Network Operations".to_string()),
-                is_active: Some(true),
-                is_superuser: Some(true),
-                must_change_password: Some(false),
-                roles: Some(vec!["admin".to_string()]),
-            })
-            .await?;
+            let id = Uuid::new_v4();
+            let password_hash = hash_password("admin")?;
+            let now = Utc::now().to_rfc3339();
+
+            sqlx::query(
+                r#"
+                INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
+                VALUES (?, 'admin', 'System Administrator', 'admin@nms.local', 'Network Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
+                "#,
+            )
+            .bind(id.to_string())
+            .bind(&password_hash)
+            .bind(&now)
+            .bind(&now)
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(format!("Failed to insert default admin: {}", e)))?;
+
+            let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, 'admin')")
+                .bind(id.to_string())
+                .execute(self.db.writer())
+                .await;
         }
 
         Ok(())
@@ -80,8 +90,9 @@ impl UserService {
 
     /// Создать нового пользователя системы
     ///
-    /// Выполняет валидацию логина и пароля, проверку квоты суперпользователей (максимум 4),
-    /// хэширует пароль алгоритмом Argon2id, сохраняет запись в БД и привязывает указанные роли.
+    /// Выполняет валидацию логина и пароля по активной политике безопасности,
+    /// проверку квоты суперпользователей (максимум 4), хэширует пароль алгоритмом Argon2id,
+    /// сохраняет запись в БД и привязывает указанные роли.
     ///
     /// # Аргументы
     /// * `dto` — Параметры создания пользователя ([`CreateUserDto`]).
@@ -90,7 +101,7 @@ impl UserService {
     /// Созданная и сохраненная в базе модель [`User`] с назначенными ролями и правами.
     ///
     /// # Ошибки
-    /// * [`AppError::validation`] — если логин пустой, пароль короче 4 символов или превышена квота суперпользователей (макс. 4).
+    /// * [`AppError::validation`] — если логин пустой, пароль не удовлетворяет политике или превышена квота суперпользователей (макс. 4).
     /// * [`AppError::conflict`] — если пользователь с таким логином уже существует в системе.
     /// * [`AppError::database`] — при сбое выполнения SQL-запроса.
     pub async fn create_user(&self, dto: CreateUserDto) -> Result<User> {
@@ -99,12 +110,22 @@ impl UserService {
             return Err(AppError::validation("username", "Username cannot be empty"));
         }
 
-        if dto.password.len() < 4 {
-            return Err(AppError::validation(
-                "password",
-                "Password must be at least 4 characters long",
-            ));
-        }
+        // Загрузка политики безопасности
+        let kv = crate::db::kv::KvStore::system(self.db.clone());
+        let policy: SecurityPoliciesDto = kv
+            .get("security_policies")
+            .await
+            .unwrap_or_default()
+            .unwrap_or_default();
+
+        // Проверка сложности пароля согласно политике
+        validate_password_complexity(
+            &dto.password,
+            policy.min_password_length,
+            policy.require_uppercase,
+            policy.require_digits,
+            policy.require_special,
+        )?;
 
         // Проверка уникальности имени пользователя
         let existing: Option<(String,)> =
@@ -136,23 +157,13 @@ impl UserService {
         let password_hash = hash_password(&dto.password)?;
         let now = Utc::now();
         let is_active = dto.is_active.unwrap_or(true);
-        let must_change_password = match dto.must_change_password {
-            Some(val) => val,
-            None => {
-                let kv = crate::db::kv::KvStore::system(self.db.clone());
-                if let Ok(Some(policies)) = kv.get::<serde_json::Value>("security_policies").await {
-                    policies.get("mandatory_password_change").and_then(|v| v.as_bool()).unwrap_or(true)
-                } else {
-                    true
-                }
-            }
-        };
+        let must_change_password = dto.must_change_password.unwrap_or(policy.mandatory_password_change);
 
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -214,12 +225,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
+            Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -258,12 +271,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
+            Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -280,8 +295,13 @@ impl UserService {
 
     /// Выполнить аутентификацию пользователя по логину и паролю
     ///
-    /// Проверяет наличие пользователя, статус активности аккаунта (`is_active`)
-    /// и совпадение пароля с Argon2id хэшем. При успехе обновляет поле `last_login_at` и увеличивает `login_count`.
+    /// Проверяет наличие пользователя, статус активности аккаунта (`is_active`),
+    /// блокировку (`locked_until`), а также соответствие пароля с Argon2id хэшем.
+    ///
+    /// При неудачном вводе увеличивает счетчик неудачных попыток и при превышении лимита
+    /// блокирует аккаунт на `lockout_duration` минут согласно `SecurityPoliciesDto`.
+    ///
+    /// При успехе сбрасывает счетчик неудачных попыток, обновляет поле `last_login_at` и увеличивает `login_count`.
     ///
     /// # Аргументы
     /// * `username` — Имя пользователя.
@@ -291,7 +311,7 @@ impl UserService {
     /// Аутентифицированная модель [`User`].
     ///
     /// # Ошибки
-    /// * [`AppError::unauthorized`] — если учетные данные неверны или аккаунт отключен.
+    /// * [`AppError::unauthorized`] — если учетные данные неверны, аккаунт отключен или заблокирован.
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
         let user = self.get_user_by_username(username).await.map_err(|_| {
             AppError::unauthorized("Invalid username or password")
@@ -301,17 +321,64 @@ impl UserService {
             return Err(AppError::unauthorized("Account is disabled"));
         }
 
-        if !verify_password(password, &user.password_hash)? {
-            return Err(AppError::unauthorized("Invalid username or password"));
+        let now = Utc::now();
+
+        // Проверка текущей блокировки
+        if let Some(locked_until) = user.locked_until {
+            if locked_until > now {
+                let remaining_secs = (locked_until - now).num_seconds().max(1);
+                let remaining_mins = (remaining_secs + 59) / 60;
+                return Err(AppError::unauthorized(format!(
+                    "Account is temporarily locked due to excessive failed attempts. Try again in {} min.",
+                    remaining_mins
+                )));
+            }
         }
 
-        // Обновляем время последнего входа и счетчик логинов
-        let now = Utc::now().to_rfc3339();
-        let _ = sqlx::query("UPDATE users SET last_login_at = ?, login_count = login_count + 1 WHERE id = ?")
-            .bind(now)
+        let kv = crate::db::kv::KvStore::system(self.db.clone());
+        let policy: SecurityPoliciesDto = kv
+            .get("security_policies")
+            .await
+            .unwrap_or_default()
+            .unwrap_or_default();
+
+        if !verify_password(password, &user.password_hash)? {
+            let new_failed_attempts = user.failed_login_attempts + 1;
+            let mut locked_until_val: Option<String> = None;
+
+            if new_failed_attempts >= policy.max_login_attempts as i64 {
+                let lock_until = now + chrono::Duration::minutes(policy.lockout_duration as i64);
+                locked_until_val = Some(lock_until.to_rfc3339());
+            }
+
+            let _ = sqlx::query(
+                "UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?"
+            )
+            .bind(new_failed_attempts)
+            .bind(locked_until_val.as_ref())
             .bind(user.id.to_string())
             .execute(self.db.writer())
             .await;
+
+            if locked_until_val.is_some() {
+                return Err(AppError::unauthorized(format!(
+                    "Account is temporarily locked for {} min due to exceeding maximum login attempts.",
+                    policy.lockout_duration
+                )));
+            }
+
+            return Err(AppError::unauthorized("Invalid username or password"));
+        }
+
+        // Обновляем время последнего входа, увеличиваем счетчик логинов и сбрасываем блокировки
+        let now_str = now.to_rfc3339();
+        let _ = sqlx::query(
+            "UPDATE users SET last_login_at = ?, login_count = login_count + 1, failed_login_attempts = 0, locked_until = NULL WHERE id = ?"
+        )
+        .bind(now_str)
+        .bind(user.id.to_string())
+        .execute(self.db.writer())
+        .await;
 
         Ok(user)
     }
@@ -335,12 +402,14 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
+            Option<String>,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -362,7 +431,8 @@ impl UserService {
     /// 1. Запрет деактивации/блокировки суперпользователя (`Anti-Lockout`).
     /// 2. Контроль квоты суперпользователей $\le 4$ при назначении роли `superuser`.
     /// 3. Запрет понижения роли единственного оставшегося суперпользователя ($\ge 1$).
-    /// 4. Автоматический сброс флага `must_change_password` при установке нового пароля.
+    /// 4. Проверка сложности пароля согласно `SecurityPoliciesDto` при его обновлении.
+    /// 5. Автоматический сброс флага `must_change_password`, `failed_login_attempts` и `locked_until` при установке нового пароля.
     ///
     /// # Аргументы
     /// * `id` — Идентификатор пользователя ([`Uuid`]).
@@ -373,7 +443,7 @@ impl UserService {
     ///
     /// # Ошибки
     /// * [`AppError::not_found`] — если пользователь с указанным `id` не найден.
-    /// * [`AppError::validation`] — при попытке заблокировать суперпользователя, нарушить квоты (1..=4).
+    /// * [`AppError::validation`] — при попытке заблокировать суперпользователя, нарушить квоты или задать некорректный пароль.
     /// * [`AppError::database`] — при ошибке выполнения SQL-запроса.
     pub async fn update_user(&self, id: Uuid, dto: UpdateUserDto) -> Result<User> {
         let existing = self.get_user_by_id(id).await?;
@@ -417,7 +487,24 @@ impl UserService {
 
         let is_password_changed = dto.password.as_ref().map_or(false, |p| !p.trim().is_empty());
         let password_hash = match dto.password {
-            Some(ref pwd) if !pwd.trim().is_empty() => hash_password(pwd)?,
+            Some(ref pwd) if !pwd.trim().is_empty() => {
+                let kv = crate::db::kv::KvStore::system(self.db.clone());
+                let policy: SecurityPoliciesDto = kv
+                    .get("security_policies")
+                    .await
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+
+                validate_password_complexity(
+                    pwd,
+                    policy.min_password_length,
+                    policy.require_uppercase,
+                    policy.require_digits,
+                    policy.require_special,
+                )?;
+
+                hash_password(pwd)?
+            }
             _ => existing.password_hash.clone(),
         };
 
@@ -485,44 +572,77 @@ impl UserService {
 
         // Обновляем запись пользователя
         let now = Utc::now().to_rfc3339();
-        sqlx::query(
-            r#"
-            UPDATE users SET
-                username = ?,
-                full_name = ?,
-                email = ?,
-                department = ?,
-                password_hash = ?,
-                is_active = ?,
-                is_superuser = ?,
-                must_change_password = ?,
-                updated_at = ?
-            WHERE id = ?
-            "#,
-        )
-        .bind(&new_username)
-        .bind(&full_name)
-        .bind(&email)
-        .bind(&department)
-        .bind(&password_hash)
-        .bind(if is_active { 1 } else { 0 })
-        .bind(if new_is_superuser { 1 } else { 0 })
-        .bind(if must_change_password { 1 } else { 0 })
-        .bind(now)
-        .bind(id.to_string())
-        .execute(self.db.writer())
-        .await
-        .map_err(|e| AppError::database(format!("Failed to update user: {}", e)))?;
+        if is_password_changed {
+            sqlx::query(
+                r#"
+                UPDATE users SET
+                    username = ?,
+                    full_name = ?,
+                    email = ?,
+                    department = ?,
+                    password_hash = ?,
+                    is_active = ?,
+                    is_superuser = ?,
+                    must_change_password = ?,
+                    failed_login_attempts = 0,
+                    locked_until = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                "#,
+            )
+            .bind(&new_username)
+            .bind(&full_name)
+            .bind(&email)
+            .bind(&department)
+            .bind(&password_hash)
+            .bind(if is_active { 1 } else { 0 })
+            .bind(if new_is_superuser { 1 } else { 0 })
+            .bind(if must_change_password { 1 } else { 0 })
+            .bind(&now)
+            .bind(id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE users SET
+                    username = ?,
+                    full_name = ?,
+                    email = ?,
+                    department = ?,
+                    password_hash = ?,
+                    is_active = ?,
+                    is_superuser = ?,
+                    must_change_password = ?,
+                    updated_at = ?
+                WHERE id = ?
+                "#,
+            )
+            .bind(&new_username)
+            .bind(&full_name)
+            .bind(&email)
+            .bind(&department)
+            .bind(&password_hash)
+            .bind(if is_active { 1 } else { 0 })
+            .bind(if new_is_superuser { 1 } else { 0 })
+            .bind(if must_change_password { 1 } else { 0 })
+            .bind(&now)
+            .bind(id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        }
 
         // Обновляем роли, если переданы
-        if let Some(roles) = dto.roles {
+        if let Some(ref roles) = dto.roles {
             sqlx::query("DELETE FROM user_roles WHERE user_id = ?")
                 .bind(id.to_string())
                 .execute(self.db.writer())
                 .await
                 .map_err(|e| AppError::database(e.to_string()))?;
 
-            for role in &roles {
+            for role in roles {
                 sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, ?)")
                     .bind(id.to_string())
                     .bind(role)
@@ -535,40 +655,57 @@ impl UserService {
         self.get_user_by_id(id).await
     }
 
-    /// Удалить пользователя по его уникальному идентификатору (UUID)
+    /// Удалить пользователя из системы
     ///
-    /// Проверяет защиту последнего суперпользователя: в системе всегда должен оставаться
-    /// как минимум 1 суперпользователь.
+    /// Реализует проверки:
+    /// 1. Запрет удаления суперпользователя (`Anti-Lockout`).
+    /// 2. Запрет удаления пользователя `root`.
+    /// 3. Удаление ассоциированных ролей (`user_roles`).
     ///
     /// # Аргументы
     /// * `id` — Идентификатор удаляемого пользователя ([`Uuid`]).
     ///
-    /// # Возвращаемое значение
-    /// `true`, если пользователь был успешно удален из базы данных.
-    ///
     /// # Ошибки
-    /// * [`AppError::not_found`] — если пользователь не существует.
-    /// * [`AppError::validation`] — при попытке удалить последнего оставшегося суперпользователя.
+    /// * [`AppError::not_found`] — если пользователь с указанным `id` не найден.
+    /// * [`AppError::validation`] — при попытке удалить суперпользователя или пользователя `root`.
     /// * [`AppError::database`] — при ошибке выполнения SQL-запроса.
-    pub async fn delete_user(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_user(&self, id: Uuid) -> Result<()> {
         let existing = self.get_user_by_id(id).await?;
+
+        // Запрет удаления root пользователя
+        if existing.username == "root" {
+            return Err(AppError::validation(
+                "user_id",
+                "Root user account cannot be deleted",
+            ));
+        }
+
+        // Запрет удаления последнего оставшегося суперпользователя
         if existing.is_superuser {
             let current_superusers = self.count_superusers().await?;
             if current_superusers <= 1 {
                 return Err(AppError::validation(
-                    "id",
+                    "user_id",
                     "Cannot delete the last remaining superuser in the system",
                 ));
             }
         }
 
-        let res = sqlx::query("DELETE FROM users WHERE id = ?")
+        // Удаляем назначенные роли
+        sqlx::query("DELETE FROM user_roles WHERE user_id = ?")
             .bind(id.to_string())
             .execute(self.db.writer())
             .await
             .map_err(|e| AppError::database(e.to_string()))?;
 
-        Ok(res.rows_affected() > 0)
+        // Удаляем пользователя
+        sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Преобразовать кортеж строки таблицы `users` в модель [`User`] с подгрузкой назначенных ролей и прав
@@ -594,6 +731,8 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
+            Option<String>,
             String,
             String,
             Option<String>,
@@ -610,6 +749,8 @@ impl UserService {
             is_superuser_num,
             must_change_pwd_num,
             login_count,
+            failed_login_attempts,
+            locked_until_str,
             created_at_str,
             updated_at_str,
             last_login_at_str,
@@ -620,6 +761,11 @@ impl UserService {
         let is_superuser = is_superuser_num != 0;
         let must_change_password = must_change_pwd_num != 0;
 
+        let locked_until = locked_until_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
@@ -672,6 +818,8 @@ impl UserService {
             is_superuser,
             must_change_password,
             login_count,
+            failed_login_attempts,
+            locked_until,
             roles,
             permissions,
             created_at,

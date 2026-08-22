@@ -23,7 +23,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let dup_res = service
         .create_user(CreateUserDto {
             username: "ADMIN".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(false),
             roles: Some(vec!["viewer".into()]),
@@ -50,7 +50,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let empty_user = service
         .create_user(CreateUserDto {
             username: "   ".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(false),
             roles: Some(vec!["viewer".into()]),
@@ -100,7 +100,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let s2 = service
         .create_user(CreateUserDto {
             username: "super_2".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(true),
             roles: Some(vec!["superuser".into()]),
@@ -112,7 +112,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let s3 = service
         .create_user(CreateUserDto {
             username: "super_3".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(true),
             roles: Some(vec!["superuser".into()]),
@@ -124,7 +124,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let s4 = service
         .create_user(CreateUserDto {
             username: "super_4".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(true),
             roles: Some(vec!["superuser".into()]),
@@ -139,7 +139,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let s5_attack = service
         .create_user(CreateUserDto {
             username: "super_5".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(true),
             roles: Some(vec!["superuser".into()]),
@@ -154,7 +154,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let regular_user = service
         .create_user(CreateUserDto {
             username: "regular_user".into(),
-            password: "password123".into(),
+            password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(false),
             must_change_password: Some(true),
@@ -185,7 +185,7 @@ async fn test_attack_scenarios_and_security_edge_cases() {
         .update_user(
             regular_user.id,
             UpdateUserDto {
-                password: Some("new_secret_password_2026".into()),
+                password: Some("NewSecretPassword2026!".into()),
                 ..Default::default()
             },
         )

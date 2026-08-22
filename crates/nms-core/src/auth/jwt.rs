@@ -68,8 +68,27 @@ impl JwtManager {
         is_superuser: bool,
         permissions: Vec<String>,
     ) -> Result<String> {
+        self.generate_token_with_ttl(user_id, username, is_superuser, permissions, self.ttl_seconds)
+    }
+
+    /// Сгенерировать новый JWT токен для пользователя с явным указанием TTL
+    ///
+    /// # Аргументы
+    /// * `user_id` — Уникальный идентификатор пользователя ([`Uuid`]).
+    /// * `username` — Имя пользователя.
+    /// * `is_superuser` — Флаг суперпользователя.
+    /// * `permissions` — Список строковых прав доступа.
+    /// * `ttl_seconds` — Время жизни токена в секундах.
+    pub fn generate_token_with_ttl(
+        &self,
+        user_id: Uuid,
+        username: &str,
+        is_superuser: bool,
+        permissions: Vec<String>,
+        ttl_seconds: i64,
+    ) -> Result<String> {
         let now = Utc::now().timestamp();
-        let exp = now + self.ttl_seconds;
+        let exp = now + ttl_seconds;
 
         let claims = JwtClaims {
             sub: user_id,

@@ -79,7 +79,7 @@ async fn test_api_privilege_escalation_protection() {
         .body(Body::from(
             serde_json::to_string(&CreateUserDto {
                 username: "reg_admin".into(),
-                password: "adminpassword123".into(),
+                password: "AdminPassword123!".into(),
                 full_name: Some("Regular Admin".into()),
                 email: Some("reg_admin@nms.local".into()),
                 is_active: Some(true),
@@ -106,7 +106,7 @@ async fn test_api_privilege_escalation_protection() {
         .body(Body::from(
             serde_json::json!({
                 "username": "reg_admin",
-                "password": "adminpassword123"
+                "password": "AdminPassword123!"
             })
             .to_string(),
         ))
@@ -129,7 +129,7 @@ async fn test_api_privilege_escalation_protection() {
         .body(Body::from(
             serde_json::to_string(&CreateUserDto {
                 username: "super_backdoor".into(),
-                password: "password123".into(),
+                password: "Password123!".into(),
                 is_active: Some(true),
                 is_superuser: Some(true),
                 roles: Some(vec!["superuser".into()]),
@@ -205,4 +205,28 @@ async fn test_api_privilege_escalation_protection() {
         StatusCode::BAD_REQUEST,
         "Пользователь не должен иметь возможности удалить самого себя"
     );
+}
+
+#[tokio::test]
+async fn test_ip_whitelist_and_policy_enforcement() {
+    use nms_server::middleware::is_ip_allowed;
+
+    // 1. Пустой белый список разрешает всё
+    assert!(is_ip_allowed("192.168.1.50", ""));
+    assert!(is_ip_allowed("10.0.0.1", "   "));
+
+    // 2. Localhost всегда разрешен (Anti-Lockout)
+    assert!(is_ip_allowed("127.0.0.1", "10.0.0.0/24"));
+    assert!(is_ip_allowed("::1", "10.0.0.0/24"));
+
+    // 3. Точные IP и подсети
+    let whitelist = "192.168.1.100, 10.10.0.0/16, 172.16.5.0/24";
+    assert!(is_ip_allowed("192.168.1.100", whitelist));
+    assert!(is_ip_allowed("10.10.20.30", whitelist));
+    assert!(is_ip_allowed("172.16.5.123", whitelist));
+
+    // 4. Запрещенные IP
+    assert!(!is_ip_allowed("192.168.1.101", whitelist));
+    assert!(!is_ip_allowed("10.11.0.1", whitelist));
+    assert!(!is_ip_allowed("8.8.8.8", whitelist));
 }

@@ -187,90 +187,7 @@ async fn update_user_preferences_handler(
 // 2. Политики безопасности и аутентификации
 // ---------------------------------------------------------------------------
 
-/// DTO общесистемных политик безопасности и сложности паролей
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecurityPoliciesDto {
-    /// Разрешить авторизацию через веб-интерфейс
-    #[serde(default = "default_true")]
-    pub web_ui_auth: bool,
-    /// Обязательная смена временного пароля
-    #[serde(default = "default_true")]
-    pub mandatory_password_change: bool,
-    /// Принудительное 2FA (TOTP)
-    #[serde(default = "default_false")]
-    pub force_2fa: bool,
-    /// Максимальное число неудачных попыток входа
-    #[serde(default = "default_max_login_attempts")]
-    pub max_login_attempts: u32,
-    /// Длительность блокировки в минутах
-    #[serde(default = "default_lockout_duration")]
-    pub lockout_duration: u32,
-    /// Время жизни сессии в часах
-    #[serde(default = "default_session_ttl")]
-    pub session_ttl: u32,
-    /// Таймаут неактивности пользователя в минутах
-    #[serde(default = "default_inactivity_timeout")]
-    pub inactivity_timeout: u32,
-    /// Минимальная длина пароля
-    #[serde(default = "default_min_password_length")]
-    pub min_password_length: u32,
-    /// Требование заглавных букв в пароле
-    #[serde(default = "default_true")]
-    pub require_uppercase: bool,
-    /// Требование цифр в пароле
-    #[serde(default = "default_true")]
-    pub require_digits: bool,
-    /// Требование спецсимволов в пароле
-    #[serde(default = "default_true")]
-    pub require_special: bool,
-    /// Белый список разрешенных IP-адресов
-    #[serde(default = "default_ip_whitelist")]
-    pub ip_whitelist: String,
-}
-
-fn default_true() -> bool {
-    true
-}
-fn default_false() -> bool {
-    false
-}
-fn default_max_login_attempts() -> u32 {
-    5
-}
-fn default_lockout_duration() -> u32 {
-    30
-}
-fn default_session_ttl() -> u32 {
-    12
-}
-fn default_inactivity_timeout() -> u32 {
-    30
-}
-fn default_min_password_length() -> u32 {
-    8
-}
-fn default_ip_whitelist() -> String {
-    String::new()
-}
-
-impl Default for SecurityPoliciesDto {
-    fn default() -> Self {
-        Self {
-            web_ui_auth: true,
-            mandatory_password_change: true,
-            force_2fa: false,
-            max_login_attempts: 5,
-            lockout_duration: 30,
-            session_ttl: 12,
-            inactivity_timeout: 30,
-            min_password_length: 8,
-            require_uppercase: true,
-            require_digits: true,
-            require_special: true,
-            ip_whitelist: default_ip_whitelist(),
-        }
-    }
-}
+pub use nms_common::models::user::SecurityPoliciesDto;
 
 /// GET /api/v1/settings/security
 async fn get_security_policies_handler(
@@ -306,6 +223,30 @@ async fn update_security_policies_handler(
         check_permission(&claims, "settings.manage").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
+    }
+
+    if dto.min_password_length < 4 || dto.min_password_length > 64 {
+        let err = nms_common::error::AppError::validation(
+            "min_password_length",
+            "Minimum password length must be between 4 and 64 characters",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    if dto.max_login_attempts < 1 || dto.max_login_attempts > 100 {
+        let err = nms_common::error::AppError::validation(
+            "max_login_attempts",
+            "Max login attempts must be between 1 and 100",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    if dto.lockout_duration < 1 || dto.lockout_duration > 10080 {
+        let err = nms_common::error::AppError::validation(
+            "lockout_duration",
+            "Lockout duration must be between 1 and 10080 minutes",
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
     }
 
     let kv = KvStore::system(state.db.clone());
@@ -469,6 +410,10 @@ fn default_permissions_matrix() -> serde_json::Value {
 // ---------------------------------------------------------------------------
 // 4. Системное обслуживание и администрирование
 // ---------------------------------------------------------------------------
+
+fn default_true() -> bool {
+    true
+}
 
 /// DTO настроек системного обслуживания и резервного копирования
 #[derive(Debug, Clone, Serialize, Deserialize)]

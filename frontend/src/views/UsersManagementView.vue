@@ -258,7 +258,7 @@ async function handleCreateUser() {
   try {
     const created = await usersApi.create({
       username: newUserForm.value.username.trim(),
-      password: newUserForm.value.password.trim() || 'operator123',
+      password: newUserForm.value.password.trim() || 'Operator123!',
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
       department: newUserForm.value.department.trim() || undefined,

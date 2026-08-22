@@ -9,7 +9,7 @@ pub mod jwt;
 pub mod password;
 
 pub use jwt::JwtManager;
-pub use password::{hash_password, verify_password};
+pub use password::{hash_password, validate_password_complexity, verify_password};
 
 use nms_common::error::{AppError, Result};
 use nms_common::models::user::JwtClaims;

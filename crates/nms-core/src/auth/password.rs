@@ -61,3 +61,54 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
 }
+
+/// Проверить соответствие пароля политике сложности
+///
+/// # Аргументы
+/// * `password` — Пароль в открытом виде
+/// * `min_length` — Минимальная длина пароля
+/// * `require_uppercase` — Требовать ли заглавные буквы [A-Z, А-Я]
+/// * `require_digits` — Требовать ли цифры [0-9]
+/// * `require_special` — Требовать ли спецсимволы (!@#$%^&*...)
+///
+/// # Ошибки
+/// Возвращает [`AppError::validation`], если пароль не удовлетворяет требованиям.
+pub fn validate_password_complexity(
+    password: &str,
+    min_length: u32,
+    require_uppercase: bool,
+    require_digits: bool,
+    require_special: bool,
+) -> Result<()> {
+    let char_count = password.chars().count();
+    if char_count < min_length as usize {
+        return Err(AppError::validation(
+            "password",
+            format!("Password length must be at least {} characters", min_length),
+        ));
+    }
+
+    if require_uppercase && !password.chars().any(|c| c.is_uppercase()) {
+        return Err(AppError::validation(
+            "password",
+            "Password must contain at least one uppercase letter",
+        ));
+    }
+
+    if require_digits && !password.chars().any(|c| c.is_ascii_digit()) {
+        return Err(AppError::validation(
+            "password",
+            "Password must contain at least one numeric digit",
+        ));
+    }
+
+    if require_special && !password.chars().any(|c| !c.is_alphanumeric()) {
+        return Err(AppError::validation(
+            "password",
+            "Password must contain at least one special character",
+        ));
+    }
+
+    Ok(())
+}
+

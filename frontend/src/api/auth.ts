@@ -28,6 +28,10 @@ export interface AuthConfig {
   require_uppercase: boolean
   require_digits: boolean
   require_special: boolean
+  session_ttl?: number
+  inactivity_timeout?: number
+  max_login_attempts?: number
+  lockout_duration?: number
 }
 
 export const authApi = {

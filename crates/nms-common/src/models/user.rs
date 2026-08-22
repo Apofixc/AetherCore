@@ -39,12 +39,102 @@ pub struct User {
     pub permissions: Vec<String>,
     /// Количество успешных аутентификаций пользователя
     pub login_count: i64,
+    /// Количество последовательных неудачных попыток входа
+    #[serde(default)]
+    pub failed_login_attempts: i64,
+    /// Дата и время, до которого учетная запись заблокирована из-за превышения попыток (UTC)
+    pub locked_until: Option<DateTime<Utc>>,
     /// Дата и время создания учетной записи (UTC)
     pub created_at: DateTime<Utc>,
     /// Дата и время последнего обновления профиля (UTC)
     pub updated_at: DateTime<Utc>,
     /// Дата и время последнего успешного входа в систему (UTC)
     pub last_login_at: Option<DateTime<Utc>>,
+}
+
+/// DTO системных политик безопасности
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SecurityPoliciesDto {
+    /// Требовать обязательную аутентификацию в Web UI
+    #[serde(default = "default_true")]
+    pub web_ui_auth: bool,
+    /// Обязательная смена пароля при первом входе
+    #[serde(default = "default_true")]
+    pub mandatory_password_change: bool,
+    /// Принудительная двухфакторная аутентификация
+    #[serde(default = "default_false")]
+    pub force_2fa: bool,
+    /// Максимальное число неудачных попыток входа
+    #[serde(default = "default_max_login_attempts")]
+    pub max_login_attempts: u32,
+    /// Длительность блокировки в минутах
+    #[serde(default = "default_lockout_duration")]
+    pub lockout_duration: u32,
+    /// Время жизни сессии в часах
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl: u32,
+    /// Таймаут неактивности пользователя в минутах
+    #[serde(default = "default_inactivity_timeout")]
+    pub inactivity_timeout: u32,
+    /// Минимальная длина пароля
+    #[serde(default = "default_min_password_length")]
+    pub min_password_length: u32,
+    /// Требование заглавных букв в пароле
+    #[serde(default = "default_true")]
+    pub require_uppercase: bool,
+    /// Требование цифр в пароле
+    #[serde(default = "default_true")]
+    pub require_digits: bool,
+    /// Требование спецсимволов в пароле
+    #[serde(default = "default_true")]
+    pub require_special: bool,
+    /// Белый список разрешенных IP-адресов / подсетей через запятую или пробел
+    #[serde(default = "default_ip_whitelist")]
+    pub ip_whitelist: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_false() -> bool {
+    false
+}
+fn default_max_login_attempts() -> u32 {
+    5
+}
+fn default_lockout_duration() -> u32 {
+    30
+}
+fn default_session_ttl() -> u32 {
+    12
+}
+fn default_inactivity_timeout() -> u32 {
+    30
+}
+fn default_min_password_length() -> u32 {
+    8
+}
+fn default_ip_whitelist() -> String {
+    String::new()
+}
+
+impl Default for SecurityPoliciesDto {
+    fn default() -> Self {
+        Self {
+            web_ui_auth: true,
+            mandatory_password_change: true,
+            force_2fa: false,
+            max_login_attempts: 5,
+            lockout_duration: 30,
+            session_ttl: 12,
+            inactivity_timeout: 30,
+            min_password_length: 8,
+            require_uppercase: true,
+            require_digits: true,
+            require_special: true,
+            ip_whitelist: default_ip_whitelist(),
+        }
+    }
 }
 
 /// DTO для регистрации/создания нового пользователя в системе

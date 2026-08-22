@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 import { useTheme } from '@/theme'
@@ -9,14 +9,19 @@ import { usersApi } from '@/api/users'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const { t, locale, setLocale } = useI18n()
 const { isDark, toggleTheme } = useTheme()
 
-const operatorId = ref('admin')
-const accessCode = ref('admin')
+const rememberedOp = localStorage.getItem('nms_remembered_operator')
+const operatorId = ref(rememberedOp || 'admin')
+const accessCode = ref('')
 const rememberMe = ref(true)
 const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
+
+// Forgot Code / Access Recovery Modal
+const showForgotCodeModal = ref(false)
 
 // Mandatory Password Change state
 const showPasswordChangeModal = ref(false)
@@ -26,10 +31,36 @@ const confirmPassword = ref('')
 const passwordChangeError = ref<string | null>(null)
 const isChangingPassword = ref(false)
 
+// Password complexity rules check
+const passwordRequirements = computed(() => {
+  const cfg = authStore.authConfig
+  const minLen = cfg?.min_password_length || 8
+  const reqUpper = cfg?.require_uppercase ?? true
+  const reqDigits = cfg?.require_digits ?? true
+  const reqSpecial = cfg?.require_special ?? true
+
+  const pwd = newPassword.value
+  return {
+    length: pwd.length >= minLen,
+    minLength: minLen,
+    upper: !reqUpper || /[A-ZА-Я]/.test(pwd),
+    digits: !reqDigits || /[0-9]/.test(pwd),
+    special: !reqSpecial || /[^a-zA-Z0-9а-яА-Я]/.test(pwd),
+    reqUpper,
+    reqDigits,
+    reqSpecial
+  }
+})
+
 onMounted(async () => {
   await authStore.checkAuthConfig()
   if (authStore.authConfig?.web_ui_auth === false) {
     router.push('/dashboard')
+    return
+  }
+
+  if (route.query.reason === 'inactivity' || authStore.sessionExpired) {
+    errorMessage.value = t('auth.sessionExpiredInactivity')
   }
 })
 
@@ -38,7 +69,7 @@ async function handleLogin() {
   isSubmitting.value = true
   errorMessage.value = null
   try {
-    await authStore.login(operatorId.value, accessCode.value)
+    await authStore.login(operatorId.value, accessCode.value, rememberMe.value)
     const isFirstLogin = !authStore.user?.last_login_at || authStore.user?.must_change_password
     if (isFirstLogin && authStore.user && authStore.user.username !== 'root') {
       customUsername.value = authStore.user.username || ''
@@ -64,8 +95,21 @@ async function handleSaveNewPassword() {
   const hasPasswordInput = newPassword.value.length > 0 || confirmPassword.value.length > 0
 
   if (isMandatoryPassword || hasPasswordInput) {
-    if (newPassword.value.length < 4) {
-      passwordChangeError.value = t('auth.passwordTooShort')
+    const reqs = passwordRequirements.value
+    if (!reqs.length) {
+      passwordChangeError.value = t('auth.passwordReqLength', { min: reqs.minLength })
+      return
+    }
+    if (!reqs.upper) {
+      passwordChangeError.value = t('auth.passwordReqUpper')
+      return
+    }
+    if (!reqs.digits) {
+      passwordChangeError.value = t('auth.passwordReqDigit')
+      return
+    }
+    if (!reqs.special) {
+      passwordChangeError.value = t('auth.passwordReqSpecial')
       return
     }
     if (newPassword.value !== confirmPassword.value) {
@@ -177,7 +221,7 @@ async function handleSaveNewPassword() {
             :placeholder="t('auth.operatorIdPlaceholder')"
             icon="badge"
             :required="true"
-            :autofocus="true"
+            :autofocus="!operatorId"
           />
 
           <!-- Access Code Input -->
@@ -188,6 +232,7 @@ async function handleSaveNewPassword() {
             type="password"
             icon="key"
             :required="true"
+            :autofocus="Boolean(operatorId)"
           />
 
           <!-- Remember me & Help -->
@@ -200,7 +245,13 @@ async function handleSaveNewPassword() {
               />
               <span>{{ t('auth.rememberMe') }}</span>
             </label>
-            <a href="#" class="hover:text-primary-fixed-dim transition-colors" @click.prevent>{{ t('auth.forgotCode') }}</a>
+            <a
+              href="#"
+              class="hover:text-primary-fixed-dim transition-colors cursor-pointer"
+              @click.prevent="showForgotCodeModal = true"
+            >
+              {{ t('auth.forgotCode') }}
+            </a>
           </div>
 
           <!-- Submit Button -->
@@ -217,6 +268,33 @@ async function handleSaveNewPassword() {
         </form>
       </div>
     </main>
+
+    <!-- Forgot Code / Access Recovery Modal -->
+    <BaseModal
+      v-model="showForgotCodeModal"
+      :title="t('auth.forgotCodeTitle')"
+      icon="support_agent"
+      max-width="max-w-md"
+    >
+      <div class="flex flex-col gap-4 text-xs text-on-surface leading-relaxed">
+        <div class="p-4 bg-surface-container border border-outline-variant rounded-lg flex items-start gap-3">
+          <span class="material-symbols-outlined text-primary-fixed-dim text-xl shrink-0 mt-0.5">info</span>
+          <p class="text-on-surface leading-relaxed">
+            {{ t('auth.forgotCodeDesc') }}
+          </p>
+        </div>
+      </div>
+
+      <template #footer>
+        <AppButton
+          variant="secondary"
+          size="sm"
+          @click="showForgotCodeModal = false"
+        >
+          {{ t('common.close') }}
+        </AppButton>
+      </template>
+    </BaseModal>
 
     <!-- Mandatory First-Time Account Setup Modal -->
     <BaseModal
@@ -252,6 +330,26 @@ async function handleSaveNewPassword() {
           :required="Boolean(authStore.user?.must_change_password)"
           size="sm"
         />
+
+        <!-- Password policy requirements checklist -->
+        <div v-if="newPassword.length > 0" class="p-2 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-1 text-[11px]">
+          <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>
+            <span>{{ t('auth.passwordReqLength', { min: passwordRequirements.minLength }) }}</span>
+          </div>
+          <div v-if="passwordRequirements.reqUpper" class="flex items-center gap-1.5" :class="passwordRequirements.upper ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.upper ? 'check_circle' : 'radio_button_unchecked' }}</span>
+            <span>{{ t('auth.passwordReqUpper') }}</span>
+          </div>
+          <div v-if="passwordRequirements.reqDigits" class="flex items-center gap-1.5" :class="passwordRequirements.digits ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.digits ? 'check_circle' : 'radio_button_unchecked' }}</span>
+            <span>{{ t('auth.passwordReqDigit') }}</span>
+          </div>
+          <div v-if="passwordRequirements.reqSpecial" class="flex items-center gap-1.5" :class="passwordRequirements.special ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.special ? 'check_circle' : 'radio_button_unchecked' }}</span>
+            <span>{{ t('auth.passwordReqSpecial') }}</span>
+          </div>
+        </div>
 
         <BaseInput
           v-if="authStore.user?.must_change_password || newPassword.length > 0"
