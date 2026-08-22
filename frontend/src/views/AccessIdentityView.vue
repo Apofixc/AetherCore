@@ -38,6 +38,23 @@ const ipWhitelist = ref('')
 const saveSuccess = ref(false)
 
 async function loadSavedSettings() {
+  if (authStore.authConfig) {
+    const cfg = authStore.authConfig
+    if (typeof cfg.web_ui_auth === 'boolean') {
+      webUiAuth.value = cfg.web_ui_auth
+      initialWebUiAuth.value = cfg.web_ui_auth
+    }
+    if (typeof cfg.force_2fa === 'boolean') force2FA.value = cfg.force_2fa
+    if (typeof cfg.max_login_attempts === 'number') maxLoginAttempts.value = cfg.max_login_attempts
+    if (typeof cfg.lockout_duration === 'number') lockoutDuration.value = cfg.lockout_duration
+    if (typeof cfg.session_ttl === 'number') sessionTTL.value = cfg.session_ttl
+    if (typeof cfg.inactivity_timeout === 'number') inactivityTimeout.value = cfg.inactivity_timeout
+    if (typeof cfg.min_password_length === 'number') minPasswordLength.value = cfg.min_password_length
+    if (typeof cfg.require_uppercase === 'boolean') requireUppercase.value = cfg.require_uppercase
+    if (typeof cfg.require_digits === 'boolean') requireDigits.value = cfg.require_digits
+    if (typeof cfg.require_special === 'boolean') requireSpecial.value = cfg.require_special
+  }
+
   try {
     const [policies, matrix] = await Promise.all([
       settingsApi.getSecurityPolicies(),

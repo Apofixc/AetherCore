@@ -232,14 +232,8 @@ pub use aethercore_common::models::user::SecurityPoliciesDto;
 async fn get_security_policies_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    AuthUser(claims): AuthUser,
+    AuthUser(_claims): AuthUser,
 ) -> ApiResult<SecurityPoliciesDto> {
-    if !claims.is_superuser {
-        check_permission(&claims, "settings.view").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
-    }
-
     let kv = KvStore::system(state.db.clone());
     let policies: Option<SecurityPoliciesDto> = kv.get("security_policies").await.map_err(|e| {
         (

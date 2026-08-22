@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
   PageHeader,
@@ -22,6 +23,11 @@ import { getUserInitials } from '@/utils/user'
 const { t, locale, setLocale } = useI18n()
 const { theme, setTheme } = useTheme()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
+
+// Проверка политики обязательного 2FA
+const isEnforced2fa = computed(() => Boolean(authStore.authConfig?.force_2fa && !authStore.user?.is_totp_enabled))
 
 // Profile Form State
 const fullName = ref(authStore.user?.full_name || authStore.user?.username || 'Admin')
@@ -212,6 +218,11 @@ onMounted(async () => {
   }
   updateClock()
   clockTimer = window.setInterval(updateClock, 1000)
+
+  // Принудительная настройка при активной политике force_2fa или query-параметре setup_2fa
+  if ((isEnforced2fa.value || route.query.setup_2fa === 'true') && !is2faEnabled.value) {
+    start2faSetup()
+  }
 })
 
 onUnmounted(() => {
@@ -915,16 +926,21 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
               :title="t('profile.twoFactorAuth')"
               subtitle="TOTP"
               icon="verified_user"
-              :badge="is2faEnabled ? t('common.active') : t('common.disabled')"
-              :badge-variant="is2faEnabled ? 'success' : 'neutral'"
+              :badge="is2faEnabled ? t('common.active') : isEnforced2fa ? 'MFA Required' : t('common.disabled')"
+              :badge-variant="is2faEnabled ? 'success' : isEnforced2fa ? 'danger' : 'neutral'"
             >
               <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
                 {{ t('profile.twoFactorDesc') }}
               </p>
 
               <div v-if="!is2faEnabled" class="flex flex-col gap-2">
+                <div v-if="isEnforced2fa" class="p-2.5 bg-error-container/20 border border-error text-error text-xs rounded-lg flex items-start gap-2 mb-1">
+                  <span class="material-symbols-outlined text-base shrink-0 mt-0.5">warning</span>
+                  <span class="leading-tight">{{ t('auth.force2faRequiredDesc') }}</span>
+                </div>
+
                 <AppButton
-                  variant="outline"
+                  :variant="isEnforced2fa ? 'primary' : 'outline'"
                   size="sm"
                   icon="qr_code_2"
                   :block="true"
@@ -953,11 +969,16 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                     variant="danger"
                     size="xs"
                     icon="lock_open"
+                    :disabled="Boolean(authStore.authConfig?.force_2fa)"
+                    :title="authStore.authConfig?.force_2fa ? 'Отключение 2FA запрещено системной политикой безопасности' : ''"
                     @click="showDisable2faModal = true; disableError = null; disablePassword = ''; disableCode = ''"
                   >
                     {{ t('profile.disable2fa') }}
                   </AppButton>
                 </div>
+                <span v-if="authStore.authConfig?.force_2fa" class="text-[10px] text-on-surface-variant/80 text-center">
+                  Политика безопасности: 2FA обязателен
+                </span>
               </div>
             </BaseCard>
           </div>
@@ -1443,8 +1464,17 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
       :title="t('profile.setup2faModalTitle')"
       icon="security"
       max-width="max-w-lg"
+      :show-close="!isEnforced2fa"
+      :close-on-esc="!isEnforced2fa"
+      :close-on-click-outside="!isEnforced2fa"
     >
       <div class="flex flex-col gap-4">
+        <!-- Enforced Policy Notice -->
+        <div v-if="isEnforced2fa" class="p-3 bg-primary-fixed-dim/15 border border-primary-fixed-dim/40 rounded-lg flex items-start gap-2.5 text-xs text-on-surface">
+          <span class="material-symbols-outlined text-primary-fixed-dim text-lg shrink-0 mt-0.5">admin_panel_settings</span>
+          <span class="leading-relaxed">{{ t('auth.force2faRequiredDesc') }}</span>
+        </div>
+
         <!-- Step Indicators -->
         <div class="grid grid-cols-3 gap-2 border-b border-outline-variant/40 pb-3">
           <div
@@ -1580,11 +1610,21 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
       <template #footer>
         <div class="flex items-center justify-between w-full">
           <AppButton
+            v-if="!isEnforced2fa"
             variant="ghost"
             size="sm"
             @click="showSetup2faModal = false"
           >
             {{ t('common.close') }}
+          </AppButton>
+          <AppButton
+            v-else
+            variant="ghost"
+            size="sm"
+            icon="logout"
+            @click="authStore.logout(); router.push('/login')"
+          >
+            {{ t('auth.logout') }}
           </AppButton>
 
           <div class="flex items-center gap-2">

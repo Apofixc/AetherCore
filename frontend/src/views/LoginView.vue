@@ -168,6 +168,8 @@ async function handleLogin() {
       customUsername.value = authStore.user?.username || ''
       wizardStep.value = canChangeUsername.value ? 'username' : 'password'
       showPasswordChangeModal.value = true
+    } else if (authStore.authConfig?.force_2fa && !authStore.user?.is_totp_enabled) {
+      router.push('/settings/profile?setup_2fa=true')
     } else {
       router.push('/dashboard')
     }
@@ -294,7 +296,11 @@ async function handleSaveNewPassword() {
       authStore.user = updated
     }
     showPasswordChangeModal.value = false
-    router.push('/dashboard')
+    if (authStore.authConfig?.force_2fa && !authStore.user?.is_totp_enabled) {
+      router.push('/settings/profile?setup_2fa=true')
+    } else {
+      router.push('/dashboard')
+    }
   } catch (err: any) {
     passwordChangeErrorRaw.value = err.message || t('auth.passwordChangeError')
   } finally {

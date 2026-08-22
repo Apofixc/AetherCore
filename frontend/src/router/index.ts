@@ -100,13 +100,37 @@ router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormal
     } else {
       next()
     }
-  } else {
-    if (!to.meta.public && !token) {
-      next('/login')
-    } else if (to.path === '/login' && token) {
-      next('/dashboard')
-    } else {
-      next()
+    return
+  }
+
+  if (!to.meta.public && !token) {
+    next('/login')
+    return
+  }
+
+  if (token) {
+    if (!authStore.user) {
+      await authStore.fetchUser()
+    }
+
+    // Проверка политики обязательного 2FA (Enforced 2FA Policy)
+    const isEnforced2fa = Boolean(authStore.authConfig?.force_2fa && authStore.user && !authStore.user.is_totp_enabled)
+    if (isEnforced2fa) {
+      if (to.path !== '/settings/profile') {
+        next('/settings/profile?setup_2fa=true')
+        return
+      }
+    }
+
+    if (to.path === '/login') {
+      if (isEnforced2fa) {
+        next('/settings/profile?setup_2fa=true')
+      } else {
+        next('/dashboard')
+      }
+      return
     }
   }
+
+  next()
 })
