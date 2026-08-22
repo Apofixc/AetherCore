@@ -30,6 +30,19 @@ pub fn router() -> Router<AppState> {
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
+/// Вычислить числовой уровень привилегий роли (Superuser = 4, Admin = 3, Operator = 2, Viewer = 1)
+fn get_role_level(roles: &[String], is_superuser: bool) -> u8 {
+    if is_superuser || roles.iter().any(|r| r == "superuser") {
+        4
+    } else if roles.iter().any(|r| r == "admin") {
+        3
+    } else if roles.iter().any(|r| r == "operator") {
+        2
+    } else {
+        1
+    }
+}
+
 /// GET /api/v1/users
 ///
 /// Получить список всех пользователей системы с их назначенными ролями и агрегированными правами доступа.
@@ -87,19 +100,6 @@ async fn list_users_handler(
 /// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа или попытка создать суперпользователя без прав суперпользователя.
 /// * [`StatusCode::BAD_REQUEST`] — невалидный логин или пароль.
 /// * [`StatusCode::CONFLICT`] — пользователь с таким логином уже существует.
-/// Вычислить числовой уровень привилегий роли
-fn get_role_level(roles: &[String], is_superuser: bool) -> u8 {
-    if is_superuser || roles.iter().any(|r| r == "superuser") {
-        4
-    } else if roles.iter().any(|r| r == "admin") {
-        3
-    } else if roles.iter().any(|r| r == "operator") {
-        2
-    } else {
-        1
-    }
-}
-
 async fn create_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
