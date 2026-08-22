@@ -211,9 +211,13 @@ async fn test_username_change_on_first_login_only() {
         .unwrap();
 
     assert_eq!(user_no_pwd_req.department, Some("Core Network".to_string()));
-    assert!(user_no_pwd_req.last_login_at.is_none());
+    assert_eq!(user_no_pwd_req.login_count, 0);
 
-    // До первого логина смена логина разрешена (первичная настройка аккаунта)
+    // Выполняем 1-ю аутентификацию при первом входе (login_count становится 1)
+    let authenticated = service.authenticate("op_initial", "init_password").await.unwrap();
+    assert_eq!(authenticated.username, "op_initial");
+
+    // В первой сессии смена логина разрешена (первичная настройка аккаунта)
     let updated_user = service
         .update_user(
             user_no_pwd_req.id,
@@ -227,11 +231,11 @@ async fn test_username_change_on_first_login_only() {
     assert_eq!(updated_user.username, "op_final");
     assert_eq!(updated_user.department, Some("Core Network".to_string()));
 
-    // Выполняем аутентификацию (фиксируется last_login_at)
-    let authenticated = service.authenticate("op_final", "init_password").await.unwrap();
-    assert_eq!(authenticated.username, "op_final");
+    // Выполняем 2-ю аутентификацию под новым логином (login_count становится 2)
+    let second_auth = service.authenticate("op_final", "init_password").await.unwrap();
+    assert_eq!(second_auth.username, "op_final");
 
-    // После успешной аутентификации смена логина уже запрещена
+    // После завершения первичной настройки и повторного входа смена логина навсегда заблокирована
     let after_login_change = service
         .update_user(
             user_no_pwd_req.id,

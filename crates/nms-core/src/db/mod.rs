@@ -150,6 +150,7 @@ impl Db {
                 is_active INTEGER NOT NULL DEFAULT 1,
                 is_superuser INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
+                login_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
@@ -165,6 +166,9 @@ impl Db {
             .execute(pool)
             .await;
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN department TEXT")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0")
             .execute(pool)
             .await;
 

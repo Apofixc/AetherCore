@@ -1,0 +1,41 @@
+[   93251ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/modules:0
+[   98224ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5173/api/v1/auth/login:0
+[   98224ms] [ERROR] Login failed: Error: Authentication required
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async Proxy.login (http://localhost:5173/src/stores/auth.ts?t=1787387607883:41:24)
+    at async handleLogin (http://localhost:5173/src/views/LoginView.vue?t=1787387669133:39:9) @ http://localhost:5173/src/views/LoginView.vue?t=1787387669133:47
+[  282125ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/modules:0
+[  283707ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/security:0
+[  283707ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/users:0
+[  283707ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  284749ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  284750ms] [ERROR] Could not save security policies to server: Error: Forbidden: missing required permission: access.roles.manage
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async applyChanges (http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:123:9) @ http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:132
+[  286450ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5173/api/v1/auth/login:0
+[  286450ms] [ERROR] Login failed: Error: Authentication required
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async Proxy.login (http://localhost:5173/src/stores/auth.ts?t=1787387607883:41:24)
+    at async handleLogin (http://localhost:5173/src/views/LoginView.vue?t=1787387669133:39:9) @ http://localhost:5173/src/views/LoginView.vue?t=1787387669133:47
+[  312090ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/modules:0
+[  313667ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/security:0
+[  313674ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  313674ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/users:0
+[  314715ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  314715ms] [ERROR] Could not save security policies to server: Error: Forbidden: missing required permission: access.roles.manage
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async applyChanges (http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:123:9) @ http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:132
+[  316382ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5173/api/v1/auth/login:0
+[  316382ms] [ERROR] Login failed: Error: Authentication required
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async Proxy.login (http://localhost:5173/src/stores/auth.ts?t=1787387607883:41:24)
+    at async handleLogin (http://localhost:5173/src/views/LoginView.vue?t=1787387669133:39:9) @ http://localhost:5173/src/views/LoginView.vue?t=1787387669133:47
+[  362239ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/modules:0
+[  363838ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/security:0
+[  363838ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  363838ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/users:0
+[  364863ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/settings/permissions:0
+[  364863ms] [ERROR] Could not save security policies to server: Error: Forbidden: missing required permission: access.roles.manage
+    at ApiClient.request (http://localhost:5173/src/api/client.ts?t=1787384954526:39:13)
+    at async applyChanges (http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:123:9) @ http://localhost:5173/src/views/AccessIdentityView.vue?t=1787388474407:132
+[  366843ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5173/api/v1/modules:0

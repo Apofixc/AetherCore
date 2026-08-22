@@ -151,8 +151,8 @@ impl UserService {
         // Вставляем пользователя
         sqlx::query(
             r#"
-            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             "#,
         )
         .bind(id.to_string())
@@ -213,12 +213,13 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -256,12 +257,13 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -279,7 +281,7 @@ impl UserService {
     /// Выполнить аутентификацию пользователя по логину и паролю
     ///
     /// Проверяет наличие пользователя, статус активности аккаунта (`is_active`)
-    /// и совпадение пароля с Argon2id хэшем. При успехе обновляет поле `last_login_at`.
+    /// и совпадение пароля с Argon2id хэшем. При успехе обновляет поле `last_login_at` и увеличивает `login_count`.
     ///
     /// # Аргументы
     /// * `username` — Имя пользователя.
@@ -303,9 +305,9 @@ impl UserService {
             return Err(AppError::unauthorized("Invalid username or password"));
         }
 
-        // Обновляем время последнего входа
+        // Обновляем время последнего входа и счетчик логинов
         let now = Utc::now().to_rfc3339();
-        let _ = sqlx::query("UPDATE users SET last_login_at = ? WHERE id = ?")
+        let _ = sqlx::query("UPDATE users SET last_login_at = ?, login_count = login_count + 1 WHERE id = ?")
             .bind(now)
             .bind(user.id.to_string())
             .execute(self.db.writer())
@@ -332,12 +334,13 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
         )> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -374,7 +377,6 @@ impl UserService {
     /// * [`AppError::database`] — при ошибке выполнения SQL-запроса.
     pub async fn update_user(&self, id: Uuid, dto: UpdateUserDto) -> Result<User> {
         let existing = self.get_user_by_id(id).await?;
-        let now = Utc::now().to_rfc3339();
 
         // 1. Проверка роли superuser
         let new_is_superuser = dto.is_superuser.unwrap_or_else(|| {
@@ -431,8 +433,8 @@ impl UserService {
             if req_username.is_empty() {
                 existing.username.clone()
             } else if req_username != existing.username {
-                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true или last_login_at == None) и не для root
-                let can_change_username = (existing.must_change_password || existing.last_login_at.is_none())
+                // Смена логина разрешена ТОЛЬКО при первом входе (must_change_password == true или login_count <= 1) и не для root
+                let can_change_username = (existing.must_change_password || existing.login_count <= 1)
                     && existing.username != "root";
                 if !can_change_username {
                     return Err(AppError::validation(
@@ -445,7 +447,7 @@ impl UserService {
                 if req_username.len() < 3 || req_username.len() > 32 {
                     return Err(AppError::validation(
                         "username",
-                        "Username must be between 3 and 32 characters",
+                        "Username length must be between 3 and 32 characters",
                     ));
                 }
                 if !req_username
@@ -454,25 +456,18 @@ impl UserService {
                 {
                     return Err(AppError::validation(
                         "username",
-                        "Username can only contain alphanumeric characters, underscores, hyphens, and dots",
+                        "Username contains invalid characters (allowed: a-z, 0-9, _, -, .)",
                     ));
                 }
 
-                // Проверка на коллизию уникальности
-                let conflict_count: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM users WHERE username = ? AND id != ?",
-                )
-                .bind(req_username)
-                .bind(id.to_string())
-                .fetch_one(self.db.reader())
-                .await
-                .map_err(|e| AppError::database(e.to_string()))?;
-
-                if conflict_count.0 > 0 {
-                    return Err(AppError::conflict(format!(
-                        "Username '{}' is already taken",
-                        req_username
-                    )));
+                // Проверка уникальности логина
+                if let Ok(dup) = self.get_user_by_username(req_username).await {
+                    if dup.id != id {
+                        return Err(AppError::conflict(format!(
+                            "User with username '{}' already exists",
+                            req_username
+                        )));
+                    }
                 }
 
                 req_username.to_string()
@@ -488,17 +483,28 @@ impl UserService {
         let department = dto.department.or(existing.department);
         let is_active = dto.is_active.unwrap_or(existing.is_active);
 
+        // Обновляем запись пользователя
+        let now = Utc::now().to_rfc3339();
         sqlx::query(
             r#"
-            UPDATE users SET username = ?, full_name = ?, email = ?, department = ?, password_hash = ?, is_active = ?, is_superuser = ?, must_change_password = ?, updated_at = ?
+            UPDATE users SET
+                username = ?,
+                full_name = ?,
+                email = ?,
+                department = ?,
+                password_hash = ?,
+                is_active = ?,
+                is_superuser = ?,
+                must_change_password = ?,
+                updated_at = ?
             WHERE id = ?
             "#,
         )
-        .bind(new_username)
-        .bind(full_name)
-        .bind(email)
-        .bind(department)
-        .bind(password_hash)
+        .bind(&new_username)
+        .bind(&full_name)
+        .bind(&email)
+        .bind(&department)
+        .bind(&password_hash)
         .bind(if is_active { 1 } else { 0 })
         .bind(if new_is_superuser { 1 } else { 0 })
         .bind(if must_change_password { 1 } else { 0 })
@@ -506,7 +512,7 @@ impl UserService {
         .bind(id.to_string())
         .execute(self.db.writer())
         .await
-        .map_err(|e| AppError::database(e.to_string()))?;
+        .map_err(|e| AppError::database(format!("Failed to update user: {}", e)))?;
 
         // Обновляем роли, если переданы
         if let Some(roles) = dto.roles {
@@ -516,7 +522,7 @@ impl UserService {
                 .await
                 .map_err(|e| AppError::database(e.to_string()))?;
 
-            for role in roles {
+            for role in &roles {
                 sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, ?)")
                     .bind(id.to_string())
                     .bind(role)
@@ -587,6 +593,7 @@ impl UserService {
             i64,
             i64,
             i64,
+            i64,
             String,
             String,
             Option<String>,
@@ -602,6 +609,7 @@ impl UserService {
             is_active_num,
             is_superuser_num,
             must_change_pwd_num,
+            login_count,
             created_at_str,
             updated_at_str,
             last_login_at_str,
@@ -663,6 +671,7 @@ impl UserService {
             is_active,
             is_superuser,
             must_change_password,
+            login_count,
             roles,
             permissions,
             created_at,

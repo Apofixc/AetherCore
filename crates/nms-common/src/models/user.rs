@@ -37,6 +37,8 @@ pub struct User {
     pub roles: Vec<String>,
     /// Агрегированный дедуплицированный список прав доступа (из назначенных ролей и индивидуальных прав)
     pub permissions: Vec<String>,
+    /// Количество успешных аутентификаций пользователя
+    pub login_count: i64,
     /// Дата и время создания учетной записи (UTC)
     pub created_at: DateTime<Utc>,
     /// Дата и время последнего обновления профиля (UTC)
@@ -71,7 +73,7 @@ pub struct CreateUserDto {
 /// DTO для частичного обновления учетной записи пользователя
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateUserDto {
-    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true или last_login_at = None)
+    /// Новый логин (разрешено менять только при первом входе, когда must_change_password = true или login_count <= 1)
     pub username: Option<String>,
     /// Новое полное имя (если передано `Some`)
     pub full_name: Option<String>,
@@ -110,6 +112,8 @@ pub struct UserResponseDto {
     pub is_superuser: bool,
     /// Флаг обязательной смены пароля
     pub must_change_password: bool,
+    /// Количество успешных аутентификаций
+    pub login_count: i64,
     /// Список назначенных ролей
     pub roles: Vec<String>,
     /// Агрегированный список прав доступа
@@ -131,6 +135,7 @@ impl From<User> for UserResponseDto {
             is_active: u.is_active,
             is_superuser: u.is_superuser,
             must_change_password: u.must_change_password,
+            login_count: u.login_count,
             roles: u.roles,
             permissions: u.permissions,
             created_at: u.created_at,
