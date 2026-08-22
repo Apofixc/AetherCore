@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
   PageHeader,
@@ -17,8 +18,10 @@ import { usersApi } from '@/api/users'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const router = useRouter()
 
 // Policies state
+const initialWebUiAuth = ref(true)
 const webUiAuth = ref(true)
 const mandatoryPasswordChange = ref(true)
 const force2FA = ref(false)
@@ -42,7 +45,10 @@ async function loadSavedSettings() {
     ])
 
     if (policies) {
-      if (typeof policies.web_ui_auth === 'boolean') webUiAuth.value = policies.web_ui_auth
+      if (typeof policies.web_ui_auth === 'boolean') {
+        webUiAuth.value = policies.web_ui_auth
+        initialWebUiAuth.value = policies.web_ui_auth
+      }
       if (typeof policies.mandatory_password_change === 'boolean') mandatoryPasswordChange.value = policies.mandatory_password_change
       if (typeof policies.force_2fa === 'boolean') force2FA.value = policies.force_2fa
       if (typeof policies.max_login_attempts === 'number') maxLoginAttempts.value = policies.max_login_attempts
@@ -107,6 +113,8 @@ onMounted(async () => {
 })
 
 async function applyChanges() {
+  const isEnablingAuth = webUiAuth.value && (!initialWebUiAuth.value || !authStore.token)
+
   const policiesPayload = {
     web_ui_auth: webUiAuth.value,
     mandatory_password_change: mandatoryPasswordChange.value,
@@ -129,6 +137,14 @@ async function applyChanges() {
       settingsApi.updatePermissionsMatrix(permissionCategories.value)
     ])
     await authStore.checkAuthConfig()
+
+    if (isEnablingAuth) {
+      authStore.logout()
+      router.push('/login')
+      return
+    }
+
+    initialWebUiAuth.value = webUiAuth.value
   } catch (err) {
     console.error('Could not save security policies to server:', err)
   }

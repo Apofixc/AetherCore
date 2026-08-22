@@ -70,6 +70,35 @@ sequenceDiagram
     end
 ```
 
+### В. Блок-схема политики: Авторизация веб-интерфейса (web_ui_auth)
+
+```mermaid
+graph TD
+    Start([Пользователь открывает страницу / отправляет запрос]) --> CheckConfig{web_ui_auth включена?}
+    
+    %% Режим без авторизации
+    CheckConfig -- Нет: web_ui_auth = false --> CheckTokenNoAuth{Есть JWT токен?}
+    CheckTokenNoAuth -- Нет --> AutoSuper[Автоматический вход с правами Superuser<br/>Anonymous Admin]
+    CheckTokenNoAuth -- Да --> VerifyTokenNoAuth[Валидация токена]
+    VerifyTokenNoAuth --> AutoSuper
+    AutoSuper --> AllowAccess[Разрешить доступ к Dashboard / API]
+
+    %% Режим с обязательной авторизацией
+    CheckConfig -- Да: web_ui_auth = true --> CheckTokenAuth{Есть валидный JWT токен?}
+    CheckTokenAuth -- Да --> CheckRoute{Маршрут /login?}
+    CheckRoute -- Да --> GoDash[Перенаправление на /dashboard]
+    CheckRoute -- Нет --> AllowAccess
+    CheckTokenAuth -- Нет --> RouteLogin{Публичный маршрут /login?}
+    RouteLogin -- Да --> ShowLoginForm[Отобразить форму входа]
+    RouteLogin -- Нет --> RedirectLogin[401 / Редирект на /login]
+
+    %% Событие изменения политики
+    ChangePolicy([Администратор переключает тумблер web_ui_auth]) --> IsEnabling{Опция включается?}
+    IsEnabling -- Да: false -> true --> DropSession[Сброс текущей сессии authStore.logout]
+    DropSession --> RedirectLogin
+    IsEnabling -- Нет: true -> false --> EnableAnon[Снятие требования входа и переход на Dashboard]
+```
+
 ---
 
 ## 2. Тест-кейсы для верификации (Given-When-Then)
@@ -98,3 +127,8 @@ sequenceDiagram
 * **Given**: Администратор создал пользователя с флагом `must_change_password: true`.
 * **When**: Пользователь успешно логинится с временным паролем.
 * **Then**: Интерфейс перехватывает ответ, запрещает доступ к дашборду и принудительно открывает диалог установки нового пароля.
+
+### ТК-6: Переключение политики «Авторизация веб-интерфейса» (web_ui_auth)
+* **Given**: Авторизация веб-интерфейса отключена (`web_ui_auth: false`), работа ведется в режиме анонимного суперпользователя.
+* **When**: Администратор включает тумблер `web_ui_auth: true` и нажимает «Применить изменения».
+* **Then**: Сессия немедленно сбрасывается (`authStore.logout()`), пользователя выкидывает на страницу входа `/login`, а бэкенд начинает строго требовать JWT токен для всех защищенных API-маршрутов.
