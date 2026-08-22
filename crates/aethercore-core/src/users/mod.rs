@@ -315,10 +315,12 @@ impl UserService {
     pub async fn authenticate(&self, username: &str, password: &str) -> Result<User> {
         let user = self.get_user_by_username(username).await.map_err(|_| {
             AppError::unauthorized("Invalid username or password")
+                .with_i18n_key("core.auth.invalid_credentials")
         })?;
 
         if !user.is_active {
-            return Err(AppError::unauthorized("Account is disabled"));
+            return Err(AppError::unauthorized("Account is disabled")
+                .with_i18n_key("core.auth.account_disabled"));
         }
 
         let now = Utc::now();
@@ -331,7 +333,12 @@ impl UserService {
                 return Err(AppError::unauthorized(format!(
                     "Account is temporarily locked due to excessive failed attempts. Try again in {} min.",
                     remaining_mins
-                )));
+                ))
+                .with_i18n_key("core.auth.account_locked")
+                .with_details(serde_json::json!({
+                    "minutes": remaining_mins.to_string(),
+                    "details": format!("Account is locked for {} min", remaining_mins)
+                })));
             }
         }
 
@@ -364,10 +371,16 @@ impl UserService {
                 return Err(AppError::unauthorized(format!(
                     "Account is temporarily locked for {} min due to exceeding maximum login attempts.",
                     policy.lockout_duration
-                )));
+                ))
+                .with_i18n_key("core.auth.account_locked")
+                .with_details(serde_json::json!({
+                    "minutes": policy.lockout_duration.to_string(),
+                    "details": format!("Account is locked for {} min", policy.lockout_duration)
+                })));
             }
 
-            return Err(AppError::unauthorized("Invalid username or password"));
+            return Err(AppError::unauthorized("Invalid username or password")
+                .with_i18n_key("core.auth.invalid_credentials"));
         }
 
         // Обновляем время последнего входа, увеличиваем счетчик логинов и сбрасываем блокировки

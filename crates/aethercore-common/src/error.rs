@@ -130,12 +130,17 @@ impl AppError {
     /// ```
     pub fn unauthorized(details: impl Into<String>) -> Self {
         let d = details.into();
+        let msg = if d.is_empty() {
+            "Authentication required".to_string()
+        } else {
+            d.clone()
+        };
         Self {
             code: "AUTH_REQUIRED".into(),
-            message: format!("Authentication required: {}", d),
+            message: msg.clone(),
             status_code: 401,
             i18n_key: "core.error.unauthorized".into(),
-            details: serde_json::json!({ "details": d }),
+            details: serde_json::json!({ "details": msg }),
         }
     }
 

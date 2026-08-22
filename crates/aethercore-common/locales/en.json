@@ -2,7 +2,7 @@
   "core.ok": "Success",
   "core.error.internal": "Internal server error: {details}",
   "core.error.not_found": "Requested resource '{resource}' was not found",
-  "core.error.unauthorized": "Authentication required",
+  "core.error.unauthorized": "{details}",
   "core.error.forbidden": "Forbidden: missing required permission: {permission}",
   "core.error.bad_request": "Bad request: {details}",
   "core.error.conflict": "Conflict: {details}",
@@ -29,7 +29,7 @@
 
   "core.auth.invalid_credentials": "Invalid username or password",
   "core.auth.account_disabled": "Account is disabled",
-  "core.auth.account_locked": "Account is temporarily locked due to too many failed login attempts",
+  "core.auth.account_locked": "Account is temporarily locked due to excessive failed attempts. Try again in {minutes} min.",
   "core.auth.password_too_short": "Password is too short (minimum length: {min_len} characters)",
   "core.auth.cannot_delete_self": "Cannot delete your own user account",
   "core.auth.cannot_disable_root": "Cannot disable or delete the root superuser account",
