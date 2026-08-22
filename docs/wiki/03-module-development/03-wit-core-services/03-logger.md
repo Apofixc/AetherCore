@@ -1,8 +1,8 @@
-# 📝 WIT Интерфейс `nms:core/logger` — Структурированное Логирование
+# 📝 WIT Интерфейс `aether:core/logger` — Структурированное Логирование
 
 ## 1. Назначение и интеграция с системой трассировки `tracing`
 
-Интерфейс `nms:core/logger` связывает гостевую песочницу WebAssembly с централизованной системой трассировки и логирования микроядра (`tracing` / `tracing-subscriber`).
+Интерфейс `aether:core/logger` связывает гостевую песочницу WebAssembly с централизованной системой трассировки и логирования микроядра (`tracing` / `tracing-subscriber`).
 
 ### Преимущества единого логирования ядра:
 - **Автоматический контекст**: Ядро автоматически обогащает каждую строку лога метаданными: `plugin_id`, точным таймстампом с микросекундами (UTC), потоком Tokio Worker и уровнем детализации.
@@ -14,7 +14,7 @@
 ## 2. Полный код WIT спецификации (`aethercore-core.wit`)
 
 ```wit
-package nms:core@2.0.0;
+package aether:core@2.0.0;
 
 interface logger {
     /// Уровни детализации логов
@@ -51,13 +51,13 @@ interface logger {
 #[allow(warnings)]
 mod bindings;
 
-use bindings::nms::core::logger::{self, LogLevel};
+use bindings::aether::core::logger::{self, LogLevel};
 
 #[macro_export]
 macro_rules! plugin_info {
     ($($arg:tt)*) => {
-        $crate::bindings::nms::core::logger::log(
-            $crate::bindings::nms::core::logger::LogLevel::Info,
+        $crate::bindings::aether::core::logger::log(
+            $crate::bindings::aether::core::logger::LogLevel::Info,
             &format!($($arg)*),
         )
     };
@@ -66,8 +66,8 @@ macro_rules! plugin_info {
 #[macro_export]
 macro_rules! plugin_warn {
     ($($arg:tt)*) => {
-        $crate::bindings::nms::core::logger::log(
-            $crate::bindings::nms::core::logger::LogLevel::Warn,
+        $crate::bindings::aether::core::logger::log(
+            $crate::bindings::aether::core::logger::LogLevel::Warn,
             &format!($($arg)*),
         )
     };
@@ -76,8 +76,8 @@ macro_rules! plugin_warn {
 #[macro_export]
 macro_rules! plugin_error {
     ($($arg:tt)*) => {
-        $crate::bindings::nms::core::logger::log(
-            $crate::bindings::nms::core::logger::LogLevel::Error,
+        $crate::bindings::aether::core::logger::log(
+            $crate::bindings::aether::core::logger::LogLevel::Error,
             &format!($($arg)*),
         )
     };
@@ -86,8 +86,8 @@ macro_rules! plugin_error {
 #[macro_export]
 macro_rules! plugin_debug {
     ($($arg:tt)*) => {
-        $crate::bindings::nms::core::logger::log(
-            $crate::bindings::nms::core::logger::LogLevel::Debug,
+        $crate::bindings::aether::core::logger::log(
+            $crate::bindings::aether::core::logger::LogLevel::Debug,
             &format!($($arg)*),
         )
     };

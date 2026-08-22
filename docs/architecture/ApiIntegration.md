@@ -1,4 +1,4 @@
-# Архитектура интеграции Frontend с REST API NMSNext-Gen
+# Архитектура интеграции Frontend с REST API AetherCore
 
 ## Диаграмма взаимодействия (Mermaid)
 
@@ -9,7 +9,7 @@ sequenceDiagram
     participant UI as Frontend (Vue 3 / Pinia)
     participant Client as ApiClient (fetch + JWT)
     participant Axum as Axum REST API (/api/v1)
-    participant Core as NMS Core Services
+    participant Core as AetherCore Services
     participant DB as SQLite DB & Event Bus
 
     %% Авторизация

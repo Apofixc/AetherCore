@@ -124,7 +124,6 @@ export const ru = {
     customizeDashboard: 'Настроить дашборд',
     mainDesktop: 'Основной',
     newDesktop: 'Новый рабочий стол',
-    nmsModules: 'Модули платформы',
     platformModules: 'Модули платформы',
     systemBadge: 'СИСТЕМА',
     moduleSummary: 'Сводка состояния модулей',

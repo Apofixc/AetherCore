@@ -6,7 +6,7 @@ import { api } from '@/api/client'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(
-    localStorage.getItem('aether_token') || localStorage.getItem('nms_token') || sessionStorage.getItem('aether_token') || sessionStorage.getItem('nms_token')
+    localStorage.getItem('aether_token') || sessionStorage.getItem('aether_token')
   )
   const authConfig = ref<AuthConfig | null>(null)
   const loading = ref(false)
@@ -105,14 +105,10 @@ export const useAuthStore = defineStore('auth', () => {
       if (rememberMe) {
         localStorage.setItem('aether_token', response.token)
         localStorage.setItem('aether_remembered_operator', operatorId)
-        localStorage.removeItem('nms_token')
         sessionStorage.removeItem('aether_token')
-        sessionStorage.removeItem('nms_token')
       } else {
         sessionStorage.setItem('aether_token', response.token)
-        sessionStorage.removeItem('nms_token')
         localStorage.removeItem('aether_token')
-        localStorage.removeItem('nms_token')
       }
 
       if (authConfig.value?.inactivity_timeout) {
@@ -161,9 +157,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     localStorage.removeItem('aether_token')
-    localStorage.removeItem('nms_token')
     sessionStorage.removeItem('aether_token')
-    sessionStorage.removeItem('nms_token')
     api.setToken(null)
   }
 

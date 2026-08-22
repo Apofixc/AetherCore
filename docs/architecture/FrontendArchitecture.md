@@ -65,10 +65,10 @@ sequenceDiagram
     Core-->>API: 200 OK { token, user } (TTL = session_ttl * 3600)
     API-->>Store: Возврат токена и профиля
     alt rememberMe == true
-        Store->>Store: localStorage.setItem('nms_token')
-        Store->>Store: localStorage.setItem('nms_remembered_operator')
+        Store->>Store: localStorage.setItem('aether_token')
+        Store->>Store: localStorage.setItem('aether_remembered_operator')
     else rememberMe == false
-        Store->>Store: sessionStorage.setItem('nms_token')
+        Store->>Store: sessionStorage.setItem('aether_token')
     end
     Store->>Store: startInactivityTracker()
     Store-->>UI: Успех
@@ -156,9 +156,9 @@ sequenceDiagram
 ### ТК-1: Запоминание оператора и разделение хранилищ токена
 * **Given**: Пользователь открывает экран логина `/login`.
 * **When**: Пользователь вводит логин `operator1`, отмечает «Запомнить меня» и успешно входит в систему.
-* **Then**: Токен записан в `localStorage.getItem('nms_token')`, логин сохранен в `localStorage.getItem('nms_remembered_operator')`. При следующем открытии страницы логин подставляется автоматически.
+* **Then**: Токен записан в `localStorage.getItem('aether_token')`, логин сохранен в `localStorage.getItem('aether_remembered_operator')`. При следующем открытии страницы логин подставляется автоматически.
 * **When 2**: Пользователь выходит и входит без галочки «Запомнить меня».
-* **Then 2**: Токен записан только в `sessionStorage.getItem('nms_token')`, в `localStorage` токен отсутствует.
+* **Then 2**: Токен записан только в `sessionStorage.getItem('aether_token')`, в `localStorage` токен отсутствует.
 
 ### ТК-2: Автоматический выход по таймауту неактивности
 * **Given**: Пользователь авторизован, в политиках безопасности установлен `inactivity_timeout = 15`.

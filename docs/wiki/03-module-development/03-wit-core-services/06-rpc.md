@@ -1,8 +1,8 @@
-# 🔄 WIT Интерфейс `nms:core/rpc` — Межмодульные RPC Вызовы
+# 🔄 WIT Интерфейс `aether:core/rpc` — Межмодульные RPC Вызовы
 
 ## 1. Назначение и модель безопасности Inter-Module RPC
 
-Интерфейс `nms:core/rpc` реализует синхронный механизм обмена данными между независимыми изолированными WASM-песочницами (Actor-to-Actor Inter-Process Communication).
+Интерфейс `aether:core/rpc` реализует синхронный механизм обмена данными между независимыми изолированными WASM-песочницами (Actor-to-Actor Inter-Process Communication).
 
 ### Принципы работы брокера RPC ядра:
 1. **Прямое соединение запрещено**: Плагин $A$ не имеет доступа к адресному пространству памяти плагина $B$.
@@ -14,7 +14,7 @@
 ## 2. Полный код WIT спецификации (`aethercore-core.wit`)
 
 ```wit
-package nms:core@2.0.0;
+package aether:core@2.0.0;
 
 interface rpc {
     /// Выполнить синхронный RPC-вызов метода другого плагина
@@ -47,7 +47,7 @@ interface rpc-handler {
 
 ### Клиент (Вызывающий плагин `dashboard-widget`):
 ```rust
-use crate::bindings::nms::core::rpc;
+use crate::bindings::aether::core::rpc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -78,7 +78,7 @@ pub fn get_device_info(ip: &str) -> Result<DeviceDetails, String> {
 
 ### Сервер (Обработчик в плагине `network-topology`):
 ```rust
-impl crate::bindings::exports::nms::core::rpc_handler::Guest for PluginComponent {
+impl crate::bindings::exports::aether::core::rpc_handler::Guest for PluginComponent {
     fn handle_rpc(caller: String, method: String, params_json: String) -> Result<String, String> {
         match method.as_str() {
             "get_device" => {

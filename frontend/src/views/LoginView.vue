@@ -13,7 +13,7 @@ const route = useRoute()
 const { t, locale, setLocale } = useI18n()
 const { isDark, toggleTheme } = useTheme()
 
-const rememberedOp = localStorage.getItem('aether_remembered_operator') || localStorage.getItem('nms_remembered_operator')
+const rememberedOp = localStorage.getItem('aether_remembered_operator')
 const operatorId = ref(rememberedOp || 'admin')
 const accessCode = ref('')
 const rememberMe = ref(true)

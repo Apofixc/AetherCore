@@ -1,11 +1,11 @@
-# 🚀 Руководство разработчика модулей (.nms-plugin)
+# 🚀 Руководство разработчика модулей (.aether-plugin)
 
 ## 1. Анатомия пакета плагина
 
-Каждый модуль поставляется в виде единого ZIP-архива с расширением `.nms-plugin`:
+Каждый модуль поставляется в виде единого ZIP-архива с расширением `.aether-plugin`:
 
 ```text
-my-plugin-1.0.0.nms-plugin (ZIP)
+my-plugin-1.0.0.aether-plugin (ZIP)
 ├── manifest.yaml             # Декларативный контракт модуля
 ├── backend.wasm              # Байткод бэкенда (WASM Component Model)
 ├── signature.bin             # Цифровая подпись Ed25519 (опционально)
@@ -83,11 +83,11 @@ export default { MyServiceView };
 
 ---
 
-## 3. Сборка и упаковка плагина через CLI `nms`
+## 3. Сборка и упаковка плагина через CLI `aethercore`
 
-Для упаковки папки плагина в архив `.nms-plugin` выполните:
+Для упаковки папки плагина в архив `.aether-plugin` выполните:
 ```bash
-cargo run -p aethercore-cli -- plugin pack plugins/my-service --output modules/my-service-1.0.0.nms-plugin
+cargo run -p aethercore-cli -- plugin pack plugins/my-service --output modules/my-service-1.0.0.aether-plugin
 ```
 
-После этого поместите файл `.nms-plugin` в директорию `modules/` сервера. Микроядро автоматически подгрузит его без перезапуска!
+После этого поместите файл `.aether-plugin` в директорию `modules/` сервера. Микроядро автоматически подгрузит его без перезапуска!

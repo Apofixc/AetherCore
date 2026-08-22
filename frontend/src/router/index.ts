@@ -92,7 +92,7 @@ router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormal
   }
 
   const isAuthDisabled = authStore.authConfig?.web_ui_auth === false
-  const token = localStorage.getItem('aether_token') || localStorage.getItem('nms_token') || sessionStorage.getItem('aether_token') || sessionStorage.getItem('nms_token')
+  const token = localStorage.getItem('aether_token') || sessionStorage.getItem('aether_token')
 
   if (isAuthDisabled) {
     if (to.path === '/login') {

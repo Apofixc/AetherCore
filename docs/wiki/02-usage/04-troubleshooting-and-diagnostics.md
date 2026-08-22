@@ -7,15 +7,15 @@
 ```bash
 # Рекомендуемый уровень для продакшена (информационные сообщения ядра и предупреждения)
 export RUST_LOG="info,aethercore_core=debug"
-./target/release/nms --server
+./target/release/aethercore --server
 
 # Детальная отладка всех подсистем (включая SQL-запросы и события шины)
 export RUST_LOG="debug,sqlx=info,tokio=warn"
-./target/release/nms --server --dev
+./target/release/aethercore --server --dev
 
 # Максимальный уровень трассировки с таймстампами
 export RUST_LOG="trace"
-./target/release/nms --server
+./target/release/aethercore --server
 ```
 
 ---
@@ -25,7 +25,7 @@ export RUST_LOG="trace"
 Если один из установленных плагинов поврежден, вызывает циклические паники или блокирует старт системы, запустите платформу в безопасном режиме:
 
 ```bash
-./target/release/nms --server --safe-mode --port 8080
+./target/release/aethercore --server --safe-mode --port 8080
 ```
 
 > [!NOTE]
@@ -51,6 +51,6 @@ export RUST_LOG="trace"
 - **Решение**: Если доступ утерян, можно переинициализировать дефолтного администратора через CLI:
   ```bash
   # Очистить таблицу пользователей в тестовой БД или удалить файл базы данных (при первом старте создастся admin/admin)
-  rm -f data/nms.db*
-  ./target/release/nms --server
+  rm -f data/aethercore.db*
+  ./target/release/aethercore --server
   ```

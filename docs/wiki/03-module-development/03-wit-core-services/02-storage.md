@@ -1,8 +1,8 @@
-# 💾 WIT Интерфейс `nms:core/storage` — Изолированное KV-Хранилище
+# 💾 WIT Интерфейс `aether:core/storage` — Изолированное KV-Хранилище
 
 ## 1. Назначение и модель изоляции данных
 
-Интерфейс `nms:core/storage` предоставляет плагинам безопасное персистентное Key-Value хранилище, интегрированное в транзакционную базу данных SQLite микроядра.
+Интерфейс `aether:core/storage` предоставляет плагинам безопасное персистентное Key-Value хранилище, интегрированное в транзакционную базу данных SQLite микроядра.
 
 ### Архитектура пространств имен и изоляции (Namespace Sandboxing):
 - Каждый плагин оперирует внутри собственного изолированного пространства имен `module:{plugin_id}:{key}`.
@@ -16,7 +16,7 @@
 ## 2. Полный код WIT спецификации (`aethercore-core.wit`)
 
 ```wit
-package nms:core@2.0.0;
+package aether:core@2.0.0;
 
 interface storage {
     /// Получить значение по ключу из изолированного хранилища плагина
@@ -78,8 +78,8 @@ CREATE INDEX IF NOT EXISTS idx_kv_namespace ON kv_store(namespace);
 #[allow(warnings)]
 mod bindings;
 
-use bindings::nms::core::logger::{self, LogLevel};
-use bindings::nms::core::storage;
+use bindings::aether::core::logger::{self, LogLevel};
+use bindings::aether::core::storage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default)]

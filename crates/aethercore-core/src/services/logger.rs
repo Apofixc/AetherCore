@@ -141,7 +141,7 @@ impl LoggerService {
     /// Создать экземпляр `LoggerService` с указанным путем к системному файлу журнала
     ///
     /// # Аргументы
-    /// * `path` — Путь к файлу лога (например, `"/var/log/nms/system.log"`).
+    /// * `path` — Путь к файлу лога (например, `"/var/log/aethercore/system.log"`).
     pub fn with_log_file(path: impl Into<PathBuf>) -> Self {
         let mut config = LoggerConfig::default();
         config.log_file_path = Some(path.into());

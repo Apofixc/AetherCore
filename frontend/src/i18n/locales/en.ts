@@ -124,7 +124,6 @@ export const en = {
     customizeDashboard: 'Customize Dashboard',
     mainDesktop: 'Main',
     newDesktop: 'New Desktop',
-    nmsModules: 'Platform Modules',
     platformModules: 'Platform Modules',
     systemBadge: 'SYSTEM',
     moduleSummary: 'Module status summary',

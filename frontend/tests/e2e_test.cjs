@@ -87,7 +87,7 @@ async function runE2ETests() {
     if (inputs.length >= 4) {
       await inputs[0].fill('E2E Test Operator');
       await inputs[1].fill('e2e_operator');
-      await inputs[2].fill('e2e_operator@nms.local');
+      await inputs[2].fill('e2e_operator@aethercore.local');
       await inputs[3].fill('temp_pass_123');
     }
 
@@ -103,7 +103,8 @@ async function runE2ETests() {
     console.log('🔹 Шаг 7: Выход из профиля администратора...');
     await page.goto(`${baseUrl}/login`);
     await page.evaluate(() => {
-      localStorage.removeItem('nms_token');
+      localStorage.removeItem('aether_token');
+      sessionStorage.removeItem('aether_token');
     });
     await page.reload({ waitUntil: 'networkidle' });
 

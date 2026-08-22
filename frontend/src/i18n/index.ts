@@ -9,7 +9,7 @@ const dictionaries: Record<Locale, Record<string, any>> = {
   en
 }
 
-const savedLocale = ((localStorage.getItem('aether_locale') || localStorage.getItem('nms_locale')) as Locale) || 'ru'
+const savedLocale = ((localStorage.getItem('aether_locale')) as Locale) || 'ru'
 const currentLocale = ref<Locale>(savedLocale in dictionaries ? savedLocale : 'ru')
 
 /**

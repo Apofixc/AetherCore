@@ -15,7 +15,7 @@ frontend/.vite/
 # Graphify knowledge graph artifacts
 graphify-out/
 
-# nms-webui
+# webui
 extracted/
 
 # OS and IDE files

@@ -24,7 +24,7 @@
       "id": "c1f7a0e2-892b-426b-b461-825d733519c7",
       "username": "admin",
       "full_name": "System Administrator",
-      "email": "admin@nms.local",
+      "email": "admin@aethercore.local",
       "is_active": true,
       "is_superuser": true,
       "roles": ["admin"],
@@ -72,7 +72,7 @@
 ## 4. Прямая раздача фронтенд-ассетов модулей (`/modules/{id}/*path`)
 
 - **Маршрут**: `GET /modules/{id}/{*path}`
-- **Описание**: потоковое чтение статических файлов интерфейса (ESM-бандлы `dist/ui.js`, SFC `views/*.vue`, стили, иконки) напрямую из архива `.nms-plugin` без распаковки на диск.
+- **Описание**: потоковое чтение статических файлов интерфейса (ESM-бандлы `dist/ui.js`, SFC `views/*.vue`, стили, иконки) напрямую из архива `.aether-plugin` без распаковки на диск.
 - **Заголовки кэширования**: `Cache-Control: public, max-age=31536000, immutable`.
 
 ---

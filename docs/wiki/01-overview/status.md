@@ -15,5 +15,5 @@
 | **Менеджер плагинов (PluginManager)**| `crates/aethercore-core/src/plugins/manager.rs`| ✅ Готово | 1 unit тест |
 | **Axum Web-сервер и REST API** | `crates/aethercore-server/src/` | ✅ Готово | 3 интеграционных теста |
 | **WebSocket Gateway** | `crates/aethercore-server/src/ws/` | ✅ Готово | Интеграционный тест |
-| **CLI утилита (`nms` / `aethercore-cli`)** | `crates/aethercore-cli/src/main.rs` | ✅ Готово | Интеграционный тест |
+| **CLI утилита (`aethercore` / `aethercore-cli`)** | `crates/aethercore-cli/src/main.rs` | ✅ Готово | Интеграционный тест |
 | **Сквозной жизненный цикл** | `crates/aethercore-core/tests/` | ✅ Готово | 1 сквозной тест |

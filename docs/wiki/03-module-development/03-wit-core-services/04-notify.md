@@ -1,8 +1,8 @@
-# 🔔 WIT Интерфейс `nms:core/notify` — Система Уведомлений и Алертов
+# 🔔 WIT Интерфейс `aether:core/notify` — Система Уведомлений и Алертов
 
 ## 1. Назначение и архитектурная роль в платформе
 
-Интерфейс `nms:core/notify` является системным контрактом микроядра, через который гостевые WASM-модули и системные сервисы отправляют структурированные оповещения об инцидентах, сбоях оборудования, аномалиях метрик и событиях безопасности.
+Интерфейс `aether:core/notify` является системным контрактом микроядра, через который гостевые WASM-модули и системные сервисы отправляют структурированные оповещения об инцидентах, сбоях оборудования, аномалиях метрик и событиях безопасности.
 
 ### Архитектурный поток доставки алертов:
 
@@ -31,7 +31,7 @@
 ## 2. Полный код WIT спецификации (`aethercore-core.wit`)
 
 ```wit
-package nms:core@2.0.0;
+package aether:core@2.0.0;
 
 interface notify {
     /// Уровни критичности системных оповещений
@@ -72,16 +72,16 @@ interface notify {
 
 ## 4. Полноценный практический пример на Rust (Гостевой код плагина)
 
-Пример мониторинга сетевого устройства с валидацией порогов, защитой от флуда (Rate Limiting) и отправкой алертов через `nms:core/notify`:
+Пример мониторинга сетевого устройства с валидацией порогов, защитой от флуда (Rate Limiting) и отправкой алертов через `aether:core/notify`:
 
 ```rust
 // src/lib.rs (WASM Component)
 #[allow(warnings)]
 mod bindings;
 
-use bindings::nms::core::logger::{self, LogLevel};
-use bindings::nms::core::notify::{self, AlertSeverity};
-use bindings::nms::core::storage;
+use bindings::aether::core::logger::{self, LogLevel};
+use bindings::aether::core::notify::{self, AlertSeverity};
+use bindings::aether::core::storage;
 
 /// Структура метрик устройства
 struct DeviceMetrics {

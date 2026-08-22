@@ -1,21 +1,21 @@
 # 🚀 Руководство по развертыванию и конфигурации
 
-## 1. Режимы запуска бинарного файла `nms`
+## 1. Режимы запуска бинарного файла `aethercore`
 
-Исполняемый файл платформы `nms` поддерживает следующие режимы работы и аргументы CLI:
+Исполняемый файл платформы `aethercore` поддерживает следующие режимы работы и аргументы CLI:
 
 ```bash
 # 1. Запуск в режиме Headless HTTP/WS сервера на порту 8080
-./target/release/nms --server --port 8080 --host 0.0.0.0
+./target/release/aethercore --server --port 8080 --host 0.0.0.0
 
 # 2. Запуск в режиме локальной разработки (разрешение неподписанных плагинов)
-./target/release/nms --server --dev
+./target/release/aethercore --server --dev
 
 # 3. Аварийный режим Safe-Mode (старт ядра без загрузки сторонних плагинов)
-./target/release/nms --server --safe-mode
+./target/release/aethercore --server --safe-mode
 
 # 4. Указание кастомного пути к базе данных и каталогу плагинов
-./target/release/nms --server --db /var/lib/nms/data.db --modules-dir /var/lib/nms/modules
+./target/release/aethercore --server --db /var/lib/aethercore/data.db --modules-dir /var/lib/aethercore/modules
 ```
 
 ---
@@ -27,9 +27,9 @@
 | `--server` | `flag` | Запуск приложения в качестве headless сетевого демона (без GUI) |
 | `--host` | `string` (`127.0.0.1`) | IP-адрес интерфейса для привязки TCP-сокета HTTP/WS сервера |
 | `--port` | `u16` (`8080`) | Порт HTTP/WS сервера |
-| `--dev` | `flag` (`false`) | Режим разработки: разрешение загрузки неподписанных `.nms-plugin` пакетов |
+| `--dev` | `flag` (`false`) | Режим разработки: разрешение загрузки неподписанных `.aether-plugin` пакетов |
 | `--safe-mode` | `flag` (`false`) | Аварийный режим: старт ядра без загрузки пользовательских плагинов |
-| `--db` | `path` (`data/nms.db`) | Путь к файлу базы данных SQLite (WAL) |
+| `--db` | `path` (`data/aethercore.db`) | Путь к файлу базы данных SQLite (WAL) |
 | `--modules-dir`| `path` (`modules`) | Путь к каталогу установленных плагинов |
 
 ---
@@ -46,7 +46,7 @@ dev_mode = false
 safe_mode = false
 
 [database]
-path = "data/nms.db"
+path = "data/aethercore.db"
 max_read_connections = 10
 busy_timeout_ms = 5000
 
@@ -72,7 +72,7 @@ default_locale = "ru"             # Язык по умолчанию ("ru" ил�
 
 ## 4. Развертывание через systemd (Linux)
 
-Создайте service-файл `/etc/systemd/system/nms.service`:
+Создайте service-файл `/etc/systemd/system/aethercore.service`:
 
 ```ini
 [Unit]
@@ -81,10 +81,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=nms
-Group=nms
-WorkingDirectory=/opt/nms
-ExecStart=/opt/nms/bin/nms --server --host 0.0.0.0 --port 8080
+User=aethercore
+Group=aethercore
+WorkingDirectory=/opt/aethercore
+ExecStart=/opt/aethercore/bin/aethercore --server --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=5s
 LimitNOFILE=65535
@@ -96,6 +96,6 @@ WantedBy=multi-user.target
 Активация и запуск:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now nms
-sudo systemctl status nms
+sudo systemctl enable --now aethercore
+sudo systemctl status aethercore
 ```

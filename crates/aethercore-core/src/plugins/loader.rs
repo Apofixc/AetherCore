@@ -38,7 +38,7 @@ pub struct PluginPackage {
 }
 
 impl PluginPackage {
-    /// Загрузить пакет плагина из ZIP архива (`.nms-plugin`) напрямую в оперативную память (Zero-Unpack)
+    /// Загрузить пакет плагина из ZIP архива (`.aether-plugin`) напрямую в оперативную память (Zero-Unpack)
     ///
     /// # Аргументы
     /// * `bytes` — Байтовый срез содержимого ZIP-файла.
