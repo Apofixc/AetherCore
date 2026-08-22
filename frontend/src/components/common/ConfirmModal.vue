@@ -110,7 +110,7 @@ function handleCancel() {
         :disabled="loading"
         @click="handleCancel"
       >
-        {{ cancelText || t('common.cancel') || 'Отмена' }}
+        {{ cancelText || t('common.cancel') }}
       </button>
       <button
         type="button"
@@ -121,7 +121,7 @@ function handleCancel() {
         :disabled="loading"
         @click="handleConfirm"
       >
-        {{ confirmText || t('common.confirm') || 'Подтвердить' }}
+        {{ confirmText || t('common.confirm') }}
       </button>
     </template>
   </BaseModal>

@@ -379,7 +379,7 @@ async function copyLogLine(entry: LogEntry) {
     await navigator.clipboard.writeText(text)
     notify(t('system.copiedLine'))
   } catch {
-    notify('Скопировано')
+    notify(t('system.copiedLine'))
   }
 }
 
@@ -773,7 +773,7 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="filteredLogs.length === 0" class="text-center py-16 text-on-surface-variant/60 text-xs">
-                  Нет логов, соответствующих выбранным фильтрам
+                  {{ t('system.noLogsMatch') }}
                 </div>
               </div>
 
@@ -811,7 +811,7 @@ onUnmounted(() => {
     <!-- Modal: Service Status Dialog -->
     <BaseModal
       v-model="showServiceStatusModal"
-      title="Статус сервисов AetherCore"
+      :title="t('system.serviceStatusModalTitle')"
       icon="dns"
       max-width="max-w-md"
     >
@@ -840,7 +840,7 @@ onUnmounted(() => {
           size="sm"
           @click="showServiceStatusModal = false"
         >
-          Закрыть
+          {{ t('common.close') }}
         </AppButton>
       </template>
     </BaseModal>

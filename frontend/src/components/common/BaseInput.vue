@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -117,7 +120,7 @@ function togglePassword() {
         type="button"
         @click="togglePassword"
         class="absolute right-2 w-6 h-6 rounded flex items-center justify-center text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-        :title="isPasswordVisible ? 'Скрыть пароль' : 'Показать пароль'"
+        :title="isPasswordVisible ? t('common.hidePassword') : t('common.showPassword')"
       >
         <span class="material-symbols-outlined text-base">
           {{ isPasswordVisible ? 'visibility_off' : 'visibility' }}
@@ -130,7 +133,7 @@ function togglePassword() {
         type="button"
         @click="handleClear"
         class="absolute right-2 w-5 h-5 rounded flex items-center justify-center text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-        title="Очистить"
+        :title="t('common.clear')"
       >
         <span class="material-symbols-outlined text-[14px]">close</span>
       </button>

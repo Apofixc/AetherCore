@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -11,12 +14,14 @@ const props = withDefaults(
     shortcut?: string
   }>(),
   {
-    placeholder: 'Поиск...',
+    placeholder: '',
     clearable: true,
     widthClass: 'w-64',
     size: 'sm'
   }
 )
+
+const resolvedPlaceholder = computed(() => props.placeholder || t('common.search'))
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: string): void
@@ -54,7 +59,7 @@ function handleClear() {
       ref="inputRef"
       :value="modelValue"
       type="text"
-      :placeholder="placeholder"
+      :placeholder="resolvedPlaceholder"
       @input="onInput"
       class="w-full bg-transparent text-on-surface placeholder:text-on-surface-variant/40 outline-none transition-colors"
       :class="[
@@ -77,7 +82,7 @@ function handleClear() {
       type="button"
       @click="handleClear"
       class="absolute right-1.5 w-5 h-5 rounded flex items-center justify-center text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-      title="Очистить"
+      :title="t('common.clear')"
     >
       <span class="material-symbols-outlined text-[14px]">close</span>
     </button>

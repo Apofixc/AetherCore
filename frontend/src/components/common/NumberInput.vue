@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
+
 const props = withDefaults(
   defineProps<{
     modelValue: number
@@ -49,7 +53,7 @@ function onInput(e: Event) {
       @click="decrement"
       class="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant/70 hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10 active:scale-90 transition-all duration-150 cursor-pointer shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
       :disabled="modelValue <= min"
-      title="Уменьшить"
+      :title="t('common.decrease')"
     >
       <span class="material-symbols-outlined text-[14px]">remove</span>
     </button>
@@ -71,7 +75,7 @@ function onInput(e: Event) {
       @click="increment"
       class="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant/70 hover:text-primary-fixed-dim hover:bg-primary-fixed-dim/10 active:scale-90 transition-all duration-150 cursor-pointer shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
       :disabled="modelValue >= max"
-      title="Увеличить"
+      :title="t('common.increase')"
     >
       <span class="material-symbols-outlined text-[14px]">add</span>
     </button>

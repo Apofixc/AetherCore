@@ -479,7 +479,7 @@ const createRoleOptions = computed(() => {
     opts.push({
       value: 'superuser',
       label: superuserCount.value >= 4
-        ? `${t('accessIdentity.superuser')} (Лимит 4)`
+        ? `${t('accessIdentity.superuser')} (${t('users.limit4')})`
         : t('accessIdentity.superuser'),
       disabled: superuserCount.value >= 4
     })
@@ -506,7 +506,7 @@ const editRoleOptions = computed(() => {
       opts.push({
         value: 'superuser',
         label: superuserCount.value >= 4
-          ? `${t('accessIdentity.superuser')} (Лимит 4)`
+          ? `${t('accessIdentity.superuser')} (${t('users.limit4')})`
           : t('accessIdentity.superuser'),
         disabled: superuserCount.value >= 4
       })
@@ -1120,15 +1120,14 @@ const editRoleOptions = computed(() => {
     <!-- Modal: Lock / Unlock User -->
     <ConfirmModal
       v-model="showLockModal"
-      :title="selectedUserForAction?.is_active ? 'Блокировка пользователя' : 'Разблокировка пользователя'"
+      :title="selectedUserForAction?.is_active ? t('users.lockUserModalTitle') : t('users.unlockUserModalTitle')"
       :variant="selectedUserForAction?.is_active ? 'danger' : 'primary'"
-      :confirm-text="selectedUserForAction?.is_active ? 'Заблокировать' : 'Разблокировать'"
+      :confirm-text="selectedUserForAction?.is_active ? t('users.lockUserAction') : t('users.unlockUserAction')"
       :cancel-text="t('users.cancel')"
       @confirm="confirmToggleLock"
     >
       <p v-if="selectedUserForAction">
-        Вы действительно хотите {{ selectedUserForAction.is_active ? 'заблокировать' : 'разблокировать' }} оператора
-        <strong class="text-primary-fixed-dim">{{ selectedUserForAction.full_name }}</strong> ({{ selectedUserForAction.username }})?
+        {{ selectedUserForAction.is_active ? t('users.lockConfirmMessage', { name: selectedUserForAction.full_name, username: selectedUserForAction.username }) : t('users.unlockConfirmMessage', { name: selectedUserForAction.full_name, username: selectedUserForAction.username }) }}
       </p>
     </ConfirmModal>
 

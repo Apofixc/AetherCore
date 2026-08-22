@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -121,8 +124,8 @@ onUnmounted(() => {
                 type="button"
                 @click="close"
                 class="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                title="Закрыть"
-                aria-label="Закрыть"
+                :title="t('common.close')"
+                :aria-label="t('common.close')"
               >
                 <span class="material-symbols-outlined text-lg">close</span>
               </button>

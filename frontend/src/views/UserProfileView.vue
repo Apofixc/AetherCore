@@ -22,7 +22,7 @@ const { theme, setTheme } = useTheme()
 const authStore = useAuthStore()
 
 // Profile Form State
-const fullName = ref(authStore.user?.full_name || 'Главный администратор (Root)')
+const fullName = ref(authStore.user?.full_name || authStore.user?.username || 'Admin')
 const department = ref('Network Operations')
 const role = ref('Superuser')
 const email = ref(authStore.user?.email || 'root@nms.local')
@@ -385,14 +385,14 @@ const themeOptions = computed(() => [
   { value: 'system', label: t('profile.themeSystem') }
 ])
 
-const languageOptions = [
+const languageOptions = computed(() => [
   { value: 'en', label: 'English (EN)' },
   { value: 'ru', label: 'Русский (RU)' },
-  { value: 'de', label: 'Deutsch (DE) — скоро', disabled: true },
-  { value: 'es', label: 'Español (ES) — скоро', disabled: true },
-  { value: 'fr', label: 'Français (FR) — скоро', disabled: true },
-  { value: 'zh', label: '中文 (ZH) — скоро', disabled: true }
-]
+  { value: 'de', label: `Deutsch (DE) — ${t('profile.comingSoon')}`, disabled: true },
+  { value: 'es', label: `Español (ES) — ${t('profile.comingSoon')}`, disabled: true },
+  { value: 'fr', label: `Français (FR) — ${t('profile.comingSoon')}`, disabled: true },
+  { value: 'zh', label: `中文 (ZH) — ${t('profile.comingSoon')}`, disabled: true }
+])
 
 const timezoneOptions = [
   { value: 'Europe/Minsk', label: 'Europe/Minsk (GMT+3)' },
@@ -827,7 +827,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                                 variant="outline"
                                 size="xs"
                                 icon="play_arrow"
-                                title="Прослушать сигнал"
+                                :title="t('profile.listenSignal')"
                                 @click="playSoundEffect('info')"
                               />
                             </div>
@@ -879,7 +879,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                           variant="outline"
                           size="xs"
                           icon="play_arrow"
-                          title="Прослушать сигнал"
+                          :title="t('profile.listenSignal')"
                           @click="playSoundEffect('info')"
                         />
                       </div>
@@ -902,7 +902,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                           variant="outline"
                           size="xs"
                           icon="play_arrow"
-                          title="Прослушать сигнал"
+                          :title="t('profile.listenSignal')"
                           @click="playSoundEffect('success')"
                         />
                       </div>
@@ -925,7 +925,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                           variant="outline"
                           size="xs"
                           icon="play_arrow"
-                          title="Прослушать сигнал"
+                          :title="t('profile.listenSignal')"
                           @click="playSoundEffect('warning')"
                         />
                       </div>
@@ -948,7 +948,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                           variant="outline"
                           size="xs"
                           icon="play_arrow"
-                          title="Прослушать сигнал"
+                          :title="t('profile.listenSignal')"
                           @click="playSoundEffect('error')"
                         />
                       </div>
