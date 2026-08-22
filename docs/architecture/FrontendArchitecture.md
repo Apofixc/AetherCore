@@ -8,36 +8,33 @@
 
 ```mermaid
 graph TD
-    Start([Пользователь открывает страницу]) --> InitStore[Инициализация Pinia authStore]
-    InitStore --> CheckStorage[Проверка токена: localStorage || sessionStorage]
-    CheckStorage --> FetchCfg[GET /api/v1/auth/config<br/>Загрузка политик безопасности]
-    FetchCfg --> CheckWebAuth{Политика<br/>web_ui_auth активна?}
-
+    Start(["Пользователь открывает страницу"]) --> InitStore["Инициализация Pinia authStore"]
+    InitStore --> CheckStorage["Проверка токена: localStorage или sessionStorage"]
+    CheckStorage --> FetchCfg["GET /api/v1/auth/config<br/>Загрузка политик безопасности"]
+    FetchCfg --> CheckWebAuth{"Политика<br/>web_ui_auth активна?"}
     %% Режим без авторизации
-    CheckWebAuth -- Нет (false) --> AnonMode[Режим Anonymous Admin<br/>Виртуальный суперпользователь]
-    AnonMode --> CheckTargetAnon{Целевой маршрут?}
-    CheckTargetAnon -- /login --> RedirDashAnon[Редирект на /dashboard]
-    CheckTargetAnon -- Другой маршрут --> AllowAnon[Разрешить переход]
-
+    CheckWebAuth -- "Нет (false)" --> AnonMode["Режим Anonymous Admin<br/>Виртуальный суперпользователь"]
+    AnonMode --> CheckTargetAnon{"Целевой маршрут?"}
+    CheckTargetAnon -- "/login" --> RedirDashAnon["Редирект на /dashboard"]
+    CheckTargetAnon -- "Другой маршрут" --> AllowAnon["Разрешить переход"]
     %% Режим с авторизацией
-    CheckWebAuth -- Да (true) --> HasToken{Токен обнаружен?}
-    HasToken -- Да --> ValidateMe[GET /api/v1/auth/me]
-    ValidateMe --> CheckMeResult{Токен валиден и IP разрешен?}
-    CheckMeResult -- Да (200 OK) --> StartTimer[Запуск startInactivityTracker<br/>Слушатели: mouse, key, scroll]
-    StartTimer --> CheckTargetAuth{Маршрут /login?}
-    CheckTargetAuth -- Да --> RedirDashAuth[Редирект на /dashboard]
-    CheckTargetAuth -- Нет --> AllowRoute[Разрешить переход на страницу]
-    CheckMeResult -- Нет (401 / 403) --> DropToken[Очистка токенов authStore.logout]
-    DropToken --> RedirLogin[Редирект на /login]
-    HasToken -- Нет --> IsPublicRoute{Маршрут публичный?}
-    IsPublicRoute -- Да (/login) --> ShowLogin[Отобразить форму входа]
-    IsPublicRoute -- Нет --> RedirLogin
-
+    CheckWebAuth -- "Да (true)" --> HasToken{"Токен обнаружен?"}
+    HasToken -- "Да" --> ValidateMe["GET /api/v1/auth/me"]
+    ValidateMe --> CheckMeResult{"Токен валиден и IP разрешен?"}
+    CheckMeResult -- "Да (200 OK)" --> StartTimer["Запуск startInactivityTracker<br/>Слушатели: mouse, key, scroll"]
+    StartTimer --> CheckTargetAuth{"Маршрут /login?"}
+    CheckTargetAuth -- "Да" --> RedirDashAuth["Редирект на /dashboard"]
+    CheckTargetAuth -- "Нет" --> AllowRoute["Разрешить переход на страницу"]
+    CheckMeResult -- "Нет (401 / 403)" --> DropToken["Очистка токенов authStore.logout"]
+    DropToken --> RedirLogin["Редирект на /login"]
+    HasToken -- "Нет" --> IsPublicRoute{"Маршрут публичный?"}
+    IsPublicRoute -- "Да (/login)" --> ShowLogin["Отобразить форму входа"]
+    IsPublicRoute -- "Нет" --> RedirLogin
     %% Глобальный перехват ошибок API
-    ApiReq([API запрос ApiClient]) --> OnApiError{Статус ответа?}
-    OnApiError -- 401 Unauthorized --> DropToken
-    OnApiError -- 403 Forbidden (IP) --> ShowIpError[Баннера запрета доступа по IP]
-    OnApiError -- 200 OK --> ResetTimer[Сброс таймера активности]
+    ApiReq(["API запрос ApiClient"]) --> OnApiError{"Статус ответа?"}
+    OnApiError -- "401 Unauthorized" --> DropToken
+    OnApiError -- "403 Forbidden (IP)" --> ShowIpError["Баннера запрета доступа по IP"]
+    OnApiError -- "200 OK" --> ResetTimer["Сброс таймера активности"]
 ```
 
 ---
@@ -53,7 +50,6 @@ sequenceDiagram
     participant API as ApiClient (/api/v1/auth)
     participant Core as Backend Axum (UserService & JWT)
     participant DB as SQLite DB
-
     %% Сценарий 1: Обычный вход / Запомнить меня
     Note over User, DB: Сценарий 1: Успешный вход и выбор хранилища токена
     User->>UI: Ввод operatorId, accessCode + флаг "Запомнить меня"
@@ -72,7 +68,6 @@ sequenceDiagram
     end
     Store->>Store: startInactivityTracker()
     Store-->>UI: Успех
-
     %% Сценарий 2: Ошибка и Блокировка (Lockout)
     Note over User, DB: Сценарий 2: Неверный пароль и превышение лимита попыток
     User->>UI: Ввод неверного пароля
@@ -87,7 +82,6 @@ sequenceDiagram
         Core-->>API: 401 Unauthorized (Invalid credentials)
     end
     API-->>UI: Отображение ошибки и времени блокировки
-
     %% Сценарий 3: Забыли код?
     Note over User, UI: Сценарий 3: Восстановление доступа ("Забыли код?")
     User->>UI: Клик на "Забыли код?"
@@ -103,10 +97,8 @@ sequenceDiagram
 graph TD
     UserActive["Пользователь выполняет действие<br/>(mousemove, mousedown, keydown, touch, scroll)"] --> ResetTimer["Сброс таймера:<br/>clearTimeout + setTimeout на inactivity_timeout мин"]
     ResetTimer --> IdleWait{"Пользователь активен<br/>до истечения таймера?"}
-    
-    IdleWait -- Да --> UserActive
-    
-    IdleWait -- Нет (таймаут истек) --> TriggerTimeout["Срабатывание таймера неактивности"]
+    IdleWait -- "Да" --> UserActive
+    IdleWait -- "Нет (таймаут истек)" --> TriggerTimeout["Срабатывание таймера неактивности"]
     TriggerTimeout --> ClearAuth["authStore.logout:<br/>Очистка токенов и сброс слушателей"]
     ClearAuth --> SetReason["Выставление sessionExpired = true"]
     SetReason --> RedirectLogin["Редирект на /login?reason=inactivity"]
@@ -121,45 +113,36 @@ graph TD
 
 ```mermaid
 graph TD
-    LoginSuccess([Успешный вход POST /api/v1/auth/login]) --> CheckRoot{Пользователь root?}
-    
+    LoginSuccess(["Успешный вход POST /api/v1/auth/login"]) --> CheckRoot{"Пользователь root?"}
     %% Аккаунт root минует мастер
-    CheckRoot -- Да (username == 'root') --> DashDirect[Прямой переход на /dashboard]
-    
+    CheckRoot -- "Да (username == 'root')" --> DashDirect["Прямой переход на /dashboard"]
     %% Обычный пользователь
-    CheckRoot -- Нет --> EvalConditions{Проверка статуса аккаунта}
-    
-    EvalConditions -->|!is_username_locked && must_change_password| FullWizard[Двухшаговый мастер: Шаг 1 Логин -> Шаг 2 Пароль]
-    EvalConditions -->|!is_username_locked && !must_change_password| UsernameOnly[Окно настройки логина: Логин -> Сохранить]
-    EvalConditions -->|is_username_locked && must_change_password| PasswordOnly[Окно смены пароля: Новый пароль -> Сохранить]
-    EvalConditions -->|is_username_locked && !must_change_password| DashDirect
-    
+    CheckRoot -- "Нет" --> EvalConditions{"Проверка статуса аккаунта"}
+    EvalConditions -->|"!is_username_locked && must_change_password"| FullWizard["Двухшаговый мастер: Шаг 1 Логин → Шаг 2 Пароль"]
+    EvalConditions -->|"!is_username_locked && !must_change_password"| UsernameOnly["Окно настройки логина: Логин → Сохранить"]
+    EvalConditions -->|"is_username_locked && must_change_password"| PasswordOnly["Окно смены пароля: Новый пароль → Сохранить"]
+    EvalConditions -->|"is_username_locked && !must_change_password"| DashDirect
     %% Шаг 1: Логин
-    FullWizard --> Step1[Шаг 1: Выбор постоянного логина]
-    UsernameOnly --> Step1Solo[Шаг 1: Выбор постоянного логина]
-    
-    Step1 --> UserStep1Action{Действие пользователя}
-    UserStep1Action -- "Оставить текущий" --> SetCurrentUname[Сохранить текущий username] --> Step2[Шаг 2: Новый постоянный пароль]
-    UserStep1Action -- "Ввод логина + Далее" --> ValidateUname{Валидация логина<br/>(3-32 симв., [a-z0-9._-])}
-    ValidateUname -- Невалиден --> ShowUnameErr[Ошибка формата логина] --> Step1
-    ValidateUname -- Валиден --> Step2
-    
-    UsernameOnly --> UserStep1SoloAction{Действие пользователя}
-    UserStep1SoloAction -- "Сохранить и войти" --> SaveUsernameSolo[PUT /api/v1/users/:id<br/>{ username, is_username_locked: true }] --> GoDash
-    
+    FullWizard --> Step1["Шаг 1: Выбор постоянного логина"]
+    UsernameOnly --> Step1Solo["Шаг 1: Выбор постоянного логина"]
+    Step1 --> UserStep1Action{"Действие пользователя"}
+    UserStep1Action -- "Оставить текущий" --> SetCurrentUname["Сохранить текущий username"] --> Step2["Шаг 2: Новый постоянный пароль"]
+    UserStep1Action -- "Ввод логина + Далее" --> ValidateUname{"Валидация логина<br/>(3-32 симв., [a-z0-9._-])"}
+    ValidateUname -- "Невалиден" --> ShowUnameErr["Ошибка формата логина"] --> Step1
+    ValidateUname -- "Валиден" --> Step2
+    UsernameOnly --> UserStep1SoloAction{"Действие пользователя"}
+    UserStep1SoloAction -- "Сохранить и войти" --> SaveUsernameSolo["PUT /api/v1/users/:id<br/>{ username, is_username_locked: true }"] --> GoDash
     %% Шаг 2: Пароль
-    PasswordOnly --> Step2Solo[Окно обязательной смены пароля]
-    Step2Solo --> SavePwdSolo[Ввод пароля + Сохранить] --> SendUpdateSolo[PUT /api/v1/users/:id<br/>{ password, must_change_password: false }] --> GoDash
-    
-    Step2 --> UserStep2Action{Действие пользователя}
+    PasswordOnly --> Step2Solo["Окно обязательной смены пароля"]
+    Step2Solo --> SavePwdSolo["Ввод пароля + Сохранить"] --> SendUpdateSolo["PUT /api/v1/users/:id<br/>{ password, must_change_password: false }"] --> GoDash
+    Step2 --> UserStep2Action{"Действие пользователя"}
     UserStep2Action -- "Клик Назад" --> Step1
-    UserStep2Action -- "Ввод пароля + Сохранить и войти" --> ValidatePwd{Чек-лист сложности:<br/>Длина, Заглавные, Цифры, Спецсимволы + Совпадение}
-    ValidatePwd -- Ошибка --> ShowPwdErr[Отображение ошибок в форме] --> Step2
-    ValidatePwd -- Успех --> SendUpdate[PUT /api/v1/users/:id<br/>{ username, password, is_username_locked: true, must_change_password: false }]
-    
-    SendUpdate --> UpdateResult{Ответ API}
-    UpdateResult -- Ошибка (409/422) --> ShowApiErr[Вывод ошибки в модальном окне] --> Step2
-    UpdateResult -- 200 OK --> SetUser[authStore.user = updated] --> CloseModal[Закрытие мастера] --> GoDash[Редирект на /dashboard]
+    UserStep2Action -- "Ввод пароля + Сохранить и войти" --> ValidatePwd{"Чек-лист сложности:<br/>Длина, Заглавные, Цифры, Спецсимволы + Совпадение"}
+    ValidatePwd -- "Ошибка" --> ShowPwdErr["Отображение ошибок в форме"] --> Step2
+    ValidatePwd -- "Успех" --> SendUpdate["PUT /api/v1/users/:id<br/>{ username, password, is_username_locked: true, must_change_password: false }"]
+    SendUpdate --> UpdateResult{"Ответ API"}
+    UpdateResult -- "Ошибка (409/422)" --> ShowApiErr["Вывод ошибки в модальном окне"] --> Step2
+    UpdateResult -- "200 OK" --> SetUser["authStore.user = updated"] --> CloseModal["Закрытие мастера"] --> GoDash["Редирект на /dashboard"]
 ```
 
 ### Б. Sequence-диаграмма взаимодействия UI, Store и Core
@@ -172,10 +155,8 @@ sequenceDiagram
     participant Store as authStore
     participant API as ApiClient (/api/v1/users)
     participant Core as Backend UserService
-
     Note over User, Core: Вход пользователя (не root) при !is_username_locked || must_change_password
     UI->>UI: Открытие модального окна мастера
-    
     alt Доступна смена логина (!is_username_locked)
         rect rgb(30, 41, 59)
             Note over User, UI: Шаг 1: Персонализация логина
@@ -190,7 +171,6 @@ sequenceDiagram
             end
         end
     end
-
     alt Требуется смена пароля (must_change_password)
         rect rgb(30, 41, 59)
             Note over User, UI: Шаг 2: Установка постоянного пароля
@@ -199,7 +179,6 @@ sequenceDiagram
                 UI->>UI: Возврат на wizardStep = 'username'
                 User->>UI: Корректировка логина и повторный клик "Далее"
             end
-
             User->>UI: Ввод нового пароля и подтверждения
             loop Динамическая проверка сложности
                 UI->>UI: Проверка passwordRequirements
@@ -207,13 +186,11 @@ sequenceDiagram
             end
         end
     end
-
     %% Финальное сохранение
     Note over User, Core: Финальное сохранение учетных данных
     User->>UI: Клик "Сохранить и войти"
     UI->>API: PUT /api/v1/users/:id { username?, password?, is_username_locked: true, must_change_password: false }
     API->>Core: update_user (валидация логина + сложность пароля + Argon2id hash)
-    
     alt Ошибка валидации или конфликт логина (409/422)
         Core-->>API: 409 Conflict / 422 Unprocessable Entity
         API-->>UI: Отображение сообщения об ошибке
@@ -274,21 +251,16 @@ sequenceDiagram
     participant Store as authStore
     participant API as ApiClient (/api/v1/settings)
     participant Core as Backend Axum
-
     Admin->>View: Изменение настроек (таймауты, политики, матрица)
     Admin->>View: Клик "Применить изменения"
-    
     %% Последовательное сохранение для избежания race condition
     View->>API: 1. PUT /api/v1/settings/permissions (матрица прав)
     API->>Core: Сохранение матрицы
     Core-->>API: 200 OK
-    
     View->>API: 2. PUT /api/v1/settings/security (политики безопасности)
     API->>Core: Запись настроек в SQLite KV Store
     Core-->>API: 200 OK
-    
     View->>Store: authStore.checkAuthConfig()
-    
     alt Переход: web_ui_auth включен (из выключенного состояния)
         View->>Store: authStore.logout() (сброс анонимной сессии)
         View->>View: window.location.href = '/login' (переход на форму авторизации)
@@ -304,28 +276,23 @@ sequenceDiagram
 ```mermaid
 graph TD
     UserLoaded(["Пользователь загружен в authStore"]) --> CalcLevel["Вычисление currentUserRoleLevel: Superuser = 4, Admin = 3, Operator = 2, Viewer = 1"]
-
     CalcLevel --> UsersPage["Страница /settings/users"]
     CalcLevel --> MatrixPage["Страница /settings/access-identity"]
-
     %% Управление пользователями
     UsersPage --> CheckCanManage{"canManageUsers?"}
     CheckCanManage -- "Нет" --> AddBtnDisabled["Кнопка 'Добавить пользователя' disabled"]
     CheckCanManage -- "Нет" --> TableActionsDisabled["Действия в таблице disabled"]
     CheckCanManage -- "Да" --> AddBtnEnabled["Кнопка 'Добавить пользователя' активна"]
     AddBtnEnabled --> FilterRoleOpts["Фильтрация createRoleOptions / editRoleOptions: Показывать роли <= currentUserRoleLevel"]
-
     %% Матрица прав доступа
     MatrixPage --> RenderMatrix["Отображение Permissions Matrix"]
     RenderMatrix --> CheckSuperCol["Колонка Superuser: всегда checked и disabled"]
     RenderMatrix --> CheckAdminCol{"isSuperuser?"}
     CheckAdminCol -- "Да" --> AdminColActive["Колонка Admin: редактируемая"]
     CheckAdminCol -- "Нет" --> AdminColDisabled["Колонка Admin: disabled"]
-
     RenderMatrix --> CheckSubCols{"currentUserRoleLevel >= 3?"}
     CheckSubCols -- "Да" --> SubColsActive["Колонки Operator и Viewer: редактируемые"]
     CheckSubCols -- "Нет" --> SubColsDisabled["Колонки Operator и Viewer: disabled (Readonly)"]
-
     MatrixPage --> CheckSavePerm{"canManageSecurity ИЛИ canManageRoles?"}
     CheckSavePerm -- "Нет" --> ApplyBtnDisabled["Кнопка 'Применить изменения' disabled"]
     CheckSavePerm -- "Да" --> ApplyBtnActive["Кнопка 'Применить изменения' активна"]
@@ -338,33 +305,25 @@ graph TD
 ```mermaid
 graph TD
     Mount(["Монтирование UserProfileView.vue"]) --> LoadPrefs["Загрузка профиля и предпочтений:<br/>1. authStore.fetchUser()<br/>2. settingsApi.getUserPreferences()"]
-
     LoadPrefs --> ApplyState["Инициализация локального состояния Vue:<br/>• timezone (дефолт UTC / сохраненный)<br/>• time_format (24h_sec / 24h_min / 12h_sec / 12h_min / iso)<br/>• theme (dark / light / system)<br/>• locale (ru / en)<br/>• department, email, full_name"]
-
     ApplyState --> StartClock["Запуск таймера живых часов<br/>clockTimer = setInterval(updateClock, 1000)"]
     StartClock --> RenderClock["Форматирование часов по правилам:<br/>Intl.DateTimeFormat(locale, { timeZone, hour12, ... })<br/>+ суффикс (Timezone)"]
-
     %% Взаимодействие с часовым поясом
     ApplyState --> TimezoneCard["Карточка 'Внешний вид и региональность'<br/>BaseCard (:overflow-visible='true')"]
     TimezoneCard --> BaseSelectTz["Searchable BaseSelect (:searchable='true')"]
-
     BaseSelectTz --> ClickTzTrigger{"Клик по полю выбора пояса?"}
     ClickTzTrigger -- "Да" --> OpenDropdown["Открытие всплывающего popover (z-[100])<br/>• Фокус на строке поиска<br/>• Генерация списка IANA Intl.supportedValuesOf('timeZone')<br/>• Расчет актуального смещения (GMT±X)"]
-
     OpenDropdown --> SearchInput["Ввод запроса в строку поиска<br/>(город, регион, IANA код или GMT)"]
     SearchInput --> FilterList["Мгновенная реактивная фильтрация списка<br/>filteredOptions"]
     FilterList --> SelectTzItem["Выбор часового пояса оператором"]
     SelectTzItem --> UpdateTz["1. timezone.value = selectedTz<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ timezone })"]
-
     %% Кнопка автоопределения
     TimezoneCard --> ClickAutoDetect{"Клик 'Автоопределение'?"}
     ClickAutoDetect -- "Да" --> ReadClientTz["Чтение Intl.DateTimeFormat().resolvedOptions().timeZone"]
     ReadClientTz --> UpdateTz
-
     %% Взаимодействие с форматом времени
     TimezoneCard --> SelectTimeFmt["Выбор формата времени (time_format):<br/>24h_sec / 24h_min / 12h_sec / 12h_min / iso"]
     SelectTimeFmt --> UpdateFmt["1. timeFormat.value = selectedFmt<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ time_format })"]
-
     %% Полное сохранение профиля
     TimezoneCard --> ClickSaveAll{"Клик 'Сохранить изменения'?"}
     ClickSaveAll -- "Да" --> SaveChain["Сквозное сохранение:<br/>1. usersApi.update(id, { full_name, email }) -> SQLite users table<br/>2. settingsApi.updateUserPreferences(payload) -> SQLite kv_store (user:{id})<br/>3. authStore.fetchUser() -> обновление сессии Pinia<br/>4. Анимация кнопки: savedNotice = true"]
