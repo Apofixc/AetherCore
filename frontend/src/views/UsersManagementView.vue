@@ -28,6 +28,7 @@ interface OperatorItem {
   role: 'superuser' | 'admin' | 'operator' | 'viewer'
   is_online: boolean
   is_active: boolean
+  must_change_password?: boolean
   initials: string
 }
 
@@ -99,6 +100,7 @@ async function loadUsers() {
           role,
           is_online: Boolean(u.is_active),
           is_active: Boolean(u.is_active),
+          must_change_password: Boolean(u.must_change_password),
           initials
         }
       })
@@ -259,7 +261,8 @@ async function handleCreateUser() {
       full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@nms.local`,
       roles: [newUserForm.value.role],
-      is_active: true
+      is_active: true,
+      must_change_password: newUserForm.value.must_change_password
     })
 
     const role = (created.roles && created.roles.includes('superuser')) ? 'superuser'
@@ -278,6 +281,7 @@ async function handleCreateUser() {
       role,
       is_online: true,
       is_active: true,
+      must_change_password: Boolean(created.must_change_password),
       initials
     })
 
@@ -307,6 +311,7 @@ async function handleCreateUser() {
       role: newUserForm.value.role,
       is_online: true,
       is_active: true,
+      must_change_password: newUserForm.value.must_change_password,
       initials
     })
 
@@ -335,7 +340,7 @@ function handleOpenEdit(op: OperatorItem) {
     role: op.role,
     is_active: op.is_active,
     password: '',
-    must_change_password: false
+    must_change_password: op.must_change_password ?? false
   }
   showEditModal.value = true
 }
@@ -349,6 +354,7 @@ async function handleSaveEdit() {
       email: editUserForm.value.email.trim(),
       is_active: editUserForm.value.is_active,
       roles: [editUserForm.value.role],
+      must_change_password: editUserForm.value.must_change_password,
       ...(editUserForm.value.password.trim() ? { password: editUserForm.value.password.trim() } : {})
     })
   } catch (err) {
@@ -368,6 +374,7 @@ async function handleSaveEdit() {
         role: editUserForm.value.role,
         is_active: editUserForm.value.is_active,
         is_online: editUserForm.value.is_active ? operators.value[index].is_online : false,
+        must_change_password: editUserForm.value.must_change_password,
         initials
       }
     }
@@ -1008,6 +1015,17 @@ const editRoleOptions = computed(() => {
           :options="createRoleOptions"
           size="sm"
         />
+
+        <label class="flex items-center gap-2 pt-1 cursor-pointer select-none">
+          <input
+            v-model="newUserForm.must_change_password"
+            type="checkbox"
+            class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+          />
+          <span class="text-xs text-on-surface">
+            {{ t('accessIdentity.mandatoryPasswordChange') }}
+          </span>
+        </label>
       </form>
 
       <template #footer>
@@ -1075,6 +1093,17 @@ const editRoleOptions = computed(() => {
           type="password"
           size="sm"
         />
+
+        <label class="flex items-center gap-2 pt-1 cursor-pointer select-none">
+          <input
+            v-model="editUserForm.must_change_password"
+            type="checkbox"
+            class="rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+          />
+          <span class="text-xs text-on-surface">
+            {{ t('accessIdentity.mandatoryPasswordChange') }}
+          </span>
+        </label>
       </form>
 
       <template #footer>

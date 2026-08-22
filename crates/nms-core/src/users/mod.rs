@@ -135,7 +135,17 @@ impl UserService {
         let password_hash = hash_password(&dto.password)?;
         let now = Utc::now();
         let is_active = dto.is_active.unwrap_or(true);
-        let must_change_password = dto.must_change_password.unwrap_or(false);
+        let must_change_password = match dto.must_change_password {
+            Some(val) => val,
+            None => {
+                let kv = crate::db::kv::KvStore::system(self.db.clone());
+                if let Ok(Some(policies)) = kv.get::<serde_json::Value>("security_policies").await {
+                    policies.get("mandatory_password_change").and_then(|v| v.as_bool()).unwrap_or(true)
+                } else {
+                    true
+                }
+            }
+        };
 
         // Вставляем пользователя
         sqlx::query(
