@@ -12,7 +12,7 @@
 
 pub mod kv;
 
-use nms_common::error::{AppError, Result};
+use aethercore_common::error::{AppError, Result};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Pool, Sqlite};
 use std::path::Path;
@@ -44,7 +44,7 @@ impl Db {
     /// * `busy_timeout_ms` — Таймаут ожидания освобождения базы данных в миллисекундах.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое создания каталога,
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое создания каталога,
     /// подключения к SQLite или выполнения миграций схемы.
     pub async fn init(db_path: &Path, max_readers: u32, busy_timeout_ms: u64) -> Result<Self> {
         // Создаем родительскую директорию, если она не существует
@@ -95,7 +95,7 @@ impl Db {
     /// Инициализировать изолированную базу данных в оперативной памяти (для unit/integration тестов)
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое создания in-memory пула или миграций.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое создания in-memory пула или миграций.
     pub async fn init_in_memory() -> Result<Self> {
         let connect_opts = SqliteConnectOptions::from_str("sqlite::memory:")
             .map_err(|e| AppError::database(e.to_string()))?
@@ -133,7 +133,7 @@ impl Db {
     /// `kv_store`, `audit_logs`, `event_journal` и заполняет системные роли/права по умолчанию.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения DDL/DML запросов.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое выполнения DDL/DML запросов.
     async fn run_migrations(&self) -> Result<()> {
         let pool = &self.writer_pool;
 
@@ -286,7 +286,7 @@ impl Db {
     /// создает роли `admin`, `operator`, `viewer` и настраивает базовые связи `role_permissions`.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое вставки в таблицы прав и ролей.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое вставки в таблицы прав и ролей.
     async fn seed_default_rbac(&self) -> Result<()> {
         let pool = &self.writer_pool;
 

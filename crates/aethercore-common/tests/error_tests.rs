@@ -1,7 +1,7 @@
 //! # Тесты единой системы ошибок AppError и стандартного формата ответа
 
-use nms_common::error::AppError;
-use nms_common::i18n::Locale;
+use aethercore_common::error::AppError;
+use aethercore_common::i18n::Locale;
 
 #[test]
 fn test_error_localization_ru() {

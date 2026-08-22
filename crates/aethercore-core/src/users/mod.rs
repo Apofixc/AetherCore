@@ -8,8 +8,8 @@
 use crate::auth::{hash_password, validate_password_complexity, verify_password};
 use crate::db::Db;
 use chrono::{DateTime, Utc};
-use nms_common::error::{AppError, Result};
-use nms_common::models::user::{CreateUserDto, SecurityPoliciesDto, UpdateUserDto, User};
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::models::user::{CreateUserDto, SecurityPoliciesDto, UpdateUserDto, User};
 use std::collections::HashSet;
 use tracing::info;
 use uuid::Uuid;

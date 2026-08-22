@@ -16,9 +16,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
-use nms_common::error::ErrorResponse;
-use nms_common::i18n::{global, Locale};
-use nms_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
+use aethercore_common::error::ErrorResponse;
+use aethercore_common::i18n::{global, Locale};
+use aethercore_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

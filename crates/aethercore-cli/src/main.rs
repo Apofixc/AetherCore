@@ -1,26 +1,26 @@
-//! # Исполняемый файл nms и CLI утилита платформы (nms-cli)
+//! # Исполняемый файл nms и CLI утилита платформы (aethercore-cli)
 //!
 //! Точка входа для запуска ядра в режимах Server, Dev и Safe-Mode,
 //! а также сборки и упаковки плагинов (`nms plugin pack <dir> -o <output>`).
 
 use clap::{Parser, Subcommand};
-use nms_common::config::AppConfig;
-use nms_core::auth::JwtManager;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::loader::PluginPackage;
-use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, LoggerService, NotifyService};
-use nms_core::users::UserService;
-use nms_server::state::AppState;
+use aethercore_common::config::AppConfig;
+use aethercore_core::auth::JwtManager;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::loader::PluginPackage;
+use aethercore_core::plugins::PluginManager;
+use aethercore_core::services::{AuditService, LoggerService, NotifyService};
+use aethercore_core::users::UserService;
+use aethercore_server::state::AppState;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::info;
 
-/// Параметры командной строки ядра NMSNext-Gen
+/// Параметры командной строки ядра AetherCore Platform
 #[derive(Parser, Debug)]
-#[command(name = "nms", version, about = "Next-Gen Universal Core Platform")]
+#[command(name = "aethercore", version, about = "AetherCore Universal Modular Platform")]
 struct Cli {
     /// Запуск в режиме Headless сервера (по умолчанию true)
     #[arg(long)]
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         if cli.dev {
-            tracing_subscriber::EnvFilter::new("info,tower_http=debug,nms_server=debug")
+            tracing_subscriber::EnvFilter::new("info,tower_http=debug,aethercore_server=debug")
         } else {
             tracing_subscriber::EnvFilter::new("info")
         }
@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwt_manager = JwtManager::new(&config.security.jwt_secret, config.security.jwt_ttl_seconds);
     let user_service = UserService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
-    let logger_service = LoggerService::with_log_file("data/nms.log");
+    let logger_service = LoggerService::with_log_file("data/aethercore.log");
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
 
@@ -159,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 7. Запускаем HTTP веб-сервер Axum
-    nms_server::run_server(state).await?;
+    aethercore_server::run_server(state).await?;
 
     Ok(())
 }

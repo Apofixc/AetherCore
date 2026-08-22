@@ -9,8 +9,8 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use nms_common::error::ErrorResponse;
-use nms_common::models::events::ReliableEventRecord;
+use aethercore_common::error::ErrorResponse;
+use aethercore_common::models::events::ReliableEventRecord;
 use serde::Deserialize;
 
 /// Создать вложенный роутер системных событий `/events`

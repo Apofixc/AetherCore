@@ -3,20 +3,20 @@
 use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
-use nms_common::config::AppConfig;
-use nms_common::manifest::ModuleManifest;
-use nms_common::models::user::UserResponseDto;
-use nms_core::auth::JwtManager;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::loader::PluginPackage;
-use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, LogLevel, LoggerService, NotifyService};
-use nms_core::users::UserService;
-use nms_server::api::auth::LoginResponse;
-use nms_server::api::modules::ModuleSummaryDto;
-use nms_server::create_app_router;
-use nms_server::state::AppState;
+use aethercore_common::config::AppConfig;
+use aethercore_common::manifest::ModuleManifest;
+use aethercore_common::models::user::UserResponseDto;
+use aethercore_core::auth::JwtManager;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::loader::PluginPackage;
+use aethercore_core::plugins::PluginManager;
+use aethercore_core::services::{AuditService, LogLevel, LoggerService, NotifyService};
+use aethercore_core::users::UserService;
+use aethercore_server::api::auth::LoginResponse;
+use aethercore_server::api::modules::ModuleSummaryDto;
+use aethercore_server::create_app_router;
+use aethercore_server::state::AppState;
 use std::collections::HashMap;
 use std::time::Instant;
 use tower::ServiceExt;
@@ -158,7 +158,7 @@ async fn test_auth_config_and_disabled_web_ui_auth() {
     assert_eq!(config_val["web_ui_auth"], true);
 
     // 2. Отключаем web_ui_auth в KV Store
-    let kv = nms_core::db::kv::KvStore::system(state.db.clone());
+    let kv = aethercore_core::db::kv::KvStore::system(state.db.clone());
     kv.set(
         "security_policies",
         &serde_json::json!({
@@ -284,8 +284,8 @@ async fn test_logs_endpoints() {
     let token = login_data.token;
 
     // Пишем несколько тестовых записей в LoggerService
-    state.logger_service.log(LogLevel::Info, "nms_core", "Server boot initialized");
-    state.logger_service.log(LogLevel::Warn, "nms_core", "High memory usage detected");
+    state.logger_service.log(LogLevel::Info, "aethercore_core", "Server boot initialized");
+    state.logger_service.log(LogLevel::Warn, "aethercore_core", "High memory usage detected");
     state.logger_service.log(LogLevel::Error, "test_plugin", "SNMP device unreachable");
 
     // 1. Проверяем /api/v1/system/logs/providers
@@ -304,7 +304,7 @@ async fn test_logs_endpoints() {
 
     assert_eq!(prov_res.status(), StatusCode::OK);
     let prov_bytes = prov_res.into_body().collect().await.unwrap().to_bytes();
-    let providers: Vec<nms_core::services::LogProvider> = serde_json::from_slice(&prov_bytes).unwrap();
+    let providers: Vec<aethercore_core::services::LogProvider> = serde_json::from_slice(&prov_bytes).unwrap();
     assert!(providers.iter().any(|p| p.id == "system"));
 
     // 2. Проверяем /api/v1/system/logs (все логи)
@@ -323,7 +323,7 @@ async fn test_logs_endpoints() {
 
     assert_eq!(logs_res.status(), StatusCode::OK);
     let logs_bytes = logs_res.into_body().collect().await.unwrap().to_bytes();
-    let query_res: nms_core::services::LogQueryResult = serde_json::from_slice(&logs_bytes).unwrap();
+    let query_res: aethercore_core::services::LogQueryResult = serde_json::from_slice(&logs_bytes).unwrap();
     assert_eq!(query_res.total, 3);
 
     // 3. Проверяем фильтрацию по уровню ERROR
@@ -342,7 +342,7 @@ async fn test_logs_endpoints() {
 
     assert_eq!(error_res.status(), StatusCode::OK);
     let error_bytes = error_res.into_body().collect().await.unwrap().to_bytes();
-    let error_query: nms_core::services::LogQueryResult = serde_json::from_slice(&error_bytes).unwrap();
+    let error_query: aethercore_core::services::LogQueryResult = serde_json::from_slice(&error_bytes).unwrap();
     assert_eq!(error_query.total, 1);
     assert_eq!(error_query.entries[0].level, LogLevel::Error);
     assert!(error_query.entries[0].message.contains("SNMP device unreachable"));
@@ -414,7 +414,7 @@ async fn test_settings_endpoints() {
 
     assert_eq!(get_pref_res.status(), StatusCode::OK);
     let pref_bytes = get_pref_res.into_body().collect().await.unwrap().to_bytes();
-    let user_prefs: nms_server::api::settings::UserPreferencesDto =
+    let user_prefs: aethercore_server::api::settings::UserPreferencesDto =
         serde_json::from_slice(&pref_bytes).unwrap();
     assert_eq!(user_prefs.timezone, "UTC");
 
@@ -454,7 +454,7 @@ async fn test_settings_endpoints() {
         .unwrap();
 
     let pref_bytes2 = get_pref_res2.into_body().collect().await.unwrap().to_bytes();
-    let user_prefs2: nms_server::api::settings::UserPreferencesDto =
+    let user_prefs2: aethercore_server::api::settings::UserPreferencesDto =
         serde_json::from_slice(&pref_bytes2).unwrap();
     assert_eq!(user_prefs2.timezone, "Europe/Moscow");
     assert_eq!(user_prefs2.sound_info, "Gentle Bell");
@@ -475,7 +475,7 @@ async fn test_settings_endpoints() {
 
     assert_eq!(get_sec_res.status(), StatusCode::OK);
     let sec_bytes = get_sec_res.into_body().collect().await.unwrap().to_bytes();
-    let sec_policies: nms_server::api::settings::SecurityPoliciesDto =
+    let sec_policies: aethercore_server::api::settings::SecurityPoliciesDto =
         serde_json::from_slice(&sec_bytes).unwrap();
     assert_eq!(sec_policies.max_login_attempts, 5);
 
@@ -552,7 +552,7 @@ async fn test_settings_endpoints() {
 
     assert_eq!(get_maint_res.status(), StatusCode::OK);
     let maint_bytes = get_maint_res.into_body().collect().await.unwrap().to_bytes();
-    let mut maint: nms_server::api::settings::MaintenanceSettingsDto =
+    let mut maint: aethercore_server::api::settings::MaintenanceSettingsDto =
         serde_json::from_slice(&maint_bytes).unwrap();
     assert_eq!(maint.auto_backup, true);
 

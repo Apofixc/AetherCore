@@ -1,8 +1,8 @@
 //! # Тесты гибридной шины событий EventBus и Reliable Event Journal
 
-use nms_common::models::events::EventMessage;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
+use aethercore_common::models::events::EventMessage;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
 
 #[tokio::test]
 async fn test_event_bus_live_and_reliable() {

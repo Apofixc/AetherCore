@@ -1,8 +1,8 @@
 //! # Тесты сервиса пользователей UserService, квот и политик безопасности RBAC
 
-use nms_common::models::user::{CreateUserDto, UpdateUserDto};
-use nms_core::db::Db;
-use nms_core::users::UserService;
+use aethercore_common::models::user::{CreateUserDto, UpdateUserDto};
+use aethercore_core::db::Db;
+use aethercore_core::users::UserService;
 
 #[tokio::test]
 async fn test_user_crud_and_auth() {

@@ -1,12 +1,12 @@
 //! # Сквозной интеграционный тест жизненного цикла ядра и модулей
 
-use nms_common::i18n::{global, Locale};
-use nms_core::auth::JwtManager;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, NotifyService};
-use nms_core::users::UserService;
+use aethercore_common::i18n::{global, Locale};
+use aethercore_core::auth::JwtManager;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::PluginManager;
+use aethercore_core::services::{AuditService, NotifyService};
+use aethercore_core::users::UserService;
 use std::path::Path;
 
 #[tokio::test]

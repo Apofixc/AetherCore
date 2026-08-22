@@ -3,7 +3,7 @@
 //! Обеспечивает отправку тревожных сообщений, уведомлений о сбоях сетевых устройств
 //! в системный журнал и во внешние системы через Webhooks (например, Telegram, Slack, Mattermost).
 
-use nms_common::error::Result;
+use aethercore_common::error::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
@@ -23,7 +23,7 @@ pub enum AlertSeverity {
 ///
 /// # Примеры
 /// ```rust
-/// use nms_core::services::notify::{AlertMessage, AlertSeverity};
+/// use aethercore_core::services::notify::{AlertMessage, AlertSeverity};
 ///
 /// let alert = AlertMessage {
 ///     title: "Хост 192.168.1.1 недоступен".into(),

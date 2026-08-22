@@ -13,9 +13,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
-use nms_common::error::{AppError, ErrorResponse};
-use nms_common::models::user::{CreateUserDto, UpdateUserDto, UserResponseDto};
-use nms_core::auth::check_permission;
+use aethercore_common::error::{AppError, ErrorResponse};
+use aethercore_common::models::user::{CreateUserDto, UpdateUserDto, UserResponseDto};
+use aethercore_core::auth::check_permission;
 use uuid::Uuid;
 
 /// Создать вложенный роутер управления пользователями `/users`

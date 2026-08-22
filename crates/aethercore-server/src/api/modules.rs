@@ -14,9 +14,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use nms_common::error::{AppError, ErrorResponse};
-use nms_common::manifest::ModuleManifest;
-use nms_core::auth::check_permission;
+use aethercore_common::error::{AppError, ErrorResponse};
+use aethercore_common::manifest::ModuleManifest;
+use aethercore_core::auth::check_permission;
 use serde::{Deserialize, Serialize};
 
 /// Создать вложенный роутер управления плагинами `/modules`

@@ -15,7 +15,7 @@ use std::path::PathBuf;
 ///
 /// # Примеры
 /// ```rust
-/// use nms_common::config::AppConfig;
+/// use aethercore_common::config::AppConfig;
 ///
 /// let config = AppConfig::default();
 /// assert_eq!(config.server.port, 8080);

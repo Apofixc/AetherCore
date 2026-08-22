@@ -1,4 +1,4 @@
-package nms:core@2.0.0;
+package aethercore:core@2.0.0;
 
 /// Host API: Шина событий (Events)
 interface events {

@@ -87,7 +87,7 @@ export default { MyServiceView };
 
 Для упаковки папки плагина в архив `.nms-plugin` выполните:
 ```bash
-cargo run -p nms-cli -- plugin pack plugins/my-service --output modules/my-service-1.0.0.nms-plugin
+cargo run -p aethercore-cli -- plugin pack plugins/my-service --output modules/my-service-1.0.0.nms-plugin
 ```
 
 После этого поместите файл `.nms-plugin` в директорию `modules/` сервера. Микроядро автоматически подгрузит его без перезапуска!

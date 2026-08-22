@@ -6,8 +6,8 @@
 
 use crate::db::Db;
 use chrono::{DateTime, Utc};
-use nms_common::error::{AppError, Result};
-use nms_common::models::events::{EventMessage, EventType, ReliableEventRecord};
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::models::events::{EventMessage, EventType, ReliableEventRecord};
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
@@ -42,8 +42,8 @@ impl EventBus {
     ///
     /// # Примеры
     /// ```rust,no_run
-    /// use nms_core::bus::EventBus;
-    /// use nms_core::db::Db;
+    /// use aethercore_core::bus::EventBus;
+    /// use aethercore_core::db::Db;
     ///
     /// # async fn run(db: Db) {
     /// let event_bus = EventBus::new(db);
@@ -87,7 +87,7 @@ impl EventBus {
     /// * `event` — Публикуемое событие ([`EventMessage`]).
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Internal`](nms_common::error::AppError), если очередь
+    /// Возвращает [`AppError::Internal`](aethercore_common::error::AppError), если очередь
     /// надежного журнала переполнена или закрыта.
     pub async fn publish(&self, event: EventMessage) -> Result<()> {
         // 1. Отправляем в Live Broadcast канал (если есть подписчики)
@@ -125,7 +125,7 @@ impl EventBus {
     /// Список сохраненных записей журнала [`ReliableEventRecord`] в порядке возрастания ID.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения SQL-запроса.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое выполнения SQL-запроса.
     pub async fn query_journal(
         &self,
         topic_filter: Option<&str>,
@@ -204,8 +204,8 @@ impl EventBus {
 /// * `event` — Сохраняемое событие ([`EventMessage`]).
 ///
 /// # Ошибки
-/// - [`AppError::Validation`](nms_common::error::AppError) — при ошибке сериализации полезной нагрузки в JSON.
-/// - [`AppError::Database`](nms_common::error::AppError) — при сбое выполнения SQL-вставки.
+/// - [`AppError::Validation`](aethercore_common::error::AppError) — при ошибке сериализации полезной нагрузки в JSON.
+/// - [`AppError::Database`](aethercore_common::error::AppError) — при сбое выполнения SQL-вставки.
 async fn record_event_to_db(db: &Db, event: &EventMessage) -> Result<()> {
     let payload_str = serde_json::to_string(&event.payload).map_err(|e| {
         AppError::validation("payload", e.to_string())

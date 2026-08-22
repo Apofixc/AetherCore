@@ -11,17 +11,17 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use nms_common::error::{AppError, ErrorResponse};
-use nms_common::i18n::Locale;
-use nms_common::models::user::JwtClaims;
-use nms_core::auth::JwtManager;
+use aethercore_common::error::{AppError, ErrorResponse};
+use aethercore_common::i18n::Locale;
+use aethercore_common::models::user::JwtClaims;
+use aethercore_core::auth::JwtManager;
 
 /// Трейт для извлечения менеджера JWT и БД из разделяемого состояния Axum ([`AppState`](crate::state::AppState))
 pub trait HasJwtManager {
     /// Получить ссылку на [`JwtManager`]
     fn jwt_manager(&self) -> &JwtManager;
     /// Получить ссылку на базу данных SQLite (если доступна)
-    fn db(&self) -> Option<&nms_core::db::Db> {
+    fn db(&self) -> Option<&aethercore_core::db::Db> {
         None
     }
 }
@@ -149,8 +149,8 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // Проверка IP Whitelist при наличии подключения к БД
         if let Some(db) = state.db() {
-            let kv = nms_core::db::kv::KvStore::system(db.clone());
-            if let Ok(Some(policies)) = kv.get::<nms_common::models::user::SecurityPoliciesDto>("security_policies").await {
+            let kv = aethercore_core::db::kv::KvStore::system(db.clone());
+            if let Ok(Some(policies)) = kv.get::<aethercore_common::models::user::SecurityPoliciesDto>("security_policies").await {
                 let client_ip = extract_client_ip(&parts.headers);
                 if !is_ip_allowed(&client_ip, &policies.ip_whitelist) {
                     return Err(AuthErrorResponse(AppError::forbidden(

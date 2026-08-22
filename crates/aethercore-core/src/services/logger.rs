@@ -7,7 +7,7 @@
 //! - Поиск, фильтрацию по уровням важности и скачивание лог-файлов.
 
 use chrono::{DateTime, Utc};
-use nms_common::error::{AppError, Result};
+use aethercore_common::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
@@ -184,7 +184,7 @@ impl LoggerService {
     /// * `provider` — Метаданные провайдера логов ([`LogProvider`]).
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Internal`](nms_common::error::AppError) при сбое блокировки внутреннего состояния.
+    /// Возвращает [`AppError::Internal`](aethercore_common::error::AppError) при сбое блокировки внутреннего состояния.
     pub fn register_provider(&self, provider: LogProvider) -> Result<()> {
         let mut guard = self.inner.write().map_err(|e| AppError::internal(e.to_string()))?;
         guard.providers.insert(provider.id.clone(), provider);
@@ -197,7 +197,7 @@ impl LoggerService {
     /// Список провайдеров [`LogProvider`].
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Internal`](nms_common::error::AppError) при ошибке блокировки.
+    /// Возвращает [`AppError::Internal`](aethercore_common::error::AppError) при ошибке блокировки.
     pub fn list_providers(&self) -> Result<Vec<LogProvider>> {
         let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
         let mut list: Vec<LogProvider> = guard.providers.values().cloned().collect();
@@ -278,7 +278,7 @@ impl LoggerService {
     /// Результат запроса [`LogQueryResult`] со списком подходящих записей.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если провайдер не зарегистрирован.
+    /// Возвращает [`AppError::NotFound`](aethercore_common::error::AppError), если провайдер не зарегистрирован.
     pub fn get_logs(
         &self,
         provider_id: &str,
@@ -366,8 +366,8 @@ impl LoggerService {
     /// Кортеж `(бинарные_байты_лога, рекомендуемое_имя_файла)`.
     ///
     /// # Ошибки
-    /// - [`AppError::NotFound`](nms_common::error::AppError) — если указанный провайдер не зарегистрирован.
-    /// - [`AppError::Internal`](nms_common::error::AppError) — при ошибке чтения файла с диска.
+    /// - [`AppError::NotFound`](aethercore_common::error::AppError) — если указанный провайдер не зарегистрирован.
+    /// - [`AppError::Internal`](aethercore_common::error::AppError) — при ошибке чтения файла с диска.
     pub fn download_log(&self, provider_id: &str) -> Result<(Vec<u8>, String)> {
         let guard = self.inner.read().map_err(|e| AppError::internal(e.to_string()))?;
         let provider = guard
@@ -444,7 +444,7 @@ fn append_to_file_with_rotation(path: &Path, line: &str, max_bytes: u64) -> std:
 /// Список разобранных записей [`LogEntry`] в хронологическом порядке.
 ///
 /// # Ошибки
-/// Возвращает [`AppError::Internal`](nms_common::error::AppError) при сбое открытия или чтения файла.
+/// Возвращает [`AppError::Internal`](aethercore_common::error::AppError) при сбое открытия или чтения файла.
 fn read_tail_from_file(
     path: &Path,
     limit: usize,

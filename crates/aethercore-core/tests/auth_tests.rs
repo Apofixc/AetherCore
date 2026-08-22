@@ -1,6 +1,6 @@
 //! # Тесты аутентификации, Argon2id и JWT токенов
 
-use nms_core::auth::{hash_password, verify_password, JwtManager};
+use aethercore_core::auth::{hash_password, verify_password, JwtManager};
 use uuid::Uuid;
 
 #[test]

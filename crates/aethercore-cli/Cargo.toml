@@ -1,18 +1,18 @@
 [package]
-name = "nms-cli"
+name = "aethercore-cli"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "nms"
+name = "aethercore"
 path = "src/main.rs"
 
 [dependencies]
-nms-common = { workspace = true }
-nms-core = { workspace = true }
-nms-server = { workspace = true }
+aethercore-common = { workspace = true }
+aethercore-core = { workspace = true }
+aethercore-server = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

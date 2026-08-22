@@ -9,10 +9,10 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use nms_common::models::user::UserResponseDto;
+use aethercore_common::models::user::UserResponseDto;
 use serde::{Deserialize, Serialize};
 
-use nms_core::db::kv::KvStore;
+use aethercore_core::db::kv::KvStore;
 
 /// Создать вложенный роутер аутентификации `/auth` (`POST /login`, `GET /me`, `GET /config`)
 pub fn router() -> Router<AppState> {
@@ -22,7 +22,7 @@ pub fn router() -> Router<AppState> {
         .route("/config", get(auth_config_handler))
 }
 
-use nms_common::models::user::SecurityPoliciesDto;
+use aethercore_common::models::user::SecurityPoliciesDto;
 
 /// Публичная конфигурация авторизации для фронтенда
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,8 +98,8 @@ pub struct LoginResponse {
 
 /// POST /api/v1/auth/login
 ///
-/// Обработчик входа пользователя. Проверяет учетные данные через [`nms_core::users::UserService::authenticate`],
-/// выпускает JWT токен через [`nms_core::auth::JwtManager`] и записывает действие в журнал аудита.
+/// Обработчик входа пользователя. Проверяет учетные данные через [`aethercore_core::users::UserService::authenticate`],
+/// выпускает JWT токен через [`aethercore_core::auth::JwtManager`] и записывает действие в журнал аудита.
 ///
 /// # Аргументы
 /// * `state` — Разделяемое состояние сервера [`AppState`].
@@ -117,7 +117,7 @@ async fn login_handler(
     RequestLocale(locale): RequestLocale,
     headers: axum::http::HeaderMap,
     Json(req): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, Json<nms_common::error::ErrorResponse>)> {
+) -> Result<Json<LoginResponse>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
     let kv = KvStore::system(state.db.clone());
     let policy: SecurityPoliciesDto = kv
         .get("security_policies")
@@ -127,7 +127,7 @@ async fn login_handler(
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
     if !crate::middleware::is_ip_allowed(&client_ip, &policy.ip_whitelist) {
-        let err = nms_common::error::AppError::forbidden(
+        let err = aethercore_common::error::AppError::forbidden(
             "Client IP is not allowed by security policy whitelist",
         );
         return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
@@ -197,7 +197,7 @@ async fn me_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
-) -> Result<Json<UserResponseDto>, (StatusCode, Json<nms_common::error::ErrorResponse>)> {
+) -> Result<Json<UserResponseDto>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
     let user = state
         .user_service
         .get_user_by_id(claims.sub)

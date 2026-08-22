@@ -24,7 +24,7 @@ pub enum EventType {
 ///
 /// # Примеры
 /// ```rust
-/// use nms_common::models::events::EventMessage;
+/// use aethercore_common::models::events::EventMessage;
 /// use serde_json::json;
 ///
 /// // Создание системного события

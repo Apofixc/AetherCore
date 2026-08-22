@@ -5,7 +5,7 @@
 
 use super::Db;
 use chrono::Utc;
-use nms_common::error::{AppError, Result};
+use aethercore_common::error::{AppError, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Сервис изолированного Key-Value хранилища
@@ -58,12 +58,12 @@ impl KvStore {
     /// - `Ok(None)` — если ключ отсутствует в базе данных.
     ///
     /// # Ошибки
-    /// - [`AppError::Database`](nms_common::error::AppError) — при ошибке выполнения SQL-запроса.
-    /// - [`AppError::Validation`](nms_common::error::AppError) — если JSON-строку невозможно десериализовать в тип `T`.
+    /// - [`AppError::Database`](aethercore_common::error::AppError) — при ошибке выполнения SQL-запроса.
+    /// - [`AppError::Validation`](aethercore_common::error::AppError) — если JSON-строку невозможно десериализовать в тип `T`.
     ///
     /// # Примеры
     /// ```rust,no_run
-    /// use nms_core::db::{Db, kv::KvStore};
+    /// use aethercore_core::db::{Db, kv::KvStore};
     /// use serde::Deserialize;
     ///
     /// #[derive(Deserialize)]
@@ -107,8 +107,8 @@ impl KvStore {
     /// * `value` — Сериализуемый в JSON объект или примитив.
     ///
     /// # Ошибки
-    /// - [`AppError::Validation`](nms_common::error::AppError) — при ошибке сериализации объекта в JSON.
-    /// - [`AppError::Database`](nms_common::error::AppError) — при ошибке записи в базу данных.
+    /// - [`AppError::Validation`](aethercore_common::error::AppError) — при ошибке сериализации объекта в JSON.
+    /// - [`AppError::Database`](aethercore_common::error::AppError) — при ошибке записи в базу данных.
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let json_str = serde_json::to_string(value).map_err(|e| {
             AppError::validation(key, format!("JSON serialization failed: {}", e))
@@ -147,7 +147,7 @@ impl KvStore {
     /// Возвращает `Ok(true)`, если запись существовала и была удалена, иначе `Ok(false)`.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса к БД.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое запроса к БД.
     pub async fn delete(&self, key: &str) -> Result<bool> {
         let res = sqlx::query("DELETE FROM kv_store WHERE namespace = ? AND key = ?")
             .bind(&self.namespace)
@@ -167,7 +167,7 @@ impl KvStore {
     /// Вектор строковых ключей в алфавитном порядке.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое выполнения запроса.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое выполнения запроса.
     pub async fn list_keys(&self) -> Result<Vec<String>> {
         let rows: Vec<(String,)> =
             sqlx::query_as("SELECT key FROM kv_store WHERE namespace = ? ORDER BY key ASC")

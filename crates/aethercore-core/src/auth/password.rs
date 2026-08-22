@@ -6,7 +6,7 @@
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordVerifier, PasswordHasher};
-use nms_common::error::{AppError, Result};
+use aethercore_common::error::{AppError, Result};
 
 /// Захэшировать открытый пароль с использованием алгоритма Argon2id
 ///
@@ -20,12 +20,12 @@ use nms_common::error::{AppError, Result};
 /// включающую параметры алгоритма, соль и хэш.
 ///
 /// # Ошибки
-/// Возвращает [`AppError::Internal`](nms_common::error::AppError), если генерация хэша
+/// Возвращает [`AppError::Internal`](aethercore_common::error::AppError), если генерация хэша
 /// завершилась ошибкой библиотеки Argon2.
 ///
 /// # Примеры
 /// ```rust,no_run
-/// use nms_core::auth::hash_password;
+/// use aethercore_core::auth::hash_password;
 ///
 /// let hash = hash_password("my_secret_pass").unwrap();
 /// assert!(hash.starts_with("$argon2id$"));
@@ -50,7 +50,7 @@ pub fn hash_password(password: &str) -> Result<String> {
 /// Возвращает `Ok(true)`, если пароль верен, и `Ok(false)` при несовпадении.
 ///
 /// # Ошибки
-/// Возвращает [`AppError::Internal`](nms_common::error::AppError), если строка
+/// Возвращает [`AppError::Internal`](aethercore_common::error::AppError), если строка
 /// `password_hash` имеет неверный формат или повреждена.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     let parsed_hash = PasswordHash::new(password_hash).map_err(|e| {

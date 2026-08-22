@@ -7,9 +7,9 @@ use super::loader::PluginPackage;
 use crate::bus::EventBus;
 use crate::db::kv::KvStore;
 use crate::db::Db;
-use nms_common::error::{AppError, Result};
-use nms_common::i18n::{global, Locale};
-use nms_common::manifest::{resolve_module_dag, ModuleManifest};
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::i18n::{global, Locale};
+use aethercore_common::manifest::{resolve_module_dag, ModuleManifest};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -190,7 +190,7 @@ impl PluginManager {
     /// * `plugin_id` — Идентификатор плагина.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин с таким ID не найден.
+    /// Возвращает [`AppError::NotFound`](aethercore_common::error::AppError), если плагин с таким ID не найден.
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
         let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
@@ -208,7 +208,7 @@ impl PluginManager {
     /// * `plugin_id` — Идентификатор плагина.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин с таким ID не найден.
+    /// Возвращает [`AppError::NotFound`](aethercore_common::error::AppError), если плагин с таким ID не найден.
     pub async fn disable_plugin(&self, plugin_id: &str) -> Result<()> {
         let mut registry = self.plugins.write().expect("Lock poisoned");
         let plugin = registry.get_mut(plugin_id).ok_or_else(|| {
@@ -231,8 +231,8 @@ impl PluginManager {
     /// `Ok(Some(serde_json::Value))` с настройками плагина или `Ok(None)`, если настройки еще не задавались.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если плагин не зарегистрирован,
-    /// или [`AppError::Database`](nms_common::error::AppError) при сбое запроса к БД.
+    /// Возвращает [`AppError::NotFound`](aethercore_common::error::AppError), если плагин не зарегистрирован,
+    /// или [`AppError::Database`](aethercore_common::error::AppError) при сбое запроса к БД.
     pub async fn get_plugin_config(&self, plugin_id: &str) -> Result<Option<serde_json::Value>> {
         let _ = self.get_plugin(plugin_id).ok_or_else(|| {
             AppError::module_not_found(plugin_id)
@@ -253,9 +253,9 @@ impl PluginManager {
     /// * `config_value` — Валидируемый JSON-объект настроек.
     ///
     /// # Ошибки
-    /// - [`AppError::NotFound`](nms_common::error::AppError) — плагин не найден.
-    /// - [`AppError::Validation`](nms_common::error::AppError) — настройки не соответствуют схеме.
-    /// - [`AppError::Database`](nms_common::error::AppError) — сбой сохранения в базе данных.
+    /// - [`AppError::NotFound`](aethercore_common::error::AppError) — плагин не найден.
+    /// - [`AppError::Validation`](aethercore_common::error::AppError) — настройки не соответствуют схеме.
+    /// - [`AppError::Database`](aethercore_common::error::AppError) — сбой сохранения в базе данных.
     pub async fn set_plugin_config(
         &self,
         plugin_id: &str,
@@ -273,7 +273,7 @@ impl PluginManager {
         kv.set("config", config_value).await?;
 
         // Оповещение через шину событий
-        let event = nms_common::models::events::EventMessage::reliable(
+        let event = aethercore_common::models::events::EventMessage::reliable(
             format!("{}.config_changed", plugin_id),
             plugin_id,
             config_value.clone(),

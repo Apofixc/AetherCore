@@ -11,7 +11,7 @@
 
 ---
 
-## 2. Полный код WIT спецификации (`nms-core.wit`)
+## 2. Полный код WIT спецификации (`aethercore-core.wit`)
 
 ```wit
 package nms:core@2.0.0;

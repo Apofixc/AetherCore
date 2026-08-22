@@ -1,13 +1,13 @@
 [package]
-name = "nms-server"
+name = "aethercore-server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-nms-common = { workspace = true }
-nms-core = { workspace = true }
+aethercore-common = { workspace = true }
+aethercore-core = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }

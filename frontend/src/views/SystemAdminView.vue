@@ -133,7 +133,7 @@ function handleDownloadBackup() {
   const backupData = JSON.stringify({
     schema_version: '1.0.4',
     timestamp: new Date().toISOString(),
-    system: 'AetherCore NMS Next-Gen',
+    system: 'AetherCore Platform',
     tables: ['users', 'roles', 'permissions', 'modules', 'audit_logs', 'security_settings']
   }, null, 2)
 
@@ -141,7 +141,7 @@ function handleDownloadBackup() {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `nms_backup_${new Date().toISOString().slice(0, 10)}.db`
+  link.download = `aethercore_backup_${new Date().toISOString().slice(0, 10)}.db`
   document.body.appendChild(link)
   link.click()
   link.remove()
@@ -811,7 +811,7 @@ onUnmounted(() => {
     <!-- Modal: Service Status Dialog -->
     <BaseModal
       v-model="showServiceStatusModal"
-      title="Статус сервисов AetherCore NMS"
+      title="Статус сервисов AetherCore"
       icon="dns"
       max-width="max-w-md"
     >

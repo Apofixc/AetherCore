@@ -1,7 +1,7 @@
 //! # Тесты подсистемы базы данных SQLite и KV хранилища
 
-use nms_core::db::kv::KvStore;
-use nms_core::db::Db;
+use aethercore_core::db::kv::KvStore;
+use aethercore_core::db::Db;
 
 #[tokio::test]
 async fn test_database_init_in_memory() {

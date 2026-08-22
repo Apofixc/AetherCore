@@ -1,12 +1,12 @@
 //! # Тесты подсистемы загрузки и управления плагинами
 
 use ed25519_dalek::SigningKey;
-use nms_common::i18n::{global, Locale};
-use nms_common::manifest::ModuleManifest;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::loader::PluginPackage;
-use nms_core::plugins::PluginManager;
+use aethercore_common::i18n::{global, Locale};
+use aethercore_common::manifest::ModuleManifest;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::loader::PluginPackage;
+use aethercore_core::plugins::PluginManager;
 use rand::rngs::OsRng;
 use std::collections::HashMap;
 use tempfile::tempdir;

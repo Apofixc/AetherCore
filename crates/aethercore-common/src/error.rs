@@ -45,7 +45,7 @@ impl AppError {
     ///
     /// # Примеры
     /// ```rust
-    /// use nms_common::error::AppError;
+    /// use aethercore_common::error::AppError;
     ///
     /// let err = AppError::new("SERVICE_UNAVAILABLE", "Сервис временно недоступен", 503);
     /// assert_eq!(err.status_code(), 503);
@@ -122,7 +122,7 @@ impl AppError {
     ///
     /// # Примеры
     /// ```rust
-    /// use nms_common::error::AppError;
+    /// use aethercore_common::error::AppError;
     ///
     /// let err = AppError::unauthorized("Token expired");
     /// assert_eq!(err.status_code(), 401);
@@ -146,7 +146,7 @@ impl AppError {
     ///
     /// # Примеры
     /// ```rust
-    /// use nms_common::error::AppError;
+    /// use aethercore_common::error::AppError;
     ///
     /// let err = AppError::forbidden("system.manage");
     /// assert_eq!(err.status_code(), 403);
@@ -169,7 +169,7 @@ impl AppError {
     ///
     /// # Примеры
     /// ```rust
-    /// use nms_common::error::AppError;
+    /// use aethercore_common::error::AppError;
     ///
     /// let err = AppError::not_found("User with id '42'");
     /// assert_eq!(err.status_code(), 404);

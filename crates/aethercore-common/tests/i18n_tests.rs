@@ -1,6 +1,6 @@
 //! # Тесты подсистемы локализации i18n
 
-use nms_common::i18n::{I18nRegistry, Locale};
+use aethercore_common::i18n::{I18nRegistry, Locale};
 
 #[test]
 fn test_builtin_translations() {

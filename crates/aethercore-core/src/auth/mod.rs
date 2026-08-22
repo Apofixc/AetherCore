@@ -11,8 +11,8 @@ pub mod password;
 pub use jwt::JwtManager;
 pub use password::{hash_password, validate_password_complexity, verify_password};
 
-use nms_common::error::{AppError, Result};
-use nms_common::models::user::JwtClaims;
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::models::user::JwtClaims;
 
 /// Проверить, обладает ли пользователь указанным системным правом доступа
 ///
@@ -24,7 +24,7 @@ use nms_common::models::user::JwtClaims;
 /// * `required_permission` — Идентификатор требуемого права, например `"devices:write"`.
 ///
 /// # Ошибки
-/// Возвращает [`AppError::Forbidden`](nms_common::error::AppError), если у пользователя
+/// Возвращает [`AppError::Forbidden`](aethercore_common::error::AppError), если у пользователя
 /// отсутствует требуемое право доступа.
 pub fn check_permission(claims: &JwtClaims, required_permission: &str) -> Result<()> {
     if claims.is_superuser {

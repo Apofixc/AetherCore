@@ -3,9 +3,9 @@
 //! Проверяет устойчивость к попыткам эскалации привилегий, взлома квот,
 //! самоблокировки, удаления администраторов и обхода обязательной смены пароля.
 
-use nms_common::models::user::{CreateUserDto, UpdateUserDto};
-use nms_core::db::Db;
-use nms_core::users::UserService;
+use aethercore_common::models::user::{CreateUserDto, UpdateUserDto};
+use aethercore_core::db::Db;
+use aethercore_core::users::UserService;
 
 #[tokio::test]
 async fn test_attack_scenarios_and_security_edge_cases() {

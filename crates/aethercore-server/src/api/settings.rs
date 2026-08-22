@@ -12,9 +12,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use nms_common::error::ErrorResponse;
-use nms_core::auth::check_permission;
-use nms_core::db::kv::KvStore;
+use aethercore_common::error::ErrorResponse;
+use aethercore_core::auth::check_permission;
+use aethercore_core::db::kv::KvStore;
 use serde::{Deserialize, Serialize};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
@@ -187,7 +187,7 @@ async fn update_user_preferences_handler(
 // 2. Политики безопасности и аутентификации
 // ---------------------------------------------------------------------------
 
-pub use nms_common::models::user::SecurityPoliciesDto;
+pub use aethercore_common::models::user::SecurityPoliciesDto;
 
 /// GET /api/v1/settings/security
 async fn get_security_policies_handler(
@@ -226,7 +226,7 @@ async fn update_security_policies_handler(
     }
 
     if dto.min_password_length < 4 || dto.min_password_length > 64 {
-        let err = nms_common::error::AppError::validation(
+        let err = aethercore_common::error::AppError::validation(
             "min_password_length",
             "Minimum password length must be between 4 and 64 characters",
         );
@@ -234,7 +234,7 @@ async fn update_security_policies_handler(
     }
 
     if dto.max_login_attempts < 1 || dto.max_login_attempts > 100 {
-        let err = nms_common::error::AppError::validation(
+        let err = aethercore_common::error::AppError::validation(
             "max_login_attempts",
             "Max login attempts must be between 1 and 100",
         );
@@ -242,7 +242,7 @@ async fn update_security_policies_handler(
     }
 
     if dto.lockout_duration < 1 || dto.lockout_duration > 10080 {
-        let err = nms_common::error::AppError::validation(
+        let err = aethercore_common::error::AppError::validation(
             "lockout_duration",
             "Lockout duration must be between 1 and 10080 minutes",
         );

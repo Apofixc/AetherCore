@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Скрипт запуска AetherCore NMS (Бэкенд Rust Axum + Фронтенд Vue 3 Vite Dev)
+# Скрипт запуска AetherCore Platform (Бэкенд Rust Axum + Фронтенд Vue 3 Vite Dev)
 # ==============================================================================
 
 set -eo pipefail
@@ -207,13 +207,13 @@ start_backend() {
 
     if [ "$PROD_MODE" = true ]; then
         echo -e "${CLR_GREEN}⚙️  Запуск Rust бэкенда в Release-режиме на http://${BACKEND_HOST}:${BACKEND_PORT}...${CLR_RESET}"
-        cargo run --release -p nms-cli -- --server --host "${BACKEND_HOST}" --port "${BACKEND_PORT}" ${extra_args} &
+        cargo run --release -p aethercore-cli -- --server --host "${BACKEND_HOST}" --port "${BACKEND_PORT}" ${extra_args} &
     else
         echo -e "${CLR_GREEN}⚙️  Запуск Rust бэкенда на http://${BACKEND_HOST}:${BACKEND_PORT} (режим --dev)...${CLR_RESET}"
         if [ "$NO_WATCH" = false ] && command -v cargo-watch >/dev/null 2>&1; then
-            cargo watch -q -c -w crates -x "run -p nms-cli -- --server --host ${BACKEND_HOST} --port ${BACKEND_PORT} --dev ${extra_args}" &
+            cargo watch -q -c -w crates -x "run -p aethercore-cli -- --server --host ${BACKEND_HOST} --port ${BACKEND_PORT} --dev ${extra_args}" &
         else
-            cargo run -p nms-cli -- --server --host "${BACKEND_HOST}" --port "${BACKEND_PORT}" --dev ${extra_args} &
+            cargo run -p aethercore-cli -- --server --host "${BACKEND_HOST}" --port "${BACKEND_PORT}" --dev ${extra_args} &
         fi
     fi
     BACKEND_PID=$!
@@ -255,7 +255,7 @@ case "$COMMAND" in
     build)
         check_prerequisites
         echo -e "${CLR_CYAN}🔨 Сборка Rust бэкенда (--release)...${CLR_RESET}"
-        cargo build --release -p nms-cli
+        cargo build --release -p aethercore-cli
         echo -e "${CLR_CYAN}🔨 Сборка Frontend бандла...${CLR_RESET}"
         npm --prefix frontend install
         npm --prefix frontend run build
@@ -270,7 +270,7 @@ case "$COMMAND" in
         start_frontend
         echo ""
         echo "========================================================"
-        echo -e "${CLR_GREEN}  ✨ AetherCore NMS запущен в Production режиме!${CLR_RESET}"
+        echo -e "${CLR_GREEN}  ✨ AetherCore Platform запущен в Production режиме!${CLR_RESET}"
         echo "  🌐 Веб-интерфейс: http://localhost:${FRONTEND_PORT}"
         echo "  📡 REST API / WS: http://${BACKEND_HOST}:${BACKEND_PORT}"
         echo "  Для остановки нажмите Ctrl + C"
@@ -302,7 +302,7 @@ case "$COMMAND" in
         start_frontend
         echo ""
         echo "========================================================"
-        echo -e "${CLR_GREEN}  ✨ AetherCore NMS успешно запущен в dev-режиме!${CLR_RESET}"
+        echo -e "${CLR_GREEN}  ✨ AetherCore Platform успешно запущен в dev-режиме!${CLR_RESET}"
         echo "  🌐 Веб-интерфейс: http://localhost:${FRONTEND_PORT} (HMR активен)"
         echo "  📡 REST API / WS: http://${BACKEND_HOST}:${BACKEND_PORT}"
         echo "  💡 Изменения в frontend/src применяются мгновенно"

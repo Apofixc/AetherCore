@@ -1,12 +1,12 @@
 [package]
-name = "nms-core"
+name = "aethercore-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-nms-common = { workspace = true }
+aethercore-common = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 async-trait = { workspace = true }

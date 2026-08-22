@@ -1,24 +1,24 @@
 [workspace]
 members = [
-    "crates/nms-common",
-    "crates/nms-core",
-    "crates/nms-server",
-    "crates/nms-cli",
+    "crates/aethercore-common",
+    "crates/aethercore-core",
+    "crates/aethercore-server",
+    "crates/aethercore-cli",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "2.0.0"
 edition = "2021"
-authors = ["NMSNext-Gen Team"]
+authors = ["AetherCore Team"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Apofixc/NMSNext-Gen"
+repository = "https://github.com/Apofixc/AetherCore"
 
 [workspace.dependencies]
 # Внутренние крейты
-nms-common = { path = "crates/nms-common" }
-nms-core = { path = "crates/nms-core" }
-nms-server = { path = "crates/nms-server" }
+aethercore-common = { path = "crates/aethercore-common" }
+aethercore-core = { path = "crates/aethercore-core" }
+aethercore-server = { path = "crates/aethercore-server" }
 
 # Асинхронность и рантайм
 tokio = { version = "1.43", features = ["full"] }

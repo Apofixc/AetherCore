@@ -1,6 +1,6 @@
 # 🧩 Спецификация WIT интерфейсов ядра (`nms:core@2.0.0`)
 
-Спецификация интерфейсов плагинов описана на языке **WebAssembly Interface Types (WIT)** в файле [`wit/nms-core.wit`](file:///opt/NMSNext-Gen/wit/nms-core.wit).
+Спецификация интерфейсов плагинов описана на языке **WebAssembly Interface Types (WIT)** в файле [`wit/aethercore-core.wit`](file:///opt/NMSNext-Gen/wit/aethercore-core.wit).
 
 ---
 

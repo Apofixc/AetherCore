@@ -5,8 +5,8 @@
 //! а также поддержку директорий для локальной разработки (--dev).
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use nms_common::error::{AppError, Result};
-use nms_common::manifest::ModuleManifest;
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::manifest::ModuleManifest;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
@@ -44,7 +44,7 @@ impl PluginPackage {
     /// * `bytes` — Байтовый срез содержимого ZIP-файла.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Validation`](nms_common::error::AppError), если архив поврежден,
+    /// Возвращает [`AppError::Validation`](aethercore_common::error::AppError), если архив поврежден,
     /// отсутствует обязательный файл `manifest.yaml` или манифест содержит синтаксические ошибки.
     pub fn from_zip_bytes(bytes: &[u8]) -> Result<Self> {
         let reader = Cursor::new(bytes);
@@ -122,8 +122,8 @@ impl PluginPackage {
     /// Экземпляр [`PluginPackage`].
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::NotFound`](nms_common::error::AppError), если файл `manifest.yaml` отсутствует,
-    /// или [`AppError::Validation`](nms_common::error::AppError) при синтаксических ошибках в манифесте.
+    /// Возвращает [`AppError::NotFound`](aethercore_common::error::AppError), если файл `manifest.yaml` отсутствует,
+    /// или [`AppError::Validation`](aethercore_common::error::AppError) при синтаксических ошибках в манифесте.
     pub fn from_directory(dir: &Path) -> Result<Self> {
         let manifest_path = dir.join("manifest.yaml");
         if !manifest_path.exists() {
@@ -202,7 +202,7 @@ impl PluginPackage {
     /// `Ok(true)`, если цифровая подпись корректна, `Ok(false)` если подпись отсутствует или не совпала.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Validation`](nms_common::error::AppError) при неверном формате ключа или подписи.
+    /// Возвращает [`AppError::Validation`](aethercore_common::error::AppError) при неверном формате ключа или подписи.
     pub fn verify_signature(&self, public_key_bytes: &[u8; 32]) -> Result<bool> {
         let sig_bytes = match &self.signature {
             Some(s) if s.len() == 64 => s,
@@ -304,7 +304,7 @@ impl PluginPackage {
 /// * `map` — Результирующая хэш-таблица `путь -> байтовое_содержимое`.
 ///
 /// # Ошибки
-/// Возвращает [`AppError::Internal`](nms_common::error::AppError) при сбое чтения файла с диска.
+/// Возвращает [`AppError::Internal`](aethercore_common::error::AppError) при сбое чтения файла с диска.
 fn load_directory_recursive(
     dir: &Path,
     prefix: &str,

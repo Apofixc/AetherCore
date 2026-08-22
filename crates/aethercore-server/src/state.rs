@@ -4,13 +4,13 @@
 //! использования между HTTP-обработчиками Axum и WebSocket-шлюзом.
 
 use crate::middleware::HasJwtManager;
-use nms_common::config::AppConfig;
-use nms_core::auth::JwtManager;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, LoggerService, NotifyService};
-use nms_core::users::UserService;
+use aethercore_common::config::AppConfig;
+use aethercore_core::auth::JwtManager;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::PluginManager;
+use aethercore_core::services::{AuditService, LoggerService, NotifyService};
+use aethercore_core::users::UserService;
 use std::time::Instant;
 
 /// Общее разделяемое состояние HTTP-сервера и обработчиков Axum
@@ -45,7 +45,7 @@ impl HasJwtManager for AppState {
         &self.jwt_manager
     }
 
-    fn db(&self) -> Option<&nms_core::db::Db> {
+    fn db(&self) -> Option<&aethercore_core::db::Db> {
         Some(&self.db)
     }
 }

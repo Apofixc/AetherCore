@@ -5,7 +5,7 @@
 
 use crate::db::Db;
 use chrono::{DateTime, Utc};
-use nms_common::error::{AppError, Result};
+use aethercore_common::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Запись журнала аудита безопасности и системных действий
@@ -61,7 +61,7 @@ impl AuditService {
     /// ID добавленной записи аудита.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое записи в SQLite.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое записи в SQLite.
     pub async fn log(
         &self,
         user_id: Option<&str>,
@@ -105,7 +105,7 @@ impl AuditService {
     /// Вектор записей журнала аудита [`AuditLogRecord`].
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Database`](nms_common::error::AppError) при сбое запроса к SQLite.
+    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое запроса к SQLite.
     pub async fn list_logs(&self, limit: u32, after_id: Option<i64>) -> Result<Vec<AuditLogRecord>> {
         let limit = limit.min(500).max(1) as i64;
         let after_id = after_id.unwrap_or(0);

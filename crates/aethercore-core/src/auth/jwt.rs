@@ -5,8 +5,8 @@
 
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use nms_common::error::{AppError, Result};
-use nms_common::models::user::JwtClaims;
+use aethercore_common::error::{AppError, Result};
+use aethercore_common::models::user::JwtClaims;
 use uuid::Uuid;
 
 /// Менеджер JWT токенов для аутентификации пользователей
@@ -36,7 +36,7 @@ impl JwtManager {
     ///
     /// # Примеры
     /// ```rust,no_run
-    /// use nms_core::auth::JwtManager;
+    /// use aethercore_core::auth::JwtManager;
     ///
     /// let jwt = JwtManager::new("super-secret-key-32-chars-long!", 3600);
     /// ```
@@ -59,7 +59,7 @@ impl JwtManager {
     /// * `permissions` — Список строковых прав доступа (RBAC), например `["devices:read", "users:write"]`.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Internal`](nms_common::error::AppError), если сериализация
+    /// Возвращает [`AppError::Internal`](aethercore_common::error::AppError), если сериализация
     /// или криптографическая подпись токена завершилась сбоем.
     pub fn generate_token(
         &self,
@@ -116,7 +116,7 @@ impl JwtManager {
     /// Возвращает раскодированные клеймы [`JwtClaims`] при успешной валидации.
     ///
     /// # Ошибки
-    /// Возвращает [`AppError::Unauthorized`](nms_common::error::AppError), если токен
+    /// Возвращает [`AppError::Unauthorized`](aethercore_common::error::AppError), если токен
     /// невалиден, поврежден, подписан другим ключом или срок его действия истек.
     pub fn verify_token(&self, token: &str) -> Result<JwtClaims> {
         let mut validation = Validation::default();

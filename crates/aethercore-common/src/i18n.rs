@@ -186,7 +186,7 @@ pub fn global() -> &'static I18nRegistry {
 ///
 /// # Примеры
 /// ```rust
-/// use nms_common::i18n::{tr, Locale};
+/// use aethercore_common::i18n::{tr, Locale};
 ///
 /// let msg = tr(Locale::Ru, "core.error.unauthorized", &[("details", "Неверный пароль")]);
 /// ```

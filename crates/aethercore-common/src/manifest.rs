@@ -211,7 +211,7 @@ pub struct ModuleAssets {
 ///
 /// # Примеры
 /// ```rust
-/// use nms_common::manifest::ModuleManifest;
+/// use aethercore_common::manifest::ModuleManifest;
 ///
 /// let yaml = r#"
 /// manifest_version: 1

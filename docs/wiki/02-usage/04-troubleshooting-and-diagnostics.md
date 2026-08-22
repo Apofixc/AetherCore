@@ -6,7 +6,7 @@
 
 ```bash
 # Рекомендуемый уровень для продакшена (информационные сообщения ядра и предупреждения)
-export RUST_LOG="info,nms_core=debug"
+export RUST_LOG="info,aethercore_core=debug"
 ./target/release/nms --server
 
 # Детальная отладка всех подсистем (включая SQL-запросы и события шины)

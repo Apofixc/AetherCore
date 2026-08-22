@@ -1,6 +1,6 @@
 //! # Тесты парсинга, валидации и DAG резолвера манифеста плагинов
 
-use nms_common::manifest::{resolve_module_dag, ModuleManifest};
+use aethercore_common::manifest::{resolve_module_dag, ModuleManifest};
 
 const SAMPLE_MANIFEST: &str = r#"
 manifest_version: 1

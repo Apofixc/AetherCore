@@ -3,17 +3,17 @@
 use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
-use nms_common::config::AppConfig;
-use nms_common::models::user::{CreateUserDto, UpdateUserDto, UserResponseDto};
-use nms_core::auth::JwtManager;
-use nms_core::bus::EventBus;
-use nms_core::db::Db;
-use nms_core::plugins::PluginManager;
-use nms_core::services::{AuditService, LoggerService, NotifyService};
-use nms_core::users::UserService;
-use nms_server::api::auth::LoginResponse;
-use nms_server::create_app_router;
-use nms_server::state::AppState;
+use aethercore_common::config::AppConfig;
+use aethercore_common::models::user::{CreateUserDto, UpdateUserDto, UserResponseDto};
+use aethercore_core::auth::JwtManager;
+use aethercore_core::bus::EventBus;
+use aethercore_core::db::Db;
+use aethercore_core::plugins::PluginManager;
+use aethercore_core::services::{AuditService, LoggerService, NotifyService};
+use aethercore_core::users::UserService;
+use aethercore_server::api::auth::LoginResponse;
+use aethercore_server::create_app_router;
+use aethercore_server::state::AppState;
 use std::time::Instant;
 use tower::ServiceExt;
 
@@ -209,7 +209,7 @@ async fn test_api_privilege_escalation_protection() {
 
 #[tokio::test]
 async fn test_ip_whitelist_and_policy_enforcement() {
-    use nms_server::middleware::is_ip_allowed;
+    use aethercore_server::middleware::is_ip_allowed;
 
     // 1. Пустой белый список разрешает всё
     assert!(is_ip_allowed("192.168.1.50", ""));
