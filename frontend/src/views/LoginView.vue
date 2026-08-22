@@ -226,8 +226,12 @@ async function handleSaveNewPassword() {
     <main class="w-full max-w-sm px-4 flex flex-col items-center relative z-10">
       <!-- Title & Branding -->
       <div class="flex flex-col items-center gap-2 mb-6">
-        <div class="w-12 h-12 rounded-xl bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center text-primary-fixed-dim shadow-glow">
-          <span class="material-symbols-outlined text-2xl">hub</span>
+        <div class="w-12 h-12 rounded-xl overflow-hidden bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 flex items-center justify-center shadow-glow">
+          <img
+            src="/logo.png"
+            alt="AetherCore Logo"
+            class="w-full h-full object-cover"
+          />
         </div>
         <div class="text-center">
           <h1 class="text-xl font-bold font-mono tracking-widest text-on-surface uppercase">{{ t('auth.title') }}</h1>
