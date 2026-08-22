@@ -230,3 +230,76 @@ async fn test_ip_whitelist_and_policy_enforcement() {
     assert!(!is_ip_allowed("10.11.0.1", whitelist));
     assert!(!is_ip_allowed("8.8.8.8", whitelist));
 }
+
+#[tokio::test]
+async fn test_role_hierarchy_escalation_and_permissions_matrix() {
+    let (app, state) = setup_test_app().await;
+
+    // Генерируем токен оператора с правами users.manage и access.roles.manage
+    let op_user_id = uuid::Uuid::new_v4();
+    let op_token = state
+        .jwt_manager
+        .generate_token(
+            op_user_id,
+            "power_operator",
+            false,
+            vec!["operator".into()],
+            vec![
+                "users.manage".into(),
+                "users.view".into(),
+                "access.roles.manage".into(),
+                "access.roles.view".into(),
+            ],
+        )
+        .unwrap();
+
+    // 1. Оператор пытается создать администратора (роль выше своего уровня) -> 403 Forbidden
+    let create_admin_by_op = Request::builder()
+        .method("POST")
+        .uri("/api/v1/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_string(&CreateUserDto {
+                username: "sneaky_admin".into(),
+                password: "Password123!".into(),
+                roles: Some(vec!["admin".into()]),
+                ..Default::default()
+            })
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let resp = app.clone().oneshot(create_admin_by_op).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "Оператор не должен иметь возможности создать администратора"
+    );
+
+    // 2. Оператор пытается изменить матрицу прав ролей -> 403 Forbidden
+    let update_matrix_by_op = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/settings/permissions")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!([
+                {
+                    "id": "core",
+                    "name": "Core System",
+                    "icon": "settings",
+                    "items": []
+                }
+            ])
+            .to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.clone().oneshot(update_matrix_by_op).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "Оператор не должен иметь возможности сохранять матрицу прав ролей"
+    );
+}

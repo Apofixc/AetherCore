@@ -13,6 +13,7 @@ use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
 use aethercore_common::error::ErrorResponse;
+use aethercore_common::AppError;
 use aethercore_core::auth::check_permission;
 use aethercore_core::db::kv::KvStore;
 use serde::{Deserialize, Serialize};
@@ -314,6 +315,18 @@ async fn update_permissions_matrix_handler(
         check_permission(&claims, "access.roles.manage").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
+
+        // Пользователи ниже уровня admin (operator, viewer) не могут изменять матрицу прав
+        let has_admin_or_super = claims.roles.iter().any(|r| r == "admin" || r == "superuser");
+        if !has_admin_or_super {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(
+                    AppError::forbidden("Only administrators and superusers can modify role permissions matrix")
+                        .to_api_response(locale),
+                ),
+            ));
+        }
     }
 
     let kv = KvStore::system(state.db.clone());

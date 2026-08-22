@@ -297,3 +297,37 @@ sequenceDiagram
     end
 ```
 
+---
+
+## 7. Блок-схема: Иерархия ролей и доступность элементов управления во Frontend
+
+```mermaid
+graph TD
+    UserLoaded(["Пользователь загружен в authStore"]) --> CalcLevel["Вычисление currentUserRoleLevel: Superuser = 4, Admin = 3, Operator = 2, Viewer = 1"]
+
+    CalcLevel --> UsersPage["Страница /settings/users"]
+    CalcLevel --> MatrixPage["Страница /settings/access-identity"]
+
+    %% Управление пользователями
+    UsersPage --> CheckCanManage{"canManageUsers?"}
+    CheckCanManage -- "Нет" --> AddBtnDisabled["Кнопка 'Добавить пользователя' disabled"]
+    CheckCanManage -- "Нет" --> TableActionsDisabled["Действия в таблице disabled"]
+    CheckCanManage -- "Да" --> AddBtnEnabled["Кнопка 'Добавить пользователя' активна"]
+    AddBtnEnabled --> FilterRoleOpts["Фильтрация createRoleOptions / editRoleOptions: Показывать роли <= currentUserRoleLevel"]
+
+    %% Матрица прав доступа
+    MatrixPage --> RenderMatrix["Отображение Permissions Matrix"]
+    RenderMatrix --> CheckSuperCol["Колонка Superuser: всегда checked и disabled"]
+    RenderMatrix --> CheckAdminCol{"isSuperuser?"}
+    CheckAdminCol -- "Да" --> AdminColActive["Колонка Admin: редактируемая"]
+    CheckAdminCol -- "Нет" --> AdminColDisabled["Колонка Admin: disabled"]
+
+    RenderMatrix --> CheckSubCols{"currentUserRoleLevel >= 3?"}
+    CheckSubCols -- "Да" --> SubColsActive["Колонки Operator и Viewer: редактируемые"]
+    CheckSubCols -- "Нет" --> SubColsDisabled["Колонки Operator и Viewer: disabled (Readonly)"]
+
+    MatrixPage --> CheckSavePerm{"canManageSecurity ИЛИ canManageRoles?"}
+    CheckSavePerm -- "Нет" --> ApplyBtnDisabled["Кнопка 'Применить изменения' disabled"]
+    CheckSavePerm -- "Да" --> ApplyBtnActive["Кнопка 'Применить изменения' активна"]
+```
+

@@ -183,6 +183,7 @@ where
                         sub: uuid::Uuid::nil(),
                         username: "anonymous_admin".to_string(),
                         is_superuser: true,
+                        roles: vec!["superuser".to_string()],
                         permissions: vec![
                             "events.view".to_string(),
                             "modules.manage".to_string(),

@@ -251,6 +251,13 @@ function toggleSelectUser(id: string) {
   }
 }
 
+function getRoleLevel(role: string): number {
+  if (role === 'superuser') return 4
+  if (role === 'admin') return 3
+  if (role === 'operator') return 2
+  return 1
+}
+
 function isProtectedUser(op: OperatorItem | null): boolean {
   if (!op) return false
   return op.role === 'superuser' || op.username === 'root' || op.id === 'ROOT-001'
@@ -258,9 +265,25 @@ function isProtectedUser(op: OperatorItem | null): boolean {
 
 function canEditUser(op: OperatorItem | null): boolean {
   if (!op) return false
-  if (op.role === 'superuser' && !authStore.isSuperuser) {
-    return false
-  }
+  if (!authStore.canManageUsers) return false
+  if (op.role === 'superuser' && !authStore.isSuperuser) return false
+  if (getRoleLevel(op.role) > authStore.currentUserRoleLevel) return false
+  return true
+}
+
+function canLockUser(op: OperatorItem | null): boolean {
+  if (!op) return false
+  if (!authStore.canManageUsers) return false
+  if (isProtectedUser(op)) return false
+  if (getRoleLevel(op.role) >= authStore.currentUserRoleLevel && !authStore.isSuperuser) return false
+  return true
+}
+
+function canDeleteUser(op: OperatorItem | null): boolean {
+  if (!op) return false
+  if (!authStore.canManageUsers) return false
+  if (isProtectedUser(op)) return false
+  if (getRoleLevel(op.role) >= authStore.currentUserRoleLevel && !authStore.isSuperuser) return false
   return true
 }
 
@@ -526,7 +549,9 @@ const roleOptions = computed(() => [
 
 const createRoleOptions = computed(() => {
   const opts = []
-  if (authStore.isSuperuser) {
+  const userLevel = authStore.currentUserRoleLevel
+
+  if (userLevel >= 4) {
     opts.push({
       value: 'superuser',
       label: superuserCount.value >= 4
@@ -535,18 +560,22 @@ const createRoleOptions = computed(() => {
       disabled: superuserCount.value >= 4
     })
   }
-  opts.push(
-    { value: 'admin', label: t('accessIdentity.administrator') },
-    { value: 'operator', label: t('accessIdentity.operator') },
-    { value: 'viewer', label: t('accessIdentity.viewer') }
-  )
+  if (userLevel >= 3) {
+    opts.push({ value: 'admin', label: t('accessIdentity.administrator') })
+  }
+  if (userLevel >= 2) {
+    opts.push({ value: 'operator', label: t('accessIdentity.operator') })
+  }
+  opts.push({ value: 'viewer', label: t('accessIdentity.viewer') })
   return opts
 })
 
 const editRoleOptions = computed(() => {
   const opts = []
+  const userLevel = authStore.currentUserRoleLevel
   const isTargetSuper = editUserForm.value.role === 'superuser'
-  if (authStore.isSuperuser) {
+
+  if (userLevel >= 4) {
     if (isTargetSuper) {
       opts.push({
         value: 'superuser',
@@ -563,11 +592,13 @@ const editRoleOptions = computed(() => {
       })
     }
   }
-  opts.push(
-    { value: 'admin', label: t('accessIdentity.administrator') },
-    { value: 'operator', label: t('accessIdentity.operator') },
-    { value: 'viewer', label: t('accessIdentity.viewer') }
-  )
+  if (userLevel >= 3) {
+    opts.push({ value: 'admin', label: t('accessIdentity.administrator') })
+  }
+  if (userLevel >= 2) {
+    opts.push({ value: 'operator', label: t('accessIdentity.operator') })
+  }
+  opts.push({ value: 'viewer', label: t('accessIdentity.viewer') })
   return opts
 })
 </script>
@@ -695,6 +726,8 @@ const editRoleOptions = computed(() => {
               variant="primary"
               size="sm"
               icon="person_add"
+              :disabled="!authStore.canManageUsers"
+              :title="!authStore.canManageUsers ? t('users.noPermission') : ''"
               @click="openAddModal"
             >
               {{ t('users.addNewUser') }}
@@ -943,7 +976,7 @@ const editRoleOptions = computed(() => {
                         :class="canEditUser(op)
                           ? 'hover:text-primary-fixed-dim hover:bg-surface-variant/50 cursor-pointer text-on-surface-variant'
                           : 'opacity-30 cursor-not-allowed text-on-surface-variant'"
-                        :title="canEditUser(op) ? t('users.editUser') : t('users.protectedRoot')"
+                        :title="canEditUser(op) ? t('users.editUser') : t('users.noPermission')"
                         :disabled="!canEditUser(op)"
                         @click="handleOpenEdit(op)"
                       >
@@ -954,11 +987,11 @@ const editRoleOptions = computed(() => {
                       <button
                         type="button"
                         class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
-                        :class="isProtectedUser(op)
-                          ? 'opacity-30 cursor-not-allowed text-on-surface-variant'
-                          : 'hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer text-on-surface-variant'"
-                        :title="isProtectedUser(op) ? t('users.protectedRoot') : t('users.lockUser')"
-                        :disabled="isProtectedUser(op)"
+                        :class="canLockUser(op)
+                          ? 'hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer text-on-surface-variant'
+                          : 'opacity-30 cursor-not-allowed text-on-surface-variant'"
+                        :title="canLockUser(op) ? t('users.lockUser') : isProtectedUser(op) ? t('users.protectedRoot') : t('users.noPermission')"
+                        :disabled="!canLockUser(op)"
                         @click="handleToggleLock(op)"
                       >
                         <span class="material-symbols-outlined text-base">{{ op.is_active ? 'lock' : 'lock_open' }}</span>
@@ -968,11 +1001,11 @@ const editRoleOptions = computed(() => {
                       <button
                         type="button"
                         class="h-8 w-8 rounded-lg transition-colors flex items-center justify-center active:scale-95"
-                        :class="isProtectedUser(op)
-                          ? 'opacity-30 cursor-not-allowed text-on-surface-variant'
-                          : 'hover:text-error hover:bg-error-container/20 cursor-pointer text-on-surface-variant'"
-                        :title="isProtectedUser(op) ? t('users.protectedRoot') : t('users.deleteUser')"
-                        :disabled="isProtectedUser(op)"
+                        :class="canDeleteUser(op)
+                          ? 'hover:text-error hover:bg-error-container/20 cursor-pointer text-on-surface-variant'
+                          : 'opacity-30 cursor-not-allowed text-on-surface-variant'"
+                        :title="canDeleteUser(op) ? t('users.deleteUser') : isProtectedUser(op) ? t('users.protectedRoot') : t('users.noPermission')"
+                        :disabled="!canDeleteUser(op)"
                         @click="promptDeleteUser(op)"
                       >
                         <span class="material-symbols-outlined text-base">delete</span>

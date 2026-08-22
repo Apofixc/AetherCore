@@ -17,6 +17,25 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !isAuthRequired.value || !!token.value)
   const isSuperuser = computed(() => !isAuthRequired.value || (user.value?.is_superuser ?? false))
 
+  const currentUserRoleLevel = computed(() => {
+    if (!isAuthRequired.value || isSuperuser.value || user.value?.roles?.includes('superuser')) return 4
+    if (user.value?.roles?.includes('admin')) return 3
+    if (user.value?.roles?.includes('operator')) return 2
+    return 1
+  })
+
+  const canManageUsers = computed(() => {
+    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('users.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
+  })
+
+  const canManageSecurity = computed(() => {
+    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('settings.security.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
+  })
+
+  const canManageRoles = computed(() => {
+    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('access.roles.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
+  })
+
   // Inactivity tracking
   let inactivityTimer: number | null = null
   const userActivityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
@@ -171,6 +190,10 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthRequired,
     isAuthenticated,
     isSuperuser,
+    currentUserRoleLevel,
+    canManageUsers,
+    canManageSecurity,
+    canManageRoles,
     checkAuthConfig,
     login,
     fetchUser,

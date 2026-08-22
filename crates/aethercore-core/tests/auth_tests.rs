@@ -21,6 +21,7 @@ fn test_jwt_generation_and_verification() {
             user_id,
             "admin",
             true,
+            vec!["superuser".into()],
             vec!["users.manage".into(), "system.view".into()],
         )
         .expect("Token generation failed");
@@ -29,5 +30,6 @@ fn test_jwt_generation_and_verification() {
     assert_eq!(claims.sub, user_id);
     assert_eq!(claims.username, "admin");
     assert!(claims.is_superuser);
+    assert_eq!(claims.roles, vec!["superuser"]);
     assert_eq!(claims.permissions, vec!["users.manage", "system.view"]);
 }

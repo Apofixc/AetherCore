@@ -360,6 +360,7 @@ export const en = {
     editUser: 'Edit',
     lockUser: 'Lock / Unlock',
     deleteUser: 'Delete',
+    noPermission: 'Insufficient permissions',
     noUsersFound: 'No operators found',
     addUserModalTitle: 'Add New User',
     editUserModalTitle: 'Edit User',

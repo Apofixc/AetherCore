@@ -294,6 +294,8 @@ const filteredAuditLogs = computed(() => {
               variant="primary"
               size="sm"
               icon="save"
+              :disabled="!authStore.canManageSecurity && !authStore.canManageRoles"
+              :title="(!authStore.canManageSecurity && !authStore.canManageRoles) ? t('users.noPermission') : ''"
               @click="applyChanges"
             >
               {{ t('accessIdentity.applyChanges') }}
@@ -527,30 +529,36 @@ const filteredAuditLogs = computed(() => {
                       <td class="py-2.5 px-lg text-center text-[10px] text-on-surface-variant font-body-mono uppercase">{{ t('common.all') }}</td>
                       <td class="py-2.5 px-lg text-center">
                         <button
+                          v-if="authStore.isSuperuser"
                           type="button"
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'admin')"
                         >
                           {{ isCategoryRoleAll(cat.id, 'admin') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
+                        <span v-else class="text-[10px] text-on-surface-variant font-body-mono opacity-50">{{ t('common.all') }}</span>
                       </td>
                       <td class="py-2.5 px-lg text-center">
                         <button
+                          v-if="authStore.currentUserRoleLevel >= 3"
                           type="button"
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'operator')"
                         >
                           {{ isCategoryRoleAll(cat.id, 'operator') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
+                        <span v-else class="text-[10px] text-on-surface-variant font-body-mono opacity-50">{{ t('common.all') }}</span>
                       </td>
                       <td class="py-2.5 px-lg text-center">
                         <button
+                          v-if="authStore.currentUserRoleLevel >= 3"
                           type="button"
                           class="text-[10px] text-primary-fixed-dim hover:underline font-bold cursor-pointer"
                           @click="toggleCategoryRole(cat.id, 'viewer')"
                         >
                           {{ isCategoryRoleAll(cat.id, 'viewer') ? t('common.clearAll') : t('common.selectAll') }}
                         </button>
+                        <span v-else class="text-[10px] text-on-surface-variant font-body-mono opacity-50">{{ t('common.all') }}</span>
                       </td>
                     </tr>
 
@@ -578,22 +586,22 @@ const filteredAuditLogs = computed(() => {
                       </td>
                       <!-- Administrator -->
                       <td class="py-3 px-lg text-center">
-                        <label class="relative inline-flex items-center justify-center cursor-pointer">
-                          <input class="sr-only peer" type="checkbox" v-model="item.admin">
+                        <label class="relative inline-flex items-center justify-center" :class="authStore.isSuperuser ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                          <input class="sr-only peer" type="checkbox" v-model="item.admin" :disabled="!authStore.isSuperuser">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>
                       <!-- Operator -->
                       <td class="py-3 px-lg text-center">
-                        <label class="relative inline-flex items-center justify-center cursor-pointer">
-                          <input class="sr-only peer" type="checkbox" v-model="item.operator">
+                        <label class="relative inline-flex items-center justify-center" :class="authStore.currentUserRoleLevel >= 3 ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                          <input class="sr-only peer" type="checkbox" v-model="item.operator" :disabled="authStore.currentUserRoleLevel < 3">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>
                       <!-- Viewer -->
                       <td class="py-3 px-lg text-center">
-                        <label class="relative inline-flex items-center justify-center cursor-pointer">
-                          <input class="sr-only peer" type="checkbox" v-model="item.viewer">
+                        <label class="relative inline-flex items-center justify-center" :class="authStore.currentUserRoleLevel >= 3 ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                          <input class="sr-only peer" type="checkbox" v-model="item.viewer" :disabled="authStore.currentUserRoleLevel < 3">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>

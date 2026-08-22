@@ -280,6 +280,9 @@ pub struct JwtClaims {
     pub username: String,
     /// Является ли пользователь суперпользователем
     pub is_superuser: bool,
+    /// Роли пользователя
+    #[serde(default)]
+    pub roles: Vec<String>,
     /// Назначенные права пользователя для быстрой проверки без обращения к БД
     pub permissions: Vec<String>,
     /// Временная метка выпуска токена в формате Unix timestamp (iat)

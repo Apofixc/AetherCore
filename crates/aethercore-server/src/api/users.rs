@@ -87,6 +87,19 @@ async fn list_users_handler(
 /// * [`StatusCode::FORBIDDEN`] — недостаточно прав доступа или попытка создать суперпользователя без прав суперпользователя.
 /// * [`StatusCode::BAD_REQUEST`] — невалидный логин или пароль.
 /// * [`StatusCode::CONFLICT`] — пользователь с таким логином уже существует.
+/// Вычислить числовой уровень привилегий роли
+fn get_role_level(roles: &[String], is_superuser: bool) -> u8 {
+    if is_superuser || roles.iter().any(|r| r == "superuser") {
+        4
+    } else if roles.iter().any(|r| r == "admin") {
+        3
+    } else if roles.iter().any(|r| r == "operator") {
+        2
+    } else {
+        1
+    }
+}
+
 async fn create_user_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -96,6 +109,20 @@ async fn create_user_handler(
     check_permission(&claims, "users.manage").map_err(|e| {
         (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
     })?;
+
+    let caller_level = get_role_level(&claims.roles, claims.is_superuser);
+    let target_roles = dto.roles.as_deref().unwrap_or(&[]);
+    let target_level = get_role_level(target_roles, dto.is_superuser.unwrap_or(false));
+
+    if target_level > caller_level {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Cannot create a user with a higher privilege level than your own")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
 
     let is_creating_superuser = dto.is_superuser == Some(true)
         || dto.roles.as_ref().map_or(false, |r| r.contains(&"superuser".to_string()));
@@ -225,6 +252,35 @@ async fn update_user_handler(
         )
     })?;
 
+    let caller_level = get_role_level(&claims.roles, claims.is_superuser);
+    let target_level = get_role_level(&target_user.roles, target_user.is_superuser);
+
+    // Запрещено редактировать пользователя с уровнем привилегий выше своего
+    if !is_self_update && target_level > caller_level {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Cannot modify a user with a higher privilege level than your own")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
+
+    // Запрещено назначать роли или статус с уровнем выше своего
+    if let Some(ref roles) = dto.roles {
+        let is_super = dto.is_superuser.unwrap_or(target_user.is_superuser);
+        let new_level = get_role_level(roles, is_super);
+        if new_level > caller_level {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(
+                    AppError::forbidden("Cannot assign a privilege level higher than your own")
+                        .to_api_response(locale),
+                ),
+            ));
+        }
+    }
+
     // Только суперпользователь может редактировать профиль другого суперпользователя
     if target_user.is_superuser && claims.sub != target_user.id && !claims.is_superuser {
         return Err((
@@ -345,6 +401,19 @@ async fn delete_user_handler(
             Json(e.to_api_response(locale)),
         )
     })?;
+
+    let caller_level = get_role_level(&claims.roles, claims.is_superuser);
+    let target_level = get_role_level(&target_user.roles, target_user.is_superuser);
+
+    if !claims.is_superuser && target_level >= caller_level {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(
+                AppError::forbidden("Cannot delete a user with an equal or higher privilege level than your own")
+                    .to_api_response(locale),
+            ),
+        ));
+    }
 
     // Только суперпользователь может удалять суперпользователей
     if target_user.is_superuser && !claims.is_superuser {

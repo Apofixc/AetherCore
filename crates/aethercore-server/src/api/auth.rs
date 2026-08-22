@@ -150,6 +150,7 @@ async fn login_handler(
             user.id,
             &user.username,
             user.is_superuser,
+            user.roles.clone(),
             user.permissions.clone(),
             ttl_seconds,
         )

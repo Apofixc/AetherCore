@@ -360,6 +360,7 @@ export const ru = {
     editUser: 'Редактировать',
     lockUser: 'Заблокировать / Разблокировать',
     deleteUser: 'Удалить',
+    noPermission: 'Недостаточно прав',
     noUsersFound: 'Операторы не найдены',
     addUserModalTitle: 'Добавление нового пользователя',
     editUserModalTitle: 'Редактирование пользователя',
