@@ -20,6 +20,7 @@ export interface UpdateUserDto {
   email?: string
   department?: string
   password?: string
+  current_password?: string
   is_active?: boolean
   is_superuser?: boolean
   must_change_password?: boolean

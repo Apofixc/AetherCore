@@ -15,6 +15,7 @@ import { useTheme, type ThemeMode } from '@/theme'
 import { useAuthStore } from '@/stores/auth'
 import { usersApi } from '@/api/users'
 import { settingsApi } from '@/api/settings'
+import { getUserInitials } from '@/utils/user'
 
 const { t, locale, setLocale } = useI18n()
 const { theme, setTheme } = useTheme()
@@ -26,6 +27,16 @@ const department = ref('Network Operations')
 const role = ref('Superuser')
 const email = ref(authStore.user?.email || 'root@nms.local')
 const timezone = ref(typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC')
+
+// Avatar & Photo Upload State
+const avatar = ref<string | null>(null)
+const avatarStatus = ref<string | null>(null)
+const isAvatarError = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const userInitials = computed(() => getUserInitials(fullName.value, authStore.user?.username))
+const userUid = computed(() => authStore.user?.id ? `UID: ${authStore.user.id.slice(0, 8).toUpperCase()}` : t('profile.uid'))
+const userRoleText = computed(() => authStore.user?.is_superuser ? t('profile.superuserRole') : (role.value || 'Operator'))
 
 // Live Local Clock State
 const currentTimeString = ref('')
@@ -55,6 +66,7 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const passwordStatus = ref<string | null>(null)
+const isPasswordError = ref(false)
 
 // Do Not Disturb & Quiet Hours State
 const activeMuteDuration = ref<'none' | '15m' | '1h' | '8h' | '24h' | 'inf'>('none')
@@ -87,6 +99,7 @@ async function loadPreferences() {
   try {
     const serverPrefs = await settingsApi.getUserPreferences()
     if (serverPrefs) {
+      if (serverPrefs.avatar) avatar.value = serverPrefs.avatar
       if (serverPrefs.timezone) timezone.value = serverPrefs.timezone
       if (serverPrefs.department) department.value = serverPrefs.department
       if (serverPrefs.active_mute_duration) activeMuteDuration.value = serverPrefs.active_mute_duration as any
@@ -148,6 +161,75 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
 })
 
+function triggerPhotoUpload() {
+  fileInputRef.value?.click()
+}
+
+function handlePhotoUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    avatarStatus.value = t('profile.photoFormatError')
+    isAvatarError.value = true
+    return
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    avatarStatus.value = t('profile.photoSizeError')
+    isAvatarError.value = true
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const img = new Image()
+    img.onload = async () => {
+      const canvas = document.createElement('canvas')
+      const size = 256
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        const minDim = Math.min(img.width, img.height)
+        const sx = (img.width - minDim) / 2
+        const sy = (img.height - minDim) / 2
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+        avatar.value = dataUrl
+        isAvatarError.value = false
+        try {
+          await settingsApi.updateUserPreferences({ avatar: dataUrl })
+          avatarStatus.value = t('profile.photoUpdated')
+          setTimeout(() => {
+            avatarStatus.value = null
+          }, 3000)
+        } catch (err) {
+          console.error('Failed to save avatar:', err)
+        }
+      }
+    }
+    img.src = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  target.value = ''
+}
+
+async function handleResetPhoto() {
+  avatar.value = null
+  isAvatarError.value = false
+  try {
+    await settingsApi.updateUserPreferences({ avatar: '' })
+    avatarStatus.value = t('profile.photoRemoved')
+    setTimeout(() => {
+      avatarStatus.value = null
+    }, 3000)
+  } catch (err) {
+    console.error('Failed to reset avatar:', err)
+  }
+}
+
 async function handleSaveProfile() {
   if (authStore.user?.id) {
     try {
@@ -166,6 +248,7 @@ async function handleSaveProfile() {
   }
 
   const prefsPayload = {
+    avatar: avatar.value || '',
     timezone: timezone.value,
     theme: theme.value,
     locale: locale.value,
@@ -204,31 +287,42 @@ async function handleSaveProfile() {
 }
 
 async function handleChangePassword() {
-  if (!currentPassword.value || !newPassword.value) {
+  if (!currentPassword.value || !newPassword.value || !confirmPassword.value) {
     passwordStatus.value = t('auth.fillAllPasswordFields')
+    isPasswordError.value = true
     return
   }
   if (newPassword.value !== confirmPassword.value) {
     passwordStatus.value = t('auth.passwordsDoNotMatch')
+    isPasswordError.value = true
     return
   }
   if (authStore.user?.id) {
     try {
       await usersApi.update(authStore.user.id, {
-        password: newPassword.value
+        password: newPassword.value,
+        current_password: currentPassword.value
       })
+      passwordStatus.value = t('auth.passwordChangeSuccess')
+      isPasswordError.value = false
+      currentPassword.value = ''
+      newPassword.value = ''
+      confirmPassword.value = ''
+      setTimeout(() => {
+        passwordStatus.value = null
+      }, 3000)
     } catch (err: any) {
-      passwordStatus.value = err.message || t('auth.passwordChangeError')
-      return
+      isPasswordError.value = true
+      const errMsg = err.response?.data?.message || err.message || ''
+      if (errMsg.includes('current_password') || errMsg.toLowerCase().includes('current password')) {
+        passwordStatus.value = t('auth.invalidCurrentPassword')
+      } else if (errMsg.includes('complexity') || errMsg.includes('length')) {
+        passwordStatus.value = t('auth.passwordComplexityError')
+      } else {
+        passwordStatus.value = errMsg || t('auth.passwordChangeError')
+      }
     }
   }
-  passwordStatus.value = t('auth.passwordChangeSuccess')
-  currentPassword.value = ''
-  newPassword.value = ''
-  confirmPassword.value = ''
-  setTimeout(() => {
-    passwordStatus.value = null
-  }, 3000)
 }
 
 function handleAutoDetectTimezone() {
@@ -348,8 +442,9 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
             <!-- Profile Card -->
             <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg flex flex-col items-center text-center gap-md shadow-card-dark">
               <div class="relative w-24 h-24 mx-auto">
-                <div class="w-24 h-24 rounded-full bg-surface-variant border border-primary-fixed-dim flex items-center justify-center text-2xl font-bold font-mono text-primary-fixed-dim shadow-glow-primary-md">
-                  ГА
+                <div class="w-24 h-24 rounded-full bg-surface-variant border border-primary-fixed-dim flex items-center justify-center text-2xl font-bold font-mono text-primary-fixed-dim shadow-glow-primary-md overflow-hidden">
+                  <img v-if="avatar" :src="avatar" alt="Avatar" class="w-full h-full object-cover" />
+                  <span v-else>{{ userInitials }}</span>
                 </div>
                 <div class="absolute bottom-1 right-1 w-4 h-4 bg-tertiary-fixed-dim rounded-full border-2 border-background animate-pulse"></div>
               </div>
@@ -358,10 +453,10 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                   {{ fullName }}
                 </h2>
                 <p class="text-xs text-primary-fixed-dim font-medium tracking-wide mt-1">
-                  {{ t('profile.superuserRole') }}
+                  {{ userRoleText }}
                 </p>
                 <p class="text-[11px] text-on-surface-variant font-mono mt-0.5">
-                  {{ t('profile.uid') }}
+                  {{ userUid }}
                 </p>
               </div>
 
@@ -373,11 +468,24 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                 <span class="text-xs text-on-surface-variant font-mono font-medium">{{ currentTimeString }}</span>
               </div>
 
+              <div v-if="avatarStatus" class="w-full p-2 text-xs rounded-lg font-mono border text-center" :class="isAvatarError ? 'bg-error-container/20 border-error/40 text-error' : 'bg-primary-fixed-dim/10 border-primary-fixed-dim/30 text-primary-fixed-dim'">
+                {{ avatarStatus }}
+              </div>
+
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/png, image/jpeg, image/webp"
+                class="hidden"
+                @change="handlePhotoUpload"
+              />
+
               <div class="grid grid-cols-2 gap-sm w-full">
                 <AppButton
                   variant="outline"
                   size="sm"
                   icon="upload"
+                  @click="triggerPhotoUpload"
                 >
                   {{ t('profile.uploadPhoto') }}
                 </AppButton>
@@ -385,6 +493,8 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                   variant="outline"
                   size="sm"
                   icon="restart_alt"
+                  :disabled="!avatar"
+                  @click="handleResetPhoto"
                 >
                   {{ t('profile.resetPhoto') }}
                 </AppButton>
@@ -397,7 +507,7 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
               :subtitle="t('profile.securityPoliciesDesc')"
               icon="security"
             >
-              <div v-if="passwordStatus" class="p-2.5 mb-3 text-xs rounded-xl font-mono bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 text-primary-fixed-dim">
+              <div v-if="passwordStatus" class="p-2.5 mb-3 text-xs rounded-xl font-mono border" :class="isPasswordError ? 'bg-error-container/20 border-error/40 text-error' : 'bg-primary-fixed-dim/10 border-primary-fixed-dim/30 text-primary-fixed-dim'">
                 {{ passwordStatus }}
               </div>
 

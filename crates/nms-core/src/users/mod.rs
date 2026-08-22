@@ -488,6 +488,15 @@ impl UserService {
         let is_password_changed = dto.password.as_ref().map_or(false, |p| !p.trim().is_empty());
         let password_hash = match dto.password {
             Some(ref pwd) if !pwd.trim().is_empty() => {
+                if let Some(ref current_pwd) = dto.current_password {
+                    if !crate::auth::verify_password(current_pwd, &existing.password_hash)? {
+                        return Err(AppError::validation(
+                            "current_password",
+                            "Invalid current password",
+                        ));
+                    }
+                }
+
                 let kv = crate::db::kv::KvStore::system(self.db.clone());
                 let policy: SecurityPoliciesDto = kv
                     .get("security_policies")

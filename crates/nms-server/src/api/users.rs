@@ -250,6 +250,27 @@ async fn update_user_handler(
         ));
     }
 
+    // При самостоятельной смене пароля требуем ввод текущего пароля (если это не первый принудительный вход)
+    let is_password_changing = dto.password.as_ref().map_or(false, |p| !p.trim().is_empty());
+    if is_self_update && is_password_changing && !target_user.must_change_password {
+        let has_current = dto
+            .current_password
+            .as_ref()
+            .map_or(false, |p| !p.trim().is_empty());
+        if !has_current {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(
+                    AppError::validation(
+                        "current_password",
+                        "Current password is required to change password",
+                    )
+                    .to_api_response(locale),
+                ),
+            ));
+        }
+    }
+
     let user = state
         .user_service
         .update_user(id, dto)

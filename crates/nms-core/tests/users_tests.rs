@@ -327,3 +327,51 @@ async fn test_rate_limiting_lockout_and_password_complexity() {
     let auth_ok = service.authenticate("test_lockout", "NewValidPassword123!").await;
     assert!(auth_ok.is_ok());
 }
+
+#[tokio::test]
+async fn test_user_password_change_verification() {
+    let db = Db::init_in_memory().await.unwrap();
+    let service = UserService::new(db);
+
+    let user = service
+        .create_user(CreateUserDto {
+            username: "pwd_test".into(),
+            password: "OldPassword123!".into(),
+            is_active: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // 1. Попытка смены с неверным current_password -> ошибка
+    let err_res = service
+        .update_user(
+            user.id,
+            UpdateUserDto {
+                password: Some("NewPassword123!".into()),
+                current_password: Some("WrongOldPassword123!".into()),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(err_res.is_err());
+    let err = err_res.unwrap_err();
+    assert_eq!(err.details["field"], "current_password");
+
+    // 2. Успешная смена с правильным current_password
+    let ok_res = service
+        .update_user(
+            user.id,
+            UpdateUserDto {
+                password: Some("NewPassword123!".into()),
+                current_password: Some("OldPassword123!".into()),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(ok_res.is_ok());
+
+    // 3. Проверка аутентификации с новым паролем
+    let auth = service.authenticate("pwd_test", "NewPassword123!").await;
+    assert!(auth.is_ok());
+}

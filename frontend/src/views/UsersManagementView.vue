@@ -15,6 +15,7 @@ import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/api/auth'
+import { getUserInitials } from '@/utils/user'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -88,9 +89,7 @@ async function loadUsers() {
         const role = (u.roles && u.roles.includes('superuser')) || u.is_superuser ? 'superuser'
           : (u.roles && u.roles.includes('admin')) ? 'admin'
           : (u.roles && u.roles.includes('operator')) ? 'operator' : 'viewer'
-        const initials = u.full_name
-          ? u.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-          : u.username.slice(0, 2).toUpperCase()
+        const initials = getUserInitials(u.full_name, u.username)
         return {
           id: u.id,
           uid: u.id,
@@ -270,9 +269,7 @@ async function handleCreateUser() {
     const role = (created.roles && created.roles.includes('superuser')) ? 'superuser'
       : (created.roles && created.roles.includes('admin')) ? 'admin'
       : (created.roles && created.roles.includes('operator')) ? 'operator' : 'viewer'
-    const initials = created.full_name
-      ? created.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-      : created.username.slice(0, 2).toUpperCase()
+    const initials = getUserInitials(created.full_name, created.username)
 
     operators.value.unshift({
       id: created.id,
@@ -302,9 +299,7 @@ async function handleCreateUser() {
     console.error('Failed to create user via API, falling back to local creation:', err)
     const id = `UID-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
     const rawUid = `${Math.random().toString(36).substring(2, 10)}-${Math.random().toString(36).substring(2, 6)}-4966-9105-${Math.random().toString(36).substring(2, 12)}`
-    const initials = newUserForm.value.full_name
-      ? newUserForm.value.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-      : newUserForm.value.username.slice(0, 2).toUpperCase()
+    const initials = getUserInitials(newUserForm.value.full_name, newUserForm.value.username)
 
     operators.value.unshift({
       id,

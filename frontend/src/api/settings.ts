@@ -25,6 +25,7 @@ export interface UserPreferences {
   sound_error: string
   module_subscriptions: ModuleSubscription[]
   sidebar_collapsed: boolean
+  avatar?: string
 }
 
 export interface SecurityPolicies {

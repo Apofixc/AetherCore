@@ -173,6 +173,8 @@ pub struct UpdateUserDto {
     pub department: Option<String>,
     /// Новый открытый пароль (будет перехэширован алгоритмом Argon2id, если передан непустым)
     pub password: Option<String>,
+    /// Текущий пароль пользователя (обязателен при самостоятельной смене пароля для подтверждения подлинности)
+    pub current_password: Option<String>,
     /// Новый статус активности аккаунта
     pub is_active: Option<bool>,
     /// Новый статус суперпользователя

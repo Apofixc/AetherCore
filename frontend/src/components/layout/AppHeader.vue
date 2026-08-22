@@ -4,12 +4,17 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n, type Locale } from '@/i18n'
 import { useTheme } from '@/theme'
 import { useAuthStore } from '@/stores/auth'
+import { getUserInitials } from '@/utils/user'
 
 const { locale, setLocale, t } = useI18n()
 const { isDark, theme, toggleTheme, setTheme } = useTheme()
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
+
+const userInitials = computed(() =>
+  getUserInitials(authStore.user?.full_name, authStore.user?.username)
+)
 
 const userMenuOpen = ref(false)
 const userDropdownRef = ref<HTMLElement | null>(null)
@@ -167,7 +172,7 @@ function handleLogout() {
           <div class="relative">
             <div class="w-9 h-9 rounded-full bg-surface-variant border border-outline-variant flex items-center justify-center overflow-hidden shadow-sm">
               <span class="text-xs font-bold text-on-surface font-body-mono">
-                {{ (authStore.user?.username || 'AD').substring(0, 2).toUpperCase() }}
+                {{ userInitials }}
               </span>
             </div>
             <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-tertiary-fixed-dim rounded-full border-2 border-background"></div>
