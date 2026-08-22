@@ -151,6 +151,9 @@ impl Db {
                 is_superuser INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 is_username_locked INTEGER NOT NULL DEFAULT 0,
+                is_totp_enabled INTEGER NOT NULL DEFAULT 0,
+                totp_secret TEXT,
+                totp_backup_codes TEXT,
                 login_count INTEGER NOT NULL DEFAULT 0,
                 failed_login_attempts INTEGER NOT NULL DEFAULT 0,
                 locked_until TEXT,
@@ -172,6 +175,15 @@ impl Db {
             .execute(pool)
             .await;
         let _ = sqlx::query("UPDATE users SET is_username_locked = 1 WHERE username = 'root' OR last_login_at IS NOT NULL")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN is_totp_enabled INTEGER NOT NULL DEFAULT 0")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN totp_secret TEXT")
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN totp_backup_codes TEXT")
             .execute(pool)
             .await;
         let _ = sqlx::query("ALTER TABLE users ADD COLUMN department TEXT")

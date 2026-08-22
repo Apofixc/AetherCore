@@ -19,6 +19,12 @@ const accessCode = ref('')
 const rememberMe = ref(true)
 const isSubmitting = ref(false)
 
+// 2FA Challenge state
+const is2faStep = ref(false)
+const totpCode = ref('')
+const isBackupCodeMode = ref(false)
+const backupCode = ref('')
+
 const errorKey = ref<string | null>(null)
 const errorRawMessage = ref<string | null>(null)
 const errorMessage = computed(() => {
@@ -147,8 +153,17 @@ async function handleLogin() {
   isSubmitting.value = true
   errorKey.value = null
   errorRawMessage.value = null
+
   try {
-    await authStore.login(operatorId.value, accessCode.value, rememberMe.value)
+    const res = await authStore.login(operatorId.value, accessCode.value, rememberMe.value)
+
+    if (res.requires_2fa) {
+      is2faStep.value = true
+      totpCode.value = ''
+      backupCode.value = ''
+      return
+    }
+
     if (needsOnboardingModal.value) {
       customUsername.value = authStore.user?.username || ''
       wizardStep.value = canChangeUsername.value ? 'username' : 'password'
@@ -158,7 +173,7 @@ async function handleLogin() {
     }
   } catch (err: any) {
     console.error('Login failed:', err)
-    if (err?.status === 401 || err?.i18n_key === 'core.error.unauthorized') {
+    if (err?.status === 401 || err?.i18n_key === 'core.error.unauthorized' || err?.i18n_key === 'core.auth.invalid_credentials') {
       errorKey.value = 'auth.invalidCredentials'
       errorRawMessage.value = null
     } else {
@@ -168,6 +183,50 @@ async function handleLogin() {
   } finally {
     isSubmitting.value = false
   }
+}
+
+async function handleVerify2fa() {
+  const code = isBackupCodeMode.value ? backupCode.value.trim() : totpCode.value.trim()
+  if (!code) return
+
+  isSubmitting.value = true
+  errorKey.value = null
+  errorRawMessage.value = null
+
+  try {
+    await authStore.verify2faLogin(
+      code,
+      isBackupCodeMode.value,
+      rememberMe.value,
+      operatorId.value
+    )
+
+    if (needsOnboardingModal.value) {
+      customUsername.value = authStore.user?.username || ''
+      wizardStep.value = canChangeUsername.value ? 'username' : 'password'
+      showPasswordChangeModal.value = true
+    } else {
+      router.push('/dashboard')
+    }
+  } catch (err: any) {
+    console.error('2FA verification failed:', err)
+    if (isBackupCodeMode.value) {
+      errorKey.value = 'auth.invalidBackupCode'
+    } else {
+      errorKey.value = 'auth.invalidTotpCode'
+    }
+    errorRawMessage.value = null
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function handleBackToCredentials() {
+  is2faStep.value = false
+  totpCode.value = ''
+  backupCode.value = ''
+  errorKey.value = null
+  errorRawMessage.value = null
 }
 
 async function handleSaveNewPassword() {
@@ -319,7 +378,8 @@ async function handleSaveNewPassword() {
           <span>{{ errorMessage }}</span>
         </div>
 
-        <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
+        <!-- STEP 1: Credentials (Username + Password) -->
+        <form v-if="!is2faStep" @submit.prevent="handleLogin" class="flex flex-col gap-4">
           <!-- Operator ID Input -->
           <BaseInput
             v-model="operatorId"
@@ -372,6 +432,75 @@ async function handleSaveNewPassword() {
             {{ isSubmitting ? t('auth.establishingConnection') : t('auth.establishConnection') }}
           </AppButton>
         </form>
+
+        <!-- STEP 2: Two-Factor Authentication (2FA Challenge) -->
+        <form v-else @submit.prevent="handleVerify2fa" class="flex flex-col gap-4">
+          <div class="flex items-center gap-3 p-3 bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 rounded-lg">
+            <span class="material-symbols-outlined text-primary-fixed-dim text-2xl shrink-0">verified_user</span>
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-on-surface">{{ isBackupCodeMode ? t('auth.backupCodeTitle') : t('auth.twoFactorTitle') }}</span>
+              <span class="text-[11px] text-on-surface-variant leading-tight mt-0.5">{{ isBackupCodeMode ? t('auth.backupCodeDesc') : t('auth.twoFactorDesc') }}</span>
+            </div>
+          </div>
+
+          <!-- TOTP 6-digit Code Input -->
+          <div v-if="!isBackupCodeMode">
+            <BaseInput
+              v-model="totpCode"
+              :label="t('auth.totpCode')"
+              :placeholder="t('auth.totpPlaceholder')"
+              icon="pin"
+              :required="true"
+              :autofocus="true"
+              class="font-mono text-center tracking-widest text-lg font-bold"
+              maxlength="8"
+            />
+          </div>
+
+          <!-- Backup Recovery Code Input -->
+          <div v-else>
+            <BaseInput
+              v-model="backupCode"
+              :label="t('auth.backupCodeTitle')"
+              :placeholder="t('auth.backupCodePlaceholder')"
+              icon="vpn_key"
+              :required="true"
+              :autofocus="true"
+              class="font-mono tracking-widest text-sm font-bold uppercase"
+              maxlength="16"
+            />
+          </div>
+
+          <!-- Switch Mode: TOTP / Backup Code -->
+          <div class="flex items-center justify-between text-xs text-on-surface-variant">
+            <button
+              type="button"
+              class="hover:text-primary-fixed-dim transition-colors cursor-pointer text-left"
+              @click="isBackupCodeMode = !isBackupCodeMode; errorKey = null; errorRawMessage = null"
+            >
+              {{ isBackupCodeMode ? t('auth.useTotpCode') : t('auth.useBackupCode') }}
+            </button>
+            <button
+              type="button"
+              class="hover:text-on-surface transition-colors cursor-pointer text-right"
+              @click="handleBackToCredentials"
+            >
+              {{ t('auth.backToLogin') }}
+            </button>
+          </div>
+
+          <!-- Verify Button -->
+          <AppButton
+            type="submit"
+            variant="primary"
+            size="lg"
+            :block="true"
+            icon="check_circle"
+            :loading="isSubmitting"
+          >
+            {{ isSubmitting ? t('auth.verifying') : t('auth.verifyAndLogin') }}
+          </AppButton>
+        </form>
       </div>
     </main>
 
@@ -418,121 +547,110 @@ async function handleSaveNewPassword() {
         <div v-if="canChangeUsername && mustChangePassword" class="grid grid-cols-2 gap-2 border-b border-outline-variant/40 pb-3">
           <div
             class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
-            :class="wizardStep === 'username' ? 'bg-surface-container-high/80 border border-primary-fixed-dim/30 text-on-surface' : 'opacity-60 text-on-surface-variant'"
+            :class="wizardStep === 'username' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
           >
-            <span
-              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold font-mono shrink-0 transition-colors"
-              :class="wizardStep === 'username' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'"
-            >
-              1
-            </span>
-            <span class="text-xs font-semibold truncate">
-              {{ t('auth.wizardStepUsername') }}
-            </span>
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="wizardStep === 'username' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">1</span>
+            <span class="text-xs">{{ t('auth.wizardStepUsername') }}</span>
           </div>
-
           <div
             class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
-            :class="wizardStep === 'password' ? 'bg-surface-container-high/80 border border-primary-fixed-dim/30 text-on-surface' : 'opacity-60 text-on-surface-variant'"
+            :class="wizardStep === 'password' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
           >
-            <span
-              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold font-mono shrink-0 transition-colors"
-              :class="wizardStep === 'password' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'"
-            >
-              2
-            </span>
-            <span class="text-xs font-semibold truncate">
-              {{ t('auth.wizardStepPassword') }}
-            </span>
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="wizardStep === 'password' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">2</span>
+            <span class="text-xs">{{ t('auth.wizardStepPassword') }}</span>
           </div>
         </div>
 
-        <div v-if="passwordChangeError" class="p-2 bg-error-container/40 border border-error text-error rounded-lg text-xs font-mono">
-          {{ passwordChangeError }}
+        <p class="text-xs text-on-surface-variant leading-relaxed">
+          {{ canChangeUsername && wizardStep === 'username' ? t('auth.wizardStepUsernameDesc') : t('auth.wizardStepPasswordDesc') }}
+        </p>
+
+        <!-- Error in Wizard -->
+        <div v-if="passwordChangeError" class="p-3 bg-error-container/30 border border-error text-error text-xs rounded-lg flex items-center gap-2">
+          <span class="material-symbols-outlined text-base shrink-0">error</span>
+          <span>{{ passwordChangeError }}</span>
         </div>
 
-        <!-- STEP 1: USERNAME -->
-        <div v-if="wizardStep === 'username' && canChangeUsername" class="flex flex-col gap-3">
-          <p class="text-xs text-on-surface-variant leading-relaxed">
-            {{ t('auth.wizardStepUsernameDesc') }}
-          </p>
-
+        <!-- STEP 1: Username Setup -->
+        <div v-if="canChangeUsername && wizardStep === 'username'" class="flex flex-col gap-3">
           <BaseInput
             v-model="customUsername"
             :label="t('auth.permanentUsername')"
-            placeholder="e.g. alex.morgan"
+            placeholder="e.g. operator_alex"
+            icon="badge"
             :required="true"
-            size="sm"
-            @keydown.enter.prevent="mustChangePassword ? goToNextStep() : handleSaveNewPassword()"
+            :autofocus="true"
           />
-
-          <button
-            type="button"
-            class="text-left text-[11px] text-primary-fixed-dim hover:underline flex items-center gap-1 mt-1 transition-colors cursor-pointer"
-            @click="handleKeepCurrentUsername"
-          >
-            <span class="material-symbols-outlined text-sm">check</span>
-            {{ t('auth.keepCurrentUsername') }} ({{ authStore.user?.username }})
-          </button>
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] text-on-surface-variant">Разрешены буквы, цифры, точки, дефис и подчеркивание (3-32 симв.)</span>
+            <button
+              type="button"
+              class="text-xs text-primary-fixed-dim hover:underline cursor-pointer"
+              @click="handleKeepCurrentUsername"
+            >
+              {{ t('auth.keepCurrentUsername') }} ({{ authStore.user?.username }})
+            </button>
+          </div>
         </div>
 
-        <!-- STEP 2: PASSWORD -->
-        <div v-if="wizardStep === 'password' || !canChangeUsername" class="flex flex-col gap-3">
-          <p class="text-xs text-on-surface-variant leading-relaxed">
-            {{ canChangeUsername ? t('auth.wizardStepPasswordDesc') : t('auth.passwordChangeRequiredDesc') }}
-          </p>
-
+        <!-- STEP 2: Password Setup -->
+        <div v-if="!canChangeUsername || wizardStep === 'password'" class="flex flex-col gap-3">
           <BaseInput
             v-model="newPassword"
-            :label="authStore.user?.must_change_password ? t('auth.newPassword') : t('users.newPasswordOptional')"
-            :placeholder="authStore.user?.must_change_password ? '••••••••' : t('users.passwordResetPlaceholder')"
+            :label="t('auth.newPassword')"
             type="password"
-            :required="Boolean(authStore.user?.must_change_password)"
-            size="sm"
+            icon="lock"
+            :required="true"
+            :autofocus="true"
           />
-
-          <!-- Password policy requirements checklist -->
-          <div v-if="newPassword.length > 0" class="p-2 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-1 text-[11px]">
-            <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>
-              <span>{{ t('auth.passwordReqLength', { min: passwordRequirements.minLength }) }}</span>
-            </div>
-            <div v-if="passwordRequirements.reqUpper" class="flex items-center gap-1.5" :class="passwordRequirements.upper ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.upper ? 'check_circle' : 'radio_button_unchecked' }}</span>
-              <span>{{ t('auth.passwordReqUpper') }}</span>
-            </div>
-            <div v-if="passwordRequirements.reqDigits" class="flex items-center gap-1.5" :class="passwordRequirements.digits ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.digits ? 'check_circle' : 'radio_button_unchecked' }}</span>
-              <span>{{ t('auth.passwordReqDigit') }}</span>
-            </div>
-            <div v-if="passwordRequirements.reqSpecial" class="flex items-center gap-1.5" :class="passwordRequirements.special ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.special ? 'check_circle' : 'radio_button_unchecked' }}</span>
-              <span>{{ t('auth.passwordReqSpecial') }}</span>
-            </div>
-          </div>
-
           <BaseInput
-            v-if="authStore.user?.must_change_password || newPassword.length > 0"
             v-model="confirmPassword"
             :label="t('auth.confirmPassword')"
-            placeholder="••••••••"
             type="password"
-            :required="Boolean(authStore.user?.must_change_password)"
-            size="sm"
-            @keydown.enter.prevent="handleSaveNewPassword"
+            icon="lock_reset"
+            :required="true"
           />
+
+          <!-- Password Requirements Checklist -->
+          <div class="bg-surface-container p-3 rounded-lg border border-outline-variant/60 flex flex-col gap-1.5">
+            <span class="text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">Требования к паролю:</span>
+            <div class="grid grid-cols-2 gap-1.5 text-xs">
+              <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant/60'">
+                <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                <span>{{ t('auth.passwordReqLength', { min: passwordRequirements.minLength }) }}</span>
+              </div>
+              <div v-if="passwordRequirements.reqUpper" class="flex items-center gap-1.5" :class="passwordRequirements.upper ? 'text-primary-fixed-dim' : 'text-on-surface-variant/60'">
+                <span class="material-symbols-outlined text-sm">{{ passwordRequirements.upper ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                <span>{{ t('auth.passwordReqUpper') }}</span>
+              </div>
+              <div v-if="passwordRequirements.reqDigits" class="flex items-center gap-1.5" :class="passwordRequirements.digits ? 'text-primary-fixed-dim' : 'text-on-surface-variant/60'">
+                <span class="material-symbols-outlined text-sm">{{ passwordRequirements.digits ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                <span>{{ t('auth.passwordReqDigit') }}</span>
+              </div>
+              <div v-if="passwordRequirements.reqSpecial" class="flex items-center gap-1.5" :class="passwordRequirements.special ? 'text-primary-fixed-dim' : 'text-on-surface-variant/60'">
+                <span class="material-symbols-outlined text-sm">{{ passwordRequirements.special ? 'check_circle' : 'radio_button_unchecked' }}</span>
+                <span>{{ t('auth.passwordReqSpecial') }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <template #footer>
         <div class="flex items-center justify-between w-full">
-          <!-- Back button on step 2 (if multi-step) OR Cancel button -->
-          <div>
+          <AppButton
+            variant="ghost"
+            size="sm"
+            @click="handleCancelSetup"
+          >
+            {{ t('common.cancel') }}
+          </AppButton>
+
+          <div class="flex items-center gap-2">
             <AppButton
-              v-if="wizardStep === 'password' && canChangeUsername && mustChangePassword"
+              v-if="canChangeUsername && wizardStep === 'password'"
               variant="secondary"
               size="sm"
-              :uppercase="false"
               icon="arrow_back"
               @click="goToPrevStep"
             >
@@ -540,24 +658,10 @@ async function handleSaveNewPassword() {
             </AppButton>
 
             <AppButton
-              v-else
-              variant="ghost"
-              size="sm"
-              :uppercase="false"
-              @click="handleCancelSetup"
-            >
-              {{ t('common.cancel') }}
-            </AppButton>
-          </div>
-
-          <!-- Forward button on step 1 (if mustChangePassword) OR Final Save -->
-          <div class="ml-auto">
-            <AppButton
-              v-if="wizardStep === 'username' && canChangeUsername && mustChangePassword"
+              v-if="canChangeUsername && wizardStep === 'username' && mustChangePassword"
               variant="primary"
               size="sm"
-              :uppercase="false"
-              icon-right="arrow_forward"
+              icon="arrow_forward"
               @click="goToNextStep"
             >
               {{ t('auth.wizardNext') }}
@@ -567,12 +671,11 @@ async function handleSaveNewPassword() {
               v-else
               variant="primary"
               size="sm"
-              :uppercase="false"
-              icon-right="login"
+              icon="check"
               :loading="isChangingPassword"
               @click="handleSaveNewPassword"
             >
-              {{ isChangingPassword ? t('users.saving') : t('auth.saveAndEnter') }}
+              {{ t('auth.saveAndEnter') }}
             </AppButton>
           </div>
         </div>

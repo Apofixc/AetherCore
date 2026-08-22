@@ -114,7 +114,7 @@ async fn test_auth_login_and_me() {
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     let login_res: LoginResponse = serde_json::from_slice(&body_bytes).unwrap();
     assert!(login_res.success);
-    assert_eq!(login_res.user.username, "root");
+    assert_eq!(login_res.user.as_ref().unwrap().username, "root");
 
     // 2. Запрос /api/v1/auth/me с полученным Bearer токеном
     let me_response = app

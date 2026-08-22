@@ -46,6 +46,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 argon2 = { version = "0.5", features = ["std"] }
 jsonwebtoken = "9.3"
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+totp-rs = { version = "5.6", features = ["qr", "gen_secret"] }
 rand = "0.8"
 uuid = { version = "1.13", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

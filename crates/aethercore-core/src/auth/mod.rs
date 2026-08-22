@@ -7,9 +7,11 @@
 
 pub mod jwt;
 pub mod password;
+pub mod totp;
 
 pub use jwt::JwtManager;
 pub use password::{hash_password, validate_password_complexity, verify_password};
+pub use totp::*;
 
 use aethercore_common::error::{AppError, Result};
 use aethercore_common::models::user::JwtClaims;

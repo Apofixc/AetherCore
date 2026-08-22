@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi, type User, type AuthConfig } from '@/api/auth'
+import { authApi, type User, type AuthConfig, type LoginResponse } from '@/api/auth'
 import { settingsApi } from '@/api/settings'
 import { api } from '@/api/client'
 
@@ -10,6 +10,8 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(
     localStorage.getItem('aether_token') || sessionStorage.getItem('aether_token')
   )
+  const tempToken = ref<string | null>(null)
+  const requires2fa = ref<boolean>(false)
   const authConfig = ref<AuthConfig | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -99,6 +101,7 @@ export const useAuthStore = defineStore('auth', () => {
           is_active: true,
           is_superuser: true,
           must_change_password: false,
+          is_totp_enabled: false,
           roles: ['admin'],
           permissions: ['*']
         }
@@ -121,43 +124,89 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(operatorId: string, accessCode: string, rememberMe: boolean = true) {
+  async function handleSuccessfulLogin(response: LoginResponse, rememberMe: boolean, operatorId: string) {
+    if (!response.token || !response.user) return false
+
+    token.value = response.token
+    user.value = response.user
+    requires2fa.value = false
+    tempToken.value = null
+    api.setToken(response.token)
+
+    if (rememberMe) {
+      localStorage.setItem('aether_token', response.token)
+      localStorage.setItem('aether_remembered_operator', operatorId)
+      sessionStorage.removeItem('aether_token')
+    } else {
+      sessionStorage.setItem('aether_token', response.token)
+      localStorage.removeItem('aether_token')
+    }
+
+    try {
+      const prefs = await settingsApi.getUserPreferences()
+      if (prefs?.avatar) {
+        avatar.value = prefs.avatar
+      } else {
+        avatar.value = null
+      }
+    } catch (e) {
+      console.debug('Failed to load preferences on login:', e)
+    }
+
+    if (authConfig.value?.inactivity_timeout) {
+      startInactivityTracker()
+    }
+
+    return true
+  }
+
+  async function login(
+    operatorId: string,
+    accessCode: string,
+    rememberMe: boolean = true,
+    totpCode?: string,
+    isBackupCode?: boolean
+  ): Promise<{ success: boolean; requires_2fa?: boolean; temp_token?: string }> {
     loading.value = true
     error.value = null
     sessionExpired.value = false
     try {
-      const response = await authApi.login(operatorId, accessCode)
-      token.value = response.token
-      user.value = response.user
-      api.setToken(response.token)
+      const response = await authApi.login(operatorId, accessCode, totpCode, isBackupCode)
 
-      if (rememberMe) {
-        localStorage.setItem('aether_token', response.token)
-        localStorage.setItem('aether_remembered_operator', operatorId)
-        sessionStorage.removeItem('aether_token')
-      } else {
-        sessionStorage.setItem('aether_token', response.token)
-        localStorage.removeItem('aether_token')
+      if (response.requires_2fa) {
+        requires2fa.value = true
+        tempToken.value = response.temp_token || null
+        return { success: false, requires_2fa: true, temp_token: response.temp_token }
       }
 
-      try {
-        const prefs = await settingsApi.getUserPreferences()
-        if (prefs?.avatar) {
-          avatar.value = prefs.avatar
-        } else {
-          avatar.value = null
-        }
-      } catch (e) {
-        console.debug('Failed to load preferences on login:', e)
-      }
-
-      if (authConfig.value?.inactivity_timeout) {
-        startInactivityTracker()
-      }
-
-      return true
+      await handleSuccessfulLogin(response, rememberMe, operatorId)
+      return { success: true, requires_2fa: false }
     } catch (err: any) {
       error.value = err.message || 'Authentication failed'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function verify2faLogin(
+    code: string,
+    isBackupCode: boolean = false,
+    rememberMe: boolean = true,
+    operatorId: string = 'admin'
+  ): Promise<boolean> {
+    if (!tempToken.value) {
+      throw new Error('No 2FA challenge session active')
+    }
+
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authApi.verify2faLogin(tempToken.value, code, isBackupCode)
+      await handleSuccessfulLogin(response, rememberMe, operatorId)
+      return true
+    } catch (err: any) {
+      error.value = err.message || '2FA verification failed'
       throw err
     } finally {
       loading.value = false
@@ -205,6 +254,8 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     stopInactivityTracker()
     token.value = null
+    tempToken.value = null
+    requires2fa.value = false
     user.value = null
     avatar.value = null
     localStorage.removeItem('aether_token')
@@ -216,6 +267,8 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     avatar,
     token,
+    tempToken,
+    requires2fa,
     authConfig,
     loading,
     error,
@@ -229,6 +282,7 @@ export const useAuthStore = defineStore('auth', () => {
     canManageRoles,
     checkAuthConfig,
     login,
+    verify2faLogin,
     fetchUser,
     logout,
     startInactivityTracker,

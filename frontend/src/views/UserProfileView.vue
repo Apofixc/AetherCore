@@ -8,13 +8,15 @@ import {
   BaseInput,
   BaseSelect,
   BaseSwitch,
-  StatusBadge
+  StatusBadge,
+  BaseModal
 } from '@/components/common'
 import { useI18n, type Locale } from '@/i18n'
 import { useTheme, type ThemeMode } from '@/theme'
 import { useAuthStore } from '@/stores/auth'
 import { usersApi } from '@/api/users'
 import { settingsApi } from '@/api/settings'
+import { authApi, type TotpSetupResponse } from '@/api/auth'
 import { getUserInitials } from '@/utils/user'
 
 const { t, locale, setLocale } = useI18n()
@@ -383,6 +385,180 @@ async function handleChangePassword() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Two-Factor Authentication (2FA / TOTP) Management
+// ---------------------------------------------------------------------------
+const is2faEnabled = computed(() => Boolean(authStore.user?.is_totp_enabled))
+const showSetup2faModal = ref(false)
+const setupStep = ref<'qr' | 'verify' | 'backup'>('qr')
+const setupData = ref<TotpSetupResponse | null>(null)
+const verificationCode = ref('')
+const setupError = ref<string | null>(null)
+const isSettingUp = ref(false)
+const backupCodesAcknowledged = ref(false)
+const copiedSecretFeedback = ref(false)
+const copiedCodesFeedback = ref(false)
+
+const showDisable2faModal = ref(false)
+const disablePassword = ref('')
+const disableCode = ref('')
+const disableError = ref<string | null>(null)
+const isDisabling = ref(false)
+
+const toastMessage = ref<string | null>(null)
+
+function showToast(msg: string) {
+  toastMessage.value = msg
+  setTimeout(() => {
+    toastMessage.value = null
+  }, 4000)
+}
+
+async function start2faSetup() {
+  setupError.value = null
+  isSettingUp.value = true
+  try {
+    const res = await authApi.setup2fa()
+    setupData.value = res
+    setupStep.value = 'qr'
+    verificationCode.value = ''
+    backupCodesAcknowledged.value = false
+    copiedSecretFeedback.value = false
+    copiedCodesFeedback.value = false
+    showSetup2faModal.value = true
+  } catch (err: any) {
+    console.error('Failed to initiate 2FA setup:', err)
+  } finally {
+    isSettingUp.value = false
+  }
+}
+
+function copySecretKey() {
+  if (setupData.value?.secret) {
+    navigator.clipboard.writeText(setupData.value.secret)
+    copiedSecretFeedback.value = true
+    setTimeout(() => {
+      copiedSecretFeedback.value = false
+    }, 2000)
+  }
+}
+
+async function verifyAndEnable2fa() {
+  if (!setupData.value || !verificationCode.value.trim()) return
+
+  setupError.value = null
+  isSettingUp.value = true
+
+  try {
+    await authApi.enable2fa(
+      setupData.value.secret,
+      verificationCode.value.trim(),
+      setupData.value.backup_codes
+    )
+
+    if (authStore.user) {
+      authStore.user.is_totp_enabled = true
+    }
+
+    setupStep.value = 'backup'
+  } catch (err: any) {
+    console.error('Failed to enable 2FA:', err)
+    setupError.value = t('auth.invalidTotpCode')
+  } finally {
+    isSettingUp.value = false
+  }
+}
+
+function copyBackupCodesText() {
+  if (setupData.value?.backup_codes) {
+    const text = setupData.value.backup_codes.join('\n')
+    navigator.clipboard.writeText(text)
+    copiedCodesFeedback.value = true
+    setTimeout(() => {
+      copiedCodesFeedback.value = false
+    }, 2000)
+  }
+}
+
+function downloadBackupCodesFile() {
+  if (!setupData.value?.backup_codes) return
+
+  const dateStr = new Date().toISOString().split('T')[0]
+  const content = [
+    `AetherCore 2FA Recovery Backup Codes`,
+    `User: ${authStore.user?.username || 'user'}`,
+    `Generated on: ${new Date().toUTCString()}`,
+    `----------------------------------------`,
+    `Each code can be used ONLY ONCE for authentication:`,
+    ``,
+    ...setupData.value.backup_codes.map((c, i) => `${i + 1}. ${c}`),
+    ``,
+    `Keep these codes safe and confidential.`
+  ].join('\n')
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `aethercore-2fa-backup-codes-${dateStr}.txt`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function finish2faSetup() {
+  showSetup2faModal.value = false
+  showToast(t('profile.twoFactorEnabledSuccess'))
+}
+
+async function confirmDisable2fa() {
+  if (!disablePassword.value && !disableCode.value) return
+
+  disableError.value = null
+  isDisabling.value = true
+
+  try {
+    await authApi.disable2fa(disablePassword.value || undefined, disableCode.value || undefined)
+    if (authStore.user) {
+      authStore.user.is_totp_enabled = false
+    }
+    showDisable2faModal.value = false
+    disablePassword.value = ''
+    disableCode.value = ''
+    showToast(t('profile.twoFactorDisabledSuccess'))
+  } catch (err: any) {
+    console.error('Failed to disable 2FA:', err)
+    if (err?.status === 403 || err?.i18n_key === 'core.auth.force_2fa_active') {
+      disableError.value = t('accessIdentity.force2FADesc')
+    } else {
+      disableError.value = t('auth.invalidCredentials')
+    }
+  } finally {
+    isDisabling.value = false
+  }
+}
+
+async function handleRegenerateBackupCodes() {
+  try {
+    const res = await authApi.regenerateBackupCodes()
+    if (res.backup_codes) {
+      setupData.value = {
+        secret: '',
+        qr_code_url: '',
+        otpauth_url: '',
+        backup_codes: res.backup_codes
+      }
+      setupStep.value = 'backup'
+      backupCodesAcknowledged.value = false
+      showSetup2faModal.value = true
+      showToast(t('profile.backupCodesRegeneratedSuccess'))
+    }
+  } catch (err) {
+    console.error('Failed to regenerate backup codes:', err)
+  }
+}
+
 async function handleAutoDetectTimezone() {
   const detected = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC'
   timezone.value = detected
@@ -739,20 +915,50 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
               :title="t('profile.twoFactorAuth')"
               subtitle="TOTP"
               icon="verified_user"
-              badge="Disabled"
-              badge-variant="neutral"
+              :badge="is2faEnabled ? t('common.active') : t('common.disabled')"
+              :badge-variant="is2faEnabled ? 'success' : 'neutral'"
             >
               <p class="text-xs text-on-surface-variant leading-relaxed mb-3">
                 {{ t('profile.twoFactorDesc') }}
               </p>
-              <AppButton
-                variant="outline"
-                size="sm"
-                icon="qr_code_2"
-                :block="true"
-              >
-                {{ t('profile.setup2fa') }}
-              </AppButton>
+
+              <div v-if="!is2faEnabled" class="flex flex-col gap-2">
+                <AppButton
+                  variant="outline"
+                  size="sm"
+                  icon="qr_code_2"
+                  :block="true"
+                  :loading="isSettingUp"
+                  @click="start2faSetup"
+                >
+                  {{ t('profile.setup2fa') }}
+                </AppButton>
+              </div>
+
+              <div v-else class="flex flex-col gap-2">
+                <div class="flex items-center gap-2 p-2 bg-success-container/15 border border-success-container/30 rounded-lg text-xs text-on-surface mb-1">
+                  <span class="material-symbols-outlined text-success text-base">check_circle</span>
+                  <span class="font-medium">{{ t('profile.twoFactorEnabledSuccess') }}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <AppButton
+                    variant="outline"
+                    size="xs"
+                    icon="refresh"
+                    @click="handleRegenerateBackupCodes"
+                  >
+                    {{ t('profile.regenerateBackupCodes') }}
+                  </AppButton>
+                  <AppButton
+                    variant="danger"
+                    size="xs"
+                    icon="lock_open"
+                    @click="showDisable2faModal = true; disableError = null; disablePassword = ''; disableCode = ''"
+                  >
+                    {{ t('profile.disable2fa') }}
+                  </AppButton>
+                </div>
+              </div>
             </BaseCard>
           </div>
 
@@ -1221,5 +1427,263 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
         </div>
       </div>
     </main>
+
+    <!-- Toast Notification -->
+    <div
+      v-if="toastMessage"
+      class="fixed bottom-6 right-6 z-50 p-4 bg-surface-container-high border border-primary-fixed-dim text-on-surface text-xs rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in"
+    >
+      <span class="material-symbols-outlined text-primary-fixed-dim text-xl">check_circle</span>
+      <span class="font-medium">{{ toastMessage }}</span>
+    </div>
+
+    <!-- 2FA Setup Modal (3 Steps) -->
+    <BaseModal
+      v-model="showSetup2faModal"
+      :title="t('profile.setup2faModalTitle')"
+      icon="security"
+      max-width="max-w-lg"
+    >
+      <div class="flex flex-col gap-4">
+        <!-- Step Indicators -->
+        <div class="grid grid-cols-3 gap-2 border-b border-outline-variant/40 pb-3">
+          <div
+            class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
+            :class="setupStep === 'qr' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
+          >
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'qr' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">1</span>
+            <span class="text-xs">QR-код</span>
+          </div>
+          <div
+            class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
+            :class="setupStep === 'verify' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
+          >
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'verify' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">2</span>
+            <span class="text-xs">Проверка</span>
+          </div>
+          <div
+            class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
+            :class="setupStep === 'backup' ? 'bg-primary-fixed-dim/15 text-primary-fixed-dim font-bold' : 'text-on-surface-variant opacity-60'"
+          >
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono" :class="setupStep === 'backup' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'">3</span>
+            <span class="text-xs">Резерв</span>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div v-if="setupError" class="p-3 bg-error-container/30 border border-error text-error text-xs rounded-lg flex items-center gap-2">
+          <span class="material-symbols-outlined text-base shrink-0">error</span>
+          <span>{{ setupError }}</span>
+        </div>
+
+        <!-- STEP 1: Scan QR -->
+        <div v-if="setupStep === 'qr'" class="flex flex-col items-center gap-4 text-center">
+          <p class="text-xs text-on-surface-variant leading-relaxed">
+            {{ t('profile.scanQrInstruction') }}
+          </p>
+
+          <!-- QR Code Image -->
+          <div v-if="setupData?.qr_code_url" class="p-3 bg-white rounded-xl shadow-md border border-outline-variant/60 flex items-center justify-center">
+            <img
+              :src="setupData.qr_code_url"
+              alt="2FA QR Code"
+              class="w-48 h-48 object-contain"
+            />
+          </div>
+
+          <!-- Secret Key Box with Copy Button -->
+          <div class="w-full bg-surface-container p-3 rounded-lg border border-outline-variant/60 flex flex-col gap-1 text-left">
+            <span class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">{{ t('profile.secretKey') }}</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-mono text-xs text-primary-fixed-dim font-bold tracking-wider select-all break-all">{{ setupData?.secret }}</span>
+              <AppButton
+                variant="outline"
+                size="xs"
+                :icon="copiedSecretFeedback ? 'check' : 'content_copy'"
+                @click="copySecretKey"
+              >
+                {{ copiedSecretFeedback ? t('common.copied') : t('common.copy') }}
+              </AppButton>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: Verify Code -->
+        <div v-if="setupStep === 'verify'" class="flex flex-col gap-4">
+          <p class="text-xs text-on-surface-variant leading-relaxed">
+            {{ t('profile.enterTotpInstruction') }}
+          </p>
+
+          <BaseInput
+            v-model="verificationCode"
+            label="6-значный проверочный код"
+            placeholder="000000"
+            icon="pin"
+            :autofocus="true"
+            class="font-mono text-center tracking-widest text-lg font-bold"
+            maxlength="8"
+            @keyup.enter="verifyAndEnable2fa"
+          />
+        </div>
+
+        <!-- STEP 3: Backup Codes -->
+        <div v-if="setupStep === 'backup'" class="flex flex-col gap-4">
+          <div class="p-3 bg-warning-container/20 border border-warning text-on-surface text-xs rounded-lg flex items-start gap-2.5">
+            <span class="material-symbols-outlined text-warning text-lg shrink-0 mt-0.5">warning</span>
+            <span class="leading-relaxed">{{ t('profile.backupCodesWarning') }}</span>
+          </div>
+
+          <!-- 8 Backup Codes Grid -->
+          <div class="grid grid-cols-2 gap-2 bg-surface-container p-3 rounded-lg border border-outline-variant/60 font-mono text-xs font-bold">
+            <div
+              v-for="(code, idx) in setupData?.backup_codes"
+              :key="idx"
+              class="p-2 bg-surface-container-highest rounded border border-outline-variant/40 text-center tracking-wider select-all text-on-surface"
+            >
+              {{ code }}
+            </div>
+          </div>
+
+          <!-- Action Buttons (Copy & Download) -->
+          <div class="flex items-center justify-between gap-2">
+            <AppButton
+              variant="outline"
+              size="sm"
+              :icon="copiedCodesFeedback ? 'check' : 'content_copy'"
+              @click="copyBackupCodesText"
+            >
+              {{ copiedCodesFeedback ? t('common.copied') : t('profile.copyBackupCodes') }}
+            </AppButton>
+
+            <AppButton
+              variant="outline"
+              size="sm"
+              icon="download"
+              @click="downloadBackupCodesFile"
+            >
+              {{ t('profile.downloadBackupCodes') }}
+            </AppButton>
+          </div>
+
+          <!-- Acknowledgment Checkbox -->
+          <label class="flex items-start gap-2 text-xs text-on-surface cursor-pointer select-none mt-2">
+            <input
+              v-model="backupCodesAcknowledged"
+              type="checkbox"
+              class="mt-0.5 rounded border-outline-variant bg-surface-container-highest text-primary-fixed-dim focus:ring-0 cursor-pointer"
+            />
+            <span class="leading-relaxed">{{ t('profile.backupCodesSavedAcknowledge') }}</span>
+          </label>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-between w-full">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            @click="showSetup2faModal = false"
+          >
+            {{ t('common.close') }}
+          </AppButton>
+
+          <div class="flex items-center gap-2">
+            <AppButton
+              v-if="setupStep === 'verify'"
+              variant="secondary"
+              size="sm"
+              icon="arrow_back"
+              @click="setupStep = 'qr'"
+            >
+              {{ t('auth.wizardBack') }}
+            </AppButton>
+
+            <AppButton
+              v-if="setupStep === 'qr'"
+              variant="primary"
+              size="sm"
+              icon="arrow_forward"
+              @click="setupStep = 'verify'"
+            >
+              {{ t('auth.wizardNext') }}
+            </AppButton>
+
+            <AppButton
+              v-else-if="setupStep === 'verify'"
+              variant="primary"
+              size="sm"
+              icon="check"
+              :loading="isSettingUp"
+              :disabled="!verificationCode.trim()"
+              @click="verifyAndEnable2fa"
+            >
+              {{ t('common.confirm') }}
+            </AppButton>
+
+            <AppButton
+              v-else-if="setupStep === 'backup'"
+              variant="primary"
+              size="sm"
+              icon="check_circle"
+              :disabled="!backupCodesAcknowledged"
+              @click="finish2faSetup"
+            >
+              {{ t('profile.finish2faSetup') }}
+            </AppButton>
+          </div>
+        </div>
+      </template>
+    </BaseModal>
+
+    <!-- 2FA Disable Modal -->
+    <BaseModal
+      v-model="showDisable2faModal"
+      :title="t('profile.disable2faModalTitle')"
+      icon="lock_open"
+      max-width="max-w-md"
+    >
+      <div class="flex flex-col gap-4">
+        <div class="p-3 bg-error-container/20 border border-error text-error text-xs rounded-lg flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-error text-lg shrink-0 mt-0.5">warning</span>
+          <span class="leading-relaxed">{{ t('profile.disable2faWarning') }}</span>
+        </div>
+
+        <div v-if="disableError" class="p-3 bg-error-container/30 border border-error text-error text-xs rounded-lg flex items-center gap-2">
+          <span class="material-symbols-outlined text-base shrink-0">error</span>
+          <span>{{ disableError }}</span>
+        </div>
+
+        <BaseInput
+          v-model="disablePassword"
+          label="Текущий пароль учетной записи"
+          type="password"
+          icon="key"
+          :autofocus="true"
+          placeholder="••••••••••••"
+          @keyup.enter="confirmDisable2fa"
+        />
+      </div>
+
+      <template #footer>
+        <AppButton
+          variant="ghost"
+          size="sm"
+          @click="showDisable2faModal = false"
+        >
+          {{ t('common.cancel') }}
+        </AppButton>
+        <AppButton
+          variant="danger"
+          size="sm"
+          icon="lock_open"
+          :loading="isDisabling"
+          :disabled="!disablePassword"
+          @click="confirmDisable2fa"
+        >
+          {{ t('profile.confirmDisable2fa') }}
+        </AppButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
+

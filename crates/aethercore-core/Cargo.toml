@@ -18,6 +18,7 @@ sqlx = { workspace = true }
 argon2 = { workspace = true }
 jsonwebtoken = { workspace = true }
 ed25519-dalek = { workspace = true }
+totp-rs = { workspace = true }
 rand = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }

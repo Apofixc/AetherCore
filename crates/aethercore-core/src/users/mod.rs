@@ -20,6 +20,29 @@ pub struct UserService {
     db: Db,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct UserDbRow {
+    pub id: String,
+    pub username: String,
+    pub full_name: Option<String>,
+    pub email: Option<String>,
+    pub department: Option<String>,
+    pub password_hash: String,
+    pub is_active: i64,
+    pub is_superuser: i64,
+    pub must_change_password: i64,
+    pub is_username_locked: i64,
+    pub is_totp_enabled: i64,
+    pub totp_secret: Option<String>,
+    pub totp_backup_codes: Option<String>,
+    pub login_count: i64,
+    pub failed_login_attempts: i64,
+    pub locked_until: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_login_at: Option<String>,
+}
+
 impl UserService {
     /// Создать новый экземпляр [`UserService`]
     ///
@@ -216,26 +239,9 @@ impl UserService {
     /// * [`AppError::not_found`] — если пользователь с указанным ID не найден.
     /// * [`AppError::database`] — при сбое запроса к базе данных.
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<User> {
-        let row: Option<(
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )> = sqlx::query_as(
+        let row: Option<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE id = ?
             "#,
         )
@@ -263,26 +269,9 @@ impl UserService {
     /// * [`AppError::database`] — при сбое запроса к базе данных.
     pub async fn get_user_by_username(&self, username: &str) -> Result<User> {
         let username_clean = username.trim().to_lowercase();
-        let row: Option<(
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )> = sqlx::query_as(
+        let row: Option<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users WHERE username = ?
             "#,
         )
@@ -408,26 +397,9 @@ impl UserService {
     /// # Ошибки
     /// Возвращает [`AppError`] при сбое запроса к базе данных.
     pub async fn list_users(&self) -> Result<Vec<User>> {
-        let rows: Vec<(
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        )> = sqlx::query_as(
+        let rows: Vec<UserDbRow> = sqlx::query_as(
             r#"
-            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
+            SELECT id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, is_username_locked, is_totp_enabled, totp_secret, totp_backup_codes, login_count, failed_login_attempts, locked_until, created_at, updated_at, last_login_at
             FROM users ORDER BY username ASC
             "#,
         )
@@ -753,64 +725,36 @@ impl UserService {
     ///
     /// # Ошибки
     /// Возвращает [`AppError::Database`] при сбое запросов к таблицам ролей или прав.
-    async fn map_user_row(
-        &self,
-        r: (
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            String,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            Option<String>,
-            String,
-            String,
-            Option<String>,
-        ),
-    ) -> Result<User> {
-        let (
-            id_str,
-            username,
-            full_name,
-            email,
-            department,
-            password_hash,
-            is_active_num,
-            is_superuser_num,
-            must_change_pwd_num,
-            is_username_locked_num,
-            login_count,
-            failed_login_attempts,
-            locked_until_str,
-            created_at_str,
-            updated_at_str,
-            last_login_at_str,
-        ) = r;
-
+    async fn map_user_row(&self, r: UserDbRow) -> Result<User> {
+        let id_str = r.id;
         let id = Uuid::parse_str(&id_str).unwrap_or_default();
-        let is_active = is_active_num != 0;
-        let is_superuser = is_superuser_num != 0;
-        let must_change_password = must_change_pwd_num != 0;
-        let is_username_locked = is_username_locked_num != 0;
+        let username = r.username;
+        let full_name = r.full_name;
+        let email = r.email;
+        let department = r.department;
+        let password_hash = r.password_hash;
+        let is_active = r.is_active != 0;
+        let is_superuser = r.is_superuser != 0;
+        let must_change_password = r.must_change_password != 0;
+        let is_username_locked = r.is_username_locked != 0;
+        let is_totp_enabled = r.is_totp_enabled != 0;
+        let totp_secret = r.totp_secret;
+        let totp_backup_codes = r.totp_backup_codes;
+        let login_count = r.login_count;
+        let failed_login_attempts = r.failed_login_attempts;
 
-        let locked_until = locked_until_str.and_then(|s| {
+        let locked_until = r.locked_until.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .ok()
                 .map(|dt| dt.with_timezone(&Utc))
         });
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+        let created_at = DateTime::parse_from_rfc3339(&r.created_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
-        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+        let updated_at = DateTime::parse_from_rfc3339(&r.updated_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
-        let last_login_at = last_login_at_str.and_then(|s| {
+        let last_login_at = r.last_login_at.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .ok()
                 .map(|dt| dt.with_timezone(&Utc))
@@ -856,6 +800,9 @@ impl UserService {
             is_superuser,
             must_change_password,
             is_username_locked,
+            is_totp_enabled,
+            totp_secret,
+            totp_backup_codes,
             login_count,
             failed_login_attempts,
             locked_until,
@@ -865,5 +812,99 @@ impl UserService {
             updated_at,
             last_login_at,
         })
+    }
+
+    /// Включить двухфакторную аутентификацию (TOTP) для пользователя
+    pub async fn enable_totp(
+        &self,
+        user_id: Uuid,
+        secret: &str,
+        raw_backup_codes: &[String],
+    ) -> Result<()> {
+        let backup_codes_json = crate::auth::totp::hash_and_serialize_backup_codes(raw_backup_codes)?;
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "UPDATE users SET is_totp_enabled = 1, totp_secret = ?, totp_backup_codes = ?, updated_at = ? WHERE id = ?"
+        )
+        .bind(secret.trim())
+        .bind(&backup_codes_json)
+        .bind(&now)
+        .bind(user_id.to_string())
+        .execute(self.db.writer())
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Отключить двухфакторную аутентификацию (TOTP) для пользователя
+    pub async fn disable_totp(&self, user_id: Uuid) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "UPDATE users SET is_totp_enabled = 0, totp_secret = NULL, totp_backup_codes = NULL, updated_at = ? WHERE id = ?"
+        )
+        .bind(&now)
+        .bind(user_id.to_string())
+        .execute(self.db.writer())
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Списать одноразовый резервный код восстановления
+    /// Возвращает количество оставшихся кодов при успехе
+    pub async fn consume_backup_code(&self, user_id: Uuid, raw_code: &str) -> Result<usize> {
+        let user = self.get_user_by_id(user_id).await?;
+        let backup_json = user.totp_backup_codes.as_deref().ok_or_else(|| {
+            AppError::unauthorized("No backup codes configured")
+                .with_i18n_key("core.auth.invalid_backup_code")
+        })?;
+
+        let updated_json = crate::auth::totp::verify_and_consume_backup_code(backup_json, raw_code)
+            .ok_or_else(|| {
+                AppError::unauthorized("Invalid backup code")
+                    .with_i18n_key("core.auth.invalid_backup_code")
+            })?;
+
+        let remaining_count = crate::auth::totp::count_remaining_backup_codes(Some(&updated_json));
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query("UPDATE users SET totp_backup_codes = ?, updated_at = ? WHERE id = ?")
+            .bind(&updated_json)
+            .bind(&now)
+            .bind(user_id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(remaining_count)
+    }
+
+    /// Сгенерировать и обновить резервные коды пользователя
+    pub async fn regenerate_backup_codes(&self, user_id: Uuid, count: usize) -> Result<Vec<String>> {
+        let user = self.get_user_by_id(user_id).await?;
+        if !user.is_totp_enabled {
+            return Err(AppError::validation(
+                "2fa",
+                "Cannot generate backup codes when 2FA is disabled",
+            ));
+        }
+
+        let raw_codes = crate::auth::totp::generate_backup_codes(count);
+        let backup_codes_json = crate::auth::totp::hash_and_serialize_backup_codes(&raw_codes)?;
+        let now = Utc::now().to_rfc3339();
+
+        sqlx::query("UPDATE users SET totp_backup_codes = ?, updated_at = ? WHERE id = ?")
+            .bind(&backup_codes_json)
+            .bind(&now)
+            .bind(user_id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(raw_codes)
     }
 }

@@ -50,24 +50,38 @@ sequenceDiagram
     participant API as ApiClient (/api/v1/auth)
     participant Core as Backend Axum (UserService & JWT)
     participant DB as SQLite DB
-    %% Сценарий 1: Обычный вход / Запомнить меня
-    Note over User, DB: Сценарий 1: Успешный вход и выбор хранилища токена
+    %% Сценарий 1: Обычный вход / 2FA Challenge / Запомнить меня
+    Note over User, DB: Сценарий 1: Вход с проверкой 2FA и выбор хранилища токена
     User->>UI: Ввод operatorId, accessCode + флаг "Запомнить меня"
     UI->>Store: login(operatorId, accessCode, rememberMe)
     Store->>API: POST /api/v1/auth/login
     API->>Core: Проверка IP Whitelist + Аутентификация
     Core->>DB: Проверка пароля и locked_until
     DB-->>Core: Успешно (сброс failed_login_attempts = 0)
-    Core-->>API: 200 OK { token, user } (TTL = session_ttl * 3600)
-    API-->>Store: Возврат токена и профиля
-    alt rememberMe == true
-        Store->>Store: localStorage.setItem('aether_token')
-        Store->>Store: localStorage.setItem('aether_remembered_operator')
-    else rememberMe == false
-        Store->>Store: sessionStorage.setItem('aether_token')
+    alt is_totp_enabled == false
+        Core-->>API: 200 OK { token, user, requires_2fa: false }
+        API-->>Store: Возврат токена и профиля
+        alt rememberMe == true
+            Store->>Store: localStorage.setItem('aether_token')
+            Store->>Store: localStorage.setItem('aether_remembered_operator')
+        else rememberMe == false
+            Store->>Store: sessionStorage.setItem('aether_token')
+        end
+        Store->>Store: startInactivityTracker()
+        Store-->>UI: Редирект на /dashboard
+    else is_totp_enabled == true
+        Core-->>API: 200 OK { requires_2fa: true, temp_token: "JWT(2fa_pending)" }
+        API-->>Store: store.tempToken = temp_token, store.requires2fa = true
+        Store-->>UI: is2faStep = true (переключение на форму ввода 2FA)
+        User->>UI: Ввод 6-значного TOTP или резервного кода XXXX-XXXX
+        UI->>Store: verify2faLogin(code, isBackupCode)
+        Store->>API: POST /api/v1/auth/2fa/verify-login { temp_token, code }
+        API->>Core: Валидация temp_token + Проверка TOTP / Backup Code
+        Core->>DB: При бэкап-коде: удаление использованного хэша из БД
+        Core-->>API: 200 OK { token, user }
+        API-->>Store: Сохранение токена в storage + startInactivityTracker()
+        Store-->>UI: Редирект на /dashboard
     end
-    Store->>Store: startInactivityTracker()
-    Store-->>UI: Успех
     %% Сценарий 2: Ошибка и Блокировка (Lockout)
     Note over User, DB: Сценарий 2: Неверный пароль и превышение лимита попыток
     User->>UI: Ввод неверного пароля
@@ -462,5 +476,154 @@ sequenceDiagram
 * **Given**: Пользователь имеет установленный аватар.
 * **When**: Пользователь нажимает «Удалить фото».
 * **Then**: Аватар очищается в Pinia store и на сервере, а во всех компонентах плавно возвращается отображение текстовых инициалов в цветных контейнерах ролей.
+
+---
+
+## 10. Блок-схема и диаграмма последовательности: Двухфакторная аутентификация (2FA / TOTP и Резервные коды)
+
+### 10.1. Блок-схема: Архитектура сквозного потока 2FA на Frontend
+
+```mermaid
+graph TD
+    %% Шаг авторизации
+    subgraph LoginFlow ["1. Экран авторизации (LoginView.vue)"]
+        LoginInput["Ввод логина и пароля"] --> SubmitAuth["POST /api/v1/auth/login"]
+        SubmitAuth --> CheckChallenge{"requires_2fa == true?"}
+        CheckChallenge -- "Нет (2FA выключен)" --> AuthSuccess["Успешный вход -> Редирект на /dashboard"]
+        CheckChallenge -- "Да (2FA включен)" --> SwitchTo2FAUI["store.tempToken = temp_token<br/>UI переключается в режим 2FA Challenge"]
+        SwitchTo2FAUI --> CodeMode{"Выбор метода ввода"}
+        CodeMode -- "TOTP" --> Input6Digit["Поле ввода 6-значного кода<br/>(Автофокус, моноширинный шрифт)"]
+        CodeMode -- "Backup Code" --> InputBackup["Поле ввода резервного кода<br/>(Формат: XXXX-XXXX)"]
+        Input6Digit --> VerifySubmit["POST /api/v1/auth/2fa/verify-login<br/>{ temp_token, code, is_backup_code: false }"]
+        InputBackup --> VerifyBackupSubmit["POST /api/v1/auth/2fa/verify-login<br/>{ temp_token, code, is_backup_code: true }"]
+        VerifySubmit --> CheckVerifyResult{"Результат проверки"}
+        VerifyBackupSubmit --> CheckVerifyResult
+        CheckVerifyResult -- "Ошибка (401)" --> Show2FAError["Отображение ошибки в форме"]
+        CheckVerifyResult -- "Успех (200)" --> SetTokens["Сохранение постоянного токена<br/>в localStorage / sessionStorage"] --> AuthSuccess
+    end
+
+    %% Настройка в профиле
+    subgraph ProfileFlow ["2. Настройка 2FA в профиле (UserProfileView.vue)"]
+        ClickSetup["Клик 'Настроить 2FA'"] --> ReqSetup["POST /api/v1/auth/2fa/setup"]
+        ReqSetup --> OpenModal["Открытие мастера настройки BaseModal"]
+        OpenModal --> Step1["Шаг 1: QR-код + Кнопка копирования Base32"]
+        Step1 --> Step2["Шаг 2: Ввод 6-значного кода подтверждения"]
+        Step2 --> ReqEnable["POST /api/v1/auth/2fa/enable<br/>{ secret, code, backup_codes }"]
+        ReqEnable --> CheckEnable{"Код валиден?"}
+        CheckEnable -- "Нет" --> ShowStepErr["Ошибка: Неверный код 2FA"] --> Step2
+        CheckEnable -- "Да" --> Step3["Шаг 3: Сетка из 8 резервных кодов<br/>• Кнопка 'Скопировать'<br/>• Кнопка 'Скачать .txt'<br/>• Чекбокс подтверждения"]
+        Step3 --> FinishSetup["Клик 'Завершить настройку'<br/>authStore.user.is_totp_enabled = true<br/>Бейдж 'Активен'"]
+    end
+
+    %% Отключение 2FA
+    subgraph DisableFlow ["3. Отключение 2FA"]
+        ClickDisable["Клик 'Отключить 2FA'"] --> CheckPolicy{"force_2fa активна?"}
+        CheckPolicy -- "Да" --> BlockUI["Запрещено политикой безопасности"]
+        CheckPolicy -- "Нет" --> DisableModal["Модальное окно с вводом пароля"]
+        DisableModal --> ReqDisable["POST /api/v1/auth/2fa/disable<br/>{ password: '...' }"]
+        ReqDisable --> DisableSuccess["2FA отключен<br/>is_totp_enabled = false"]
+    end
+```
+
+### 10.2. Диаграмма последовательности: Полный жизненный цикл 2FA
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Оператор
+    participant LoginUI as LoginView.vue
+    participant ProfileUI as UserProfileView.vue
+    participant Store as authStore (Pinia)
+    participant API as ApiClient (/api/v1/auth)
+    participant Backend as Axum AuthHandler
+    participant Totp as TOTP Engine (RFC 6238)
+    participant DB as SQLite DB
+
+    %% Сценарий 1: Настройка и включение 2FA
+    Note over User, DB: Сценарий 1: Настройка и активация 2FA в профиле
+    User->>ProfileUI: Клик "Настроить 2FA"
+    ProfileUI->>API: POST /api/v1/auth/2fa/setup
+    API->>Backend: setup_2fa_handler()
+    Backend->>Totp: generate_totp_secret() + generate_backup_codes(8)
+    Totp-->>Backend: Base32 Secret, QR DataURL PNG, Backup Codes
+    Backend-->>API: 200 OK { secret, qr_code_url, otpauth_url, backup_codes }
+    API-->>ProfileUI: Отображение Шага 1 (QR-код и Base32 ключ)
+    User->>ProfileUI: Сканирование QR в Authenticator -> Шаг 2 -> Ввод 6-значного кода
+    ProfileUI->>API: POST /api/v1/auth/2fa/enable { secret, code, backup_codes }
+    API->>Backend: enable_2fa_handler()
+    Backend->>Totp: verify_totp_code(secret, code)
+    Totp-->>Backend: Код валиден (true)
+    Backend->>Totp: hash_and_serialize_backup_codes(backup_codes)
+    Totp-->>Backend: JSON-массив Argon2id хэшей
+    Backend->>DB: UPDATE users SET is_totp_enabled=1, totp_secret=..., totp_backup_codes=...
+    DB-->>Backend: OK
+    Backend-->>API: 200 OK { success: true }
+    API-->>ProfileUI: Переход на Шаг 3 (Отображение 8 кодов, копирование, скачивание)
+    User->>ProfileUI: Скачивание .txt + Чекбокс подтверждения + "Завершить"
+    ProfileUI->>Store: user.is_totp_enabled = true
+
+    %% Сценарий 2: Авторизация с 2FA Challenge
+    Note over User, DB: Сценарий 2: Вход с двухфакторной аутентификацией (TOTP)
+    User->>LoginUI: Ввод operatorId и accessCode
+    LoginUI->>Store: login(operatorId, accessCode)
+    Store->>API: POST /api/v1/auth/login
+    API->>Backend: login_handler() -> Проверка пароля -> is_totp_enabled == true
+    Backend->>Backend: Выпуск temp_token (роль: 2fa_pending, TTL: 300 сек)
+    Backend-->>API: 200 OK { requires_2fa: true, temp_token: "..." }
+    API-->>Store: store.tempToken = temp_token, store.requires2fa = true
+    Store-->>LoginUI: is2faStep = true (Переключение интерфейса на ввод 2FA)
+    User->>LoginUI: Ввод 6 цифр из приложения
+    LoginUI->>Store: verify2faLogin(code)
+    Store->>API: POST /api/v1/auth/2fa/verify-login { temp_token, code }
+    API->>Backend: verify_2fa_login_handler()
+    Backend->>Backend: Валидация temp_token (claims: 2fa_pending)
+    Backend->>DB: Чтение totp_secret пользователя
+    DB-->>Backend: totp_secret
+    Backend->>Totp: verify_totp_code(secret, code)
+    Totp-->>Backend: Код верен (true)
+    Backend->>Backend: Выпуск полноценного JWT токена
+    Backend-->>API: 200 OK { token, user }
+    API-->>Store: api.setToken(token), user = user, requires2fa = false
+    Store-->>LoginUI: Успешный вход -> Редирект на /dashboard
+
+    %% Сценарий 3: Вход по одноразовому Backup коду
+    Note over User, DB: Сценарий 3: Вход по резервному коду при утере телефона
+    User->>LoginUI: Клик "Войти с помощью резервного кода" -> Ввод XXXX-XXXX
+    LoginUI->>Store: verify2faLogin(code, isBackupCode=true)
+    Store->>API: POST /api/v1/auth/2fa/verify-login { temp_token, code, is_backup_code: true }
+    API->>Backend: verify_2fa_login_handler()
+    Backend->>DB: Чтение totp_backup_codes (JSON Argon2id хэшей)
+    DB-->>Backend: Хэши кодов
+    Backend->>Totp: verify_and_consume_backup_code(hashes, code)
+    Totp-->>Backend: Хэш найден, возвращен обновленный JSON без использованного кода
+    Backend->>DB: UPDATE users SET totp_backup_codes = updated_json
+    DB-->>Backend: OK
+    Backend-->>API: 200 OK { token, user }
+    API-->>Store: Сохранение токена
+    Store-->>LoginUI: Успешный вход -> Редирект на /dashboard
+```
+
+### 10.3. Тест-кейсы для верификации 2FA на Frontend
+
+#### ТК-2FA-1: Двухэтапный вход (2FA Challenge)
+* **Given**: Для оператора включена 2FA (`is_totp_enabled = true`).
+* **When**: Оператор вводит логин и пароль на `/login`.
+* **Then**: Форма переключается на экран ввода 2FA, выводится поле для 6-значного кода с автофокусом и кнопка переключения на резервный код. Рабочий токен до подтверждения 2FA не выдается.
+
+#### ТК-2FA-2: Вход по одноразовому резервному коду
+* **Given**: Оператор находится на шаге 2FA Challenge.
+* **When**: Оператор выбирает «Войти с помощью резервного кода» и вводит валидный сохраненный код `ABCD-EFGH`.
+* **Then**: Сервер подтверждает вход, выпускает постоянный токен, удаляет данный код из доступных (повторный ввод этого же кода приводит к ошибке 401).
+
+#### ТК-2FA-3: Полный цикл активации 2FA в профиле
+* **Given**: Пользователь авторизован и находится в `/profile`, 2FA отключен.
+* **When**: Пользователь нажимает «Настроить 2FA», сканирует QR-код, вводит 6-значный код из приложения, скачивает файл `aethercore-2fa-backup-codes-*.txt` и подтверждает чекбокс.
+* **Then**: Карточка 2FA меняет статус на зеленый бейдж «Активен», появляются кнопки «Перевыпустить коды» и «Отключить 2FA».
+
+#### ТК-2FA-4: Отключение 2FA
+* **Given**: 2FA активен, системная политика `force_2fa` выключена.
+* **When**: Пользователь нажимает «Отключить 2FA», вводит текущий пароль в модальном окне и подтверждает действие.
+* **Then**: Статус 2FA в профиле и на сервере сбрасывается в «Отключен», секрет и бэкап-коды удаляются из БД.
+
 
 

@@ -35,6 +35,14 @@ pub struct User {
     pub must_change_password: bool,
     /// Зафиксирован ли логин (запрет дальнейшей смены логина после первичной настройки)
     pub is_username_locked: bool,
+    /// Включена ли двухфакторная аутентификация (TOTP)
+    pub is_totp_enabled: bool,
+    /// Секретный ключ TOTP в формате Base32 (исключается из сериализации)
+    #[serde(skip_serializing)]
+    pub totp_secret: Option<String>,
+    /// Резервные одноразовые коды восстановления доступа в формате JSON массива хэшей (исключаются из сериализации)
+    #[serde(skip_serializing)]
+    pub totp_backup_codes: Option<String>,
     /// Список назначенных пользователю ролей (например, `["admin"]`, `["viewer"]`)
     pub roles: Vec<String>,
     /// Агрегированный дедуплицированный список прав доступа (из назначенных ролей и индивидуальных прав)
@@ -212,6 +220,8 @@ pub struct UserResponseDto {
     pub must_change_password: bool,
     /// Флаг фиксации логина (запрет смены)
     pub is_username_locked: bool,
+    /// Включена ли двухфакторная аутентификация
+    pub is_totp_enabled: bool,
     /// Количество успешных аутентификаций
     pub login_count: i64,
     /// Список назначенных ролей
@@ -236,6 +246,7 @@ impl From<User> for UserResponseDto {
             is_superuser: u.is_superuser,
             must_change_password: u.must_change_password,
             is_username_locked: u.is_username_locked,
+            is_totp_enabled: u.is_totp_enabled,
             login_count: u.login_count,
             roles: u.roles,
             permissions: u.permissions,

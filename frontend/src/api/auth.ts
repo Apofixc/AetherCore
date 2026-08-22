@@ -10,6 +10,7 @@ export interface User {
   is_superuser: boolean
   must_change_password?: boolean
   is_username_locked?: boolean
+  is_totp_enabled?: boolean
   roles: string[]
   permissions: string[]
   created_at?: string
@@ -19,8 +20,11 @@ export interface User {
 
 export interface LoginResponse {
   success: boolean
-  token: string
-  user: User
+  token?: string
+  user?: User
+  requires_2fa?: boolean
+  temp_token?: string
+  backup_codes_left?: number
 }
 
 export interface AuthConfig {
@@ -36,9 +40,68 @@ export interface AuthConfig {
   lockout_duration?: number
 }
 
+export interface TotpSetupResponse {
+  secret: string
+  qr_code_url: string
+  otpauth_url: string
+  backup_codes: string[]
+}
+
 export const authApi = {
-  login: async (username: string, password: string): Promise<LoginResponse> => {
-    return api.post<LoginResponse>('/api/v1/auth/login', { username, password })
+  login: async (
+    username: string,
+    password: string,
+    totpCode?: string,
+    isBackupCode?: boolean
+  ): Promise<LoginResponse> => {
+    return api.post<LoginResponse>('/api/v1/auth/login', {
+      username,
+      password,
+      totp_code: totpCode,
+      is_backup_code: isBackupCode
+    })
+  },
+  verify2faLogin: async (
+    tempToken: string,
+    code: string,
+    isBackupCode: boolean = false
+  ): Promise<LoginResponse> => {
+    return api.post<LoginResponse>('/api/v1/auth/2fa/verify-login', {
+      temp_token: tempToken,
+      code,
+      is_backup_code: isBackupCode
+    })
+  },
+  setup2fa: async (): Promise<TotpSetupResponse> => {
+    return api.post<TotpSetupResponse>('/api/v1/auth/2fa/setup', {})
+  },
+  enable2fa: async (
+    secret: string,
+    code: string,
+    backupCodes: string[]
+  ): Promise<{ success: boolean; message: string }> => {
+    return api.post<{ success: boolean; message: string }>('/api/v1/auth/2fa/enable', {
+      secret,
+      code,
+      backup_codes: backupCodes
+    })
+  },
+  disable2fa: async (
+    password?: string,
+    code?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    return api.post<{ success: boolean; message: string }>('/api/v1/auth/2fa/disable', {
+      password,
+      code
+    })
+  },
+  regenerateBackupCodes: async (
+    password?: string
+  ): Promise<{ success: boolean; backup_codes: string[] }> => {
+    return api.post<{ success: boolean; backup_codes: string[] }>(
+      '/api/v1/auth/2fa/backup-codes/regenerate',
+      { password }
+    )
   },
   getMe: async (): Promise<User> => {
     return api.get<User>('/api/v1/auth/me')
