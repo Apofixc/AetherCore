@@ -12,11 +12,80 @@ use axum::{Json, Router};
 use nms_common::models::user::UserResponseDto;
 use serde::{Deserialize, Serialize};
 
-/// Создать вложенный роутер аутентификации `/auth` (`POST /login`, `GET /me`)
+use nms_core::db::kv::KvStore;
+
+/// Создать вложенный роутер аутентификации `/auth` (`POST /login`, `GET /me`, `GET /config`)
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login_handler))
         .route("/me", get(me_handler))
+        .route("/config", get(auth_config_handler))
+}
+
+/// Публичная конфигурация авторизации для фронтенда
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfigResponse {
+    /// Требуется ли авторизация в веб-интерфейсе
+    pub web_ui_auth: bool,
+    /// Принудительное 2FA
+    pub force_2fa: bool,
+    /// Минимальная длина пароля
+    pub min_password_length: u32,
+    /// Требование заглавных букв
+    pub require_uppercase: bool,
+    /// Требование цифр
+    pub require_digits: bool,
+    /// Требование спецсимволов
+    pub require_special: bool,
+}
+
+/// GET /api/v1/auth/config
+///
+/// Публичный эндпоинт для проверки статуса авторизации и требований к паролю.
+async fn auth_config_handler(
+    State(state): State<AppState>,
+) -> Json<AuthConfigResponse> {
+    let kv = KvStore::system(state.db.clone());
+    let policies: Option<serde_json::Value> = kv.get("security_policies").await.unwrap_or(None);
+
+    let web_ui_auth = policies.as_ref()
+        .and_then(|p| p.get("web_ui_auth"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let force_2fa = policies.as_ref()
+        .and_then(|p| p.get("force_2fa"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let min_password_length = policies.as_ref()
+        .and_then(|p| p.get("min_password_length"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8) as u32;
+
+    let require_uppercase = policies.as_ref()
+        .and_then(|p| p.get("require_uppercase"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let require_digits = policies.as_ref()
+        .and_then(|p| p.get("require_digits"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let require_special = policies.as_ref()
+        .and_then(|p| p.get("require_special"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    Json(AuthConfigResponse {
+        web_ui_auth,
+        force_2fa,
+        min_password_length,
+        require_uppercase,
+        require_digits,
+        require_special,
+    })
 }
 
 /// Запрос на аутентификацию по логину и паролю

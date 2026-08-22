@@ -10,11 +10,13 @@ import {
   StatusBadge
 } from '@/components/common'
 import { useI18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 import { settingsApi } from '@/api/settings'
 import { systemApi } from '@/api/system'
 import { usersApi } from '@/api/users'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 
 // Policies state
 const webUiAuth = ref(true)
@@ -126,6 +128,7 @@ async function applyChanges() {
       settingsApi.updateSecurityPolicies(policiesPayload),
       settingsApi.updatePermissionsMatrix(permissionCategories.value)
     ])
+    await authStore.checkAuthConfig()
   } catch (err) {
     console.error('Could not save security policies to server:', err)
   }

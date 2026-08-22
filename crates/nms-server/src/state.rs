@@ -44,4 +44,8 @@ impl HasJwtManager for AppState {
     fn jwt_manager(&self) -> &JwtManager {
         &self.jwt_manager
     }
+
+    fn db(&self) -> Option<&nms_core::db::Db> {
+        Some(&self.db)
+    }
 }

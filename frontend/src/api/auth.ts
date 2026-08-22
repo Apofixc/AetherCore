@@ -20,11 +20,23 @@ export interface LoginResponse {
   user: User
 }
 
+export interface AuthConfig {
+  web_ui_auth: boolean
+  force_2fa: boolean
+  min_password_length: number
+  require_uppercase: boolean
+  require_digits: boolean
+  require_special: boolean
+}
+
 export const authApi = {
   login: async (username: string, password: string): Promise<LoginResponse> => {
     return api.post<LoginResponse>('/api/v1/auth/login', { username, password })
   },
   getMe: async (): Promise<User> => {
     return api.get<User>('/api/v1/auth/me')
+  },
+  getConfig: async (): Promise<AuthConfig> => {
+    return api.get<AuthConfig>('/api/v1/auth/config')
   }
 }

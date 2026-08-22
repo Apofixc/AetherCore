@@ -136,6 +136,67 @@ async fn test_auth_login_and_me() {
 }
 
 #[tokio::test]
+async fn test_auth_config_and_disabled_web_ui_auth() {
+    let (app, state) = setup_test_app().await;
+
+    // 1. Проверяем публичный эндпоинт /api/v1/auth/config
+    let config_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/auth/config")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(config_res.status(), StatusCode::OK);
+    let config_bytes = config_res.into_body().collect().await.unwrap().to_bytes();
+    let config_val: serde_json::Value = serde_json::from_slice(&config_bytes).unwrap();
+    assert_eq!(config_val["web_ui_auth"], true);
+
+    // 2. Отключаем web_ui_auth в KV Store
+    let kv = nms_core::db::kv::KvStore::system(state.db.clone());
+    kv.set(
+        "security_policies",
+        &serde_json::json!({
+            "web_ui_auth": false,
+            "mandatory_password_change": true,
+            "force_2fa": false,
+            "max_login_attempts": 5,
+            "lockout_duration": 30,
+            "session_ttl": 12,
+            "inactivity_timeout": 30,
+            "min_password_length": 8,
+            "require_uppercase": true,
+            "require_digits": true,
+            "require_special": true,
+            "ip_whitelist": ""
+        }),
+    )
+    .await
+    .unwrap();
+
+    // 3. Запрос без Authorization заголовка к защищенному эндпоинту (/api/v1/users)
+    let users_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/users")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Запрос успешно проходит без токена, так как web_ui_auth = false
+    assert_eq!(users_res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn test_modules_api_and_assets() {
     let (app, _) = setup_test_app().await;
 

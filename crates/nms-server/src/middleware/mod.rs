@@ -16,10 +16,14 @@ use nms_common::i18n::Locale;
 use nms_common::models::user::JwtClaims;
 use nms_core::auth::JwtManager;
 
-/// Трейт для извлечения менеджера JWT из разделяемого состояния Axum ([`AppState`](crate::state::AppState))
+/// Трейт для извлечения менеджера JWT и БД из разделяемого состояния Axum ([`AppState`](crate::state::AppState))
 pub trait HasJwtManager {
     /// Получить ссылку на [`JwtManager`]
     fn jwt_manager(&self) -> &JwtManager;
+    /// Получить ссылку на базу данных SQLite (если доступна)
+    fn db(&self) -> Option<&nms_core::db::Db> {
+        None
+    }
 }
 
 /// Extractor для определения локали клиента из заголовка `Accept-Language`
@@ -46,7 +50,8 @@ where
 
 /// Extractor для извлечения аутентифицированного пользователя из заголовка `Authorization: Bearer <token>`
 ///
-/// Валидирует подпись и срок действия токена. В случае неудачи возвращает [`AuthErrorResponse`] со статусом 401 Unauthorized.
+/// Валидирует подпись и срок действия токена. Если токен отсутствует, проверяет системную политику `web_ui_auth`.
+/// Если авторизация веб-интерфейса отключена, автоматически предоставляет права Суперпользователя.
 pub struct AuthUser(pub JwtClaims);
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -63,21 +68,49 @@ where
 
         let token = match auth_header {
             Some(header_val) if header_val.starts_with("Bearer ") => {
-                &header_val["Bearer ".len()..]
+                Some(&header_val["Bearer ".len()..])
             }
-            _ => {
-                return Err(AuthErrorResponse(AppError::unauthorized(
-                    "Missing Bearer authorization header",
-                )))
-            }
+            _ => None,
         };
 
-        let claims = state
-            .jwt_manager()
-            .verify_token(token)
-            .map_err(AuthErrorResponse)?;
+        if let Some(t) = token {
+            let claims = state
+                .jwt_manager()
+                .verify_token(t)
+                .map_err(AuthErrorResponse)?;
+            return Ok(AuthUser(claims));
+        }
 
-        Ok(AuthUser(claims))
+        // Если заголовок отсутствует, проверяем политику web_ui_auth в KV Store
+        if let Some(db) = state.db() {
+            let kv = nms_core::db::kv::KvStore::system(db.clone());
+            if let Ok(Some(policies)) = kv.get::<serde_json::Value>("security_policies").await {
+                if policies.get("web_ui_auth").and_then(|v| v.as_bool()) == Some(false) {
+                    return Ok(AuthUser(JwtClaims {
+                        sub: uuid::Uuid::nil(),
+                        username: "anonymous_admin".to_string(),
+                        is_superuser: true,
+                        permissions: vec![
+                            "events.view".to_string(),
+                            "modules.manage".to_string(),
+                            "modules.view".to_string(),
+                            "system.manage".to_string(),
+                            "system.view".to_string(),
+                            "users.manage".to_string(),
+                            "users.view".to_string(),
+                            "settings.view".to_string(),
+                            "settings.manage".to_string(),
+                        ],
+                        exp: 0,
+                        iat: 0,
+                    }));
+                }
+            }
+        }
+
+        Err(AuthErrorResponse(AppError::unauthorized(
+            "Missing Bearer authorization header",
+        )))
     }
 }
 

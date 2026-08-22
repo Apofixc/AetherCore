@@ -83,13 +83,30 @@ export const router = createRouter({
   routes
 })
 
-router.beforeEach((to: RouteLocationNormalized, _from: RouteLocationNormalized, next: NavigationGuardNext) => {
+import { useAuthStore } from '@/stores/auth'
+
+router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormalized, next: NavigationGuardNext) => {
+  const authStore = useAuthStore()
+  if (!authStore.authConfig) {
+    await authStore.checkAuthConfig()
+  }
+
+  const isAuthDisabled = authStore.authConfig?.web_ui_auth === false
   const token = localStorage.getItem('nms_token')
-  if (!to.meta.public && !token) {
-    next('/login')
-  } else if (to.path === '/login' && token) {
-    next('/dashboard')
+
+  if (isAuthDisabled) {
+    if (to.path === '/login') {
+      next('/dashboard')
+    } else {
+      next()
+    }
   } else {
-    next()
+    if (!to.meta.public && !token) {
+      next('/login')
+    } else if (to.path === '/login' && token) {
+      next('/dashboard')
+    } else {
+      next()
+    }
   }
 })

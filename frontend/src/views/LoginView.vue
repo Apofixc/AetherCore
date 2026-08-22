@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n } from '@/i18n'
@@ -25,6 +25,13 @@ const confirmPassword = ref('')
 const passwordChangeError = ref<string | null>(null)
 const isChangingPassword = ref(false)
 
+onMounted(async () => {
+  await authStore.checkAuthConfig()
+  if (authStore.authConfig?.web_ui_auth === false) {
+    router.push('/dashboard')
+  }
+})
+
 async function handleLogin() {
   if (!operatorId.value || !accessCode.value) return
   isSubmitting.value = true
@@ -38,7 +45,7 @@ async function handleLogin() {
     }
   } catch (err: any) {
     console.error('Login failed:', err)
-    errorMessage.value = err?.response?.data?.message || err?.message || t('auth.invalidCredentials')
+    errorMessage.value = err?.message || t('auth.invalidCredentials')
   } finally {
     isSubmitting.value = false
   }

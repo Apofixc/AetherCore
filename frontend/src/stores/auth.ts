@@ -1,16 +1,42 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi, type User } from '@/api/auth'
+import { authApi, type User, type AuthConfig } from '@/api/auth'
 import { api } from '@/api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(localStorage.getItem('nms_token'))
+  const authConfig = ref<AuthConfig | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const isAuthenticated = computed(() => !!token.value)
-  const isSuperuser = computed(() => user.value?.is_superuser ?? false)
+  const isAuthRequired = computed(() => (authConfig.value ? authConfig.value.web_ui_auth : true))
+  const isAuthenticated = computed(() => !isAuthRequired.value || !!token.value)
+  const isSuperuser = computed(() => !isAuthRequired.value || (user.value?.is_superuser ?? false))
+
+  async function checkAuthConfig(): Promise<AuthConfig | null> {
+    try {
+      const cfg = await authApi.getConfig()
+      authConfig.value = cfg
+      if (!cfg.web_ui_auth && !user.value) {
+        user.value = {
+          id: '07611e2c-97b8-496c-91c5-30af70cba860',
+          username: 'admin',
+          full_name: 'System Administrator',
+          email: 'admin@nms.local',
+          is_active: true,
+          is_superuser: true,
+          must_change_password: false,
+          roles: ['admin'],
+          permissions: ['*']
+        }
+      }
+      return cfg
+    } catch (e) {
+      console.debug('Failed to load auth config:', e)
+      return null
+    }
+  }
 
   async function login(operatorId: string, accessCode: string) {
     loading.value = true
@@ -30,6 +56,12 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUser() {
+    if (!isAuthRequired.value) {
+      if (!user.value) {
+        await checkAuthConfig()
+      }
+      return user.value
+    }
     if (!token.value) return null
     loading.value = true
     try {
@@ -53,10 +85,13 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     token,
+    authConfig,
     loading,
     error,
+    isAuthRequired,
     isAuthenticated,
     isSuperuser,
+    checkAuthConfig,
     login,
     fetchUser,
     logout
