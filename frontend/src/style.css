@@ -219,28 +219,28 @@ input[type="number"] {
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: rgb(var(--color-surface-container-lowest));
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-surface-container-highest));
+  background: rgb(var(--color-outline-variant) / 0.4);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-outline-variant));
+  background: rgb(var(--color-outline-variant) / 0.8);
 }
 
 :root.light ::-webkit-scrollbar-track {
-  background: rgb(var(--color-surface-container-low));
+  background: transparent;
 }
 :root.light ::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-surface-container-highest));
+  background: rgb(var(--color-outline) / 0.3);
 }
 :root.light ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-outline));
+  background: rgb(var(--color-outline) / 0.6);
 }
 
 /* Sidebar Collapse Helper */

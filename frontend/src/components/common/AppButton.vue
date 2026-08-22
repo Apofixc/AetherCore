@@ -128,7 +128,7 @@ const variantClasses = computed(() => {
     <!-- Trailing Icon -->
     <span
       v-if="iconRight && !loading"
-      class="material-symbols-outlined shrink-0 ml-auto"
+      class="material-symbols-outlined shrink-0"
       :class="iconSizes"
     >
       {{ iconRight }}

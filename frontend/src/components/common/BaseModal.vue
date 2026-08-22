@@ -15,6 +15,7 @@ const props = withDefaults(
     showClose?: boolean
     closeOnEsc?: boolean
     closeOnClickOutside?: boolean
+    scrollable?: boolean
   }>(),
   {
     title: '',
@@ -24,7 +25,8 @@ const props = withDefaults(
     maxWidth: 'max-w-md',
     showClose: true,
     closeOnEsc: true,
-    closeOnClickOutside: true
+    closeOnClickOutside: true,
+    scrollable: true
   }
 )
 
@@ -137,7 +139,10 @@ onUnmounted(() => {
             </p>
 
             <!-- Modal Body -->
-            <div class="overflow-y-auto flex-1 text-xs text-on-surface">
+            <div
+              class="flex-1 text-xs text-on-surface"
+              :class="scrollable ? 'overflow-y-auto overflow-x-hidden pr-0.5' : 'overflow-visible'"
+            >
               <slot />
             </div>
 

@@ -380,32 +380,39 @@ async function handleSaveNewPassword() {
       v-model="showPasswordChangeModal"
       :title="t('auth.firstTimeSetupTitle')"
       icon="admin_panel_settings"
-      max-width="max-w-md"
+      max-width="max-w-lg"
+      :scrollable="false"
       :show-close="false"
     >
       <div class="flex flex-col gap-4">
         <!-- Step Progress Bar & Indicators (if username change is allowed) -->
-        <div v-if="canChangeUsername" class="flex items-center justify-between border-b border-outline-variant/40 pb-3">
-          <div class="flex items-center gap-2">
+        <div v-if="canChangeUsername" class="grid grid-cols-2 gap-2 border-b border-outline-variant/40 pb-3">
+          <div
+            class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
+            :class="wizardStep === 'username' ? 'bg-surface-container-high/80 border border-primary-fixed-dim/30 text-on-surface' : 'opacity-60 text-on-surface-variant'"
+          >
             <span
-              class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-colors"
-              :class="wizardStep === 'username' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-high text-primary-fixed-dim border border-primary-fixed-dim/40'"
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold font-mono shrink-0 transition-colors"
+              :class="wizardStep === 'username' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'"
             >
               1
             </span>
-            <span class="text-xs font-medium" :class="wizardStep === 'username' ? 'text-on-surface font-semibold' : 'text-on-surface-variant'">
+            <span class="text-xs font-semibold truncate">
               {{ t('auth.wizardStepUsername') }}
             </span>
           </div>
-          <span class="material-symbols-outlined text-outline-variant text-sm">arrow_forward</span>
-          <div class="flex items-center gap-2">
+
+          <div
+            class="flex items-center gap-2 p-1.5 rounded-lg transition-all"
+            :class="wizardStep === 'password' ? 'bg-surface-container-high/80 border border-primary-fixed-dim/30 text-on-surface' : 'opacity-60 text-on-surface-variant'"
+          >
             <span
-              class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-colors"
-              :class="wizardStep === 'password' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant'"
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold font-mono shrink-0 transition-colors"
+              :class="wizardStep === 'password' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface-variant'"
             >
               2
             </span>
-            <span class="text-xs font-medium" :class="wizardStep === 'password' ? 'text-on-surface font-semibold' : 'text-on-surface-variant'">
+            <span class="text-xs font-semibold truncate">
               {{ t('auth.wizardStepPassword') }}
             </span>
           </div>
@@ -496,9 +503,10 @@ async function handleSaveNewPassword() {
               v-if="wizardStep === 'password' && canChangeUsername"
               variant="secondary"
               size="sm"
+              :uppercase="false"
+              icon="arrow_back"
               @click="goToPrevStep"
             >
-              <span class="material-symbols-outlined text-sm mr-1">arrow_back</span>
               {{ t('auth.wizardBack') }}
             </AppButton>
           </div>
@@ -509,16 +517,19 @@ async function handleSaveNewPassword() {
               v-if="wizardStep === 'username' && canChangeUsername"
               variant="primary"
               size="sm"
+              :uppercase="false"
+              icon-right="arrow_forward"
               @click="goToNextStep"
             >
               {{ t('auth.wizardNext') }}
-              <span class="material-symbols-outlined text-sm ml-1">arrow_forward</span>
             </AppButton>
 
             <AppButton
               v-else
               variant="primary"
               size="sm"
+              :uppercase="false"
+              icon-right="login"
               :loading="isChangingPassword"
               @click="handleSaveNewPassword"
             >

@@ -13,6 +13,7 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { usersApi } from '@/api/users'
+import { settingsApi, type SecurityPolicies } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/api/auth'
 import { getUserInitials } from '@/utils/user'
@@ -77,15 +78,66 @@ const editUserForm = ref({
   must_change_password: true
 })
 
-// Operators list
+// Operators list & Security Policies
 const operators = ref<OperatorItem[]>([])
+const securityPolicies = ref<SecurityPolicies | null>(null)
+
+const passwordHintText = computed(() => {
+  const policy = securityPolicies.value
+  const reqs: string[] = []
+  if (policy) {
+    if (policy.min_password_length) {
+      reqs.push(t('users.reqMinLength', { count: policy.min_password_length }))
+    }
+    if (policy.require_uppercase) {
+      reqs.push(t('users.reqUppercase'))
+    }
+    if (policy.require_digits) {
+      reqs.push(t('users.reqDigits'))
+    }
+    if (policy.require_special) {
+      reqs.push(t('users.reqSpecial'))
+    }
+  } else {
+    reqs.push(t('users.reqMinLength', { count: 8 }), t('users.reqUppercase'), t('users.reqDigits'), t('users.reqSpecial'))
+  }
+  const reqStr = reqs.join(', ')
+  return t('users.passwordRequirements', { requirements: reqStr })
+})
+
+const editPasswordHintText = computed(() => {
+  const policy = securityPolicies.value
+  const reqs: string[] = []
+  if (policy) {
+    if (policy.min_password_length) {
+      reqs.push(t('users.reqMinLength', { count: policy.min_password_length }))
+    }
+    if (policy.require_uppercase) {
+      reqs.push(t('users.reqUppercase'))
+    }
+    if (policy.require_digits) {
+      reqs.push(t('users.reqDigits'))
+    }
+    if (policy.require_special) {
+      reqs.push(t('users.reqSpecial'))
+    }
+  } else {
+    reqs.push(t('users.reqMinLength', { count: 8 }), t('users.reqUppercase'), t('users.reqDigits'), t('users.reqSpecial'))
+  }
+  const reqStr = reqs.join(', ')
+  return t('users.editPasswordRequirements', { requirements: reqStr })
+})
 
 async function loadUsers() {
   loading.value = true
   try {
-    const list = await usersApi.list()
-    if (list && Array.isArray(list)) {
-      operators.value = list.map((u: User) => {
+    const [listRes, policiesRes] = await Promise.allSettled([
+      usersApi.list(),
+      settingsApi.getSecurityPolicies()
+    ])
+
+    if (listRes.status === 'fulfilled' && Array.isArray(listRes.value)) {
+      operators.value = listRes.value.map((u: User) => {
         const role = (u.roles && u.roles.includes('superuser')) || u.is_superuser ? 'superuser'
           : (u.roles && u.roles.includes('admin')) ? 'admin'
           : (u.roles && u.roles.includes('operator')) ? 'operator' : 'viewer'
@@ -105,8 +157,12 @@ async function loadUsers() {
         }
       })
     }
+
+    if (policiesRes.status === 'fulfilled' && policiesRes.value) {
+      securityPolicies.value = policiesRes.value
+    }
   } catch (e) {
-    console.warn('Failed to load users from API:', e)
+    console.warn('Failed to load users or security policies from API:', e)
   } finally {
     loading.value = false
   }
@@ -250,11 +306,33 @@ function handleExportJson(targetList = filteredOperators.value) {
   link.remove()
 }
 
+const editFormError = ref<string | null>(null)
+
+function openAddModal() {
+  formError.value = null
+  newUserForm.value = {
+    full_name: '',
+    username: '',
+    email: '',
+    department: '',
+    password: '',
+    role: 'operator',
+    must_change_password: true
+  }
+  showAddModal.value = true
+}
+
 // Create User
 async function handleCreateUser() {
-  if (!newUserForm.value.username.trim()) return
+  if (isSubmitting.value) return
+  if (!newUserForm.value.username.trim()) {
+    formError.value = t('users.usernameRequired')
+    return
+  }
   isSubmitting.value = true
+  formError.value = null
   try {
+    const isSuper = newUserForm.value.role === 'superuser'
     const created = await usersApi.create({
       username: newUserForm.value.username.trim(),
       password: newUserForm.value.password.trim() || 'Operator123!',
@@ -262,11 +340,12 @@ async function handleCreateUser() {
       email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@aethercore.local`,
       department: newUserForm.value.department.trim() || undefined,
       roles: [newUserForm.value.role],
+      is_superuser: isSuper,
       is_active: true,
       must_change_password: newUserForm.value.must_change_password
     })
 
-    const role = (created.roles && created.roles.includes('superuser')) ? 'superuser'
+    const role = (created.roles && created.roles.includes('superuser')) || created.is_superuser ? 'superuser'
       : (created.roles && created.roles.includes('admin')) ? 'admin'
       : (created.roles && created.roles.includes('operator')) ? 'operator' : 'viewer'
     const initials = getUserInitials(created.full_name, created.username)
@@ -285,46 +364,10 @@ async function handleCreateUser() {
       initials
     })
 
-    newUserForm.value = {
-      full_name: '',
-      username: '',
-      email: '',
-      department: '',
-      password: '',
-      role: 'operator',
-      must_change_password: true
-    }
     showAddModal.value = false
   } catch (err: any) {
-    console.error('Failed to create user via API, falling back to local creation:', err)
-    const id = `UID-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-    const rawUid = `${Math.random().toString(36).substring(2, 10)}-${Math.random().toString(36).substring(2, 6)}-4966-9105-${Math.random().toString(36).substring(2, 12)}`
-    const initials = getUserInitials(newUserForm.value.full_name, newUserForm.value.username)
-
-    operators.value.unshift({
-      id,
-      uid: rawUid,
-      username: newUserForm.value.username.trim(),
-      full_name: newUserForm.value.full_name.trim() || newUserForm.value.username.trim(),
-      email: newUserForm.value.email.trim() || `${newUserForm.value.username.trim()}@aethercore.local`,
-      department: newUserForm.value.department.trim() || undefined,
-      role: newUserForm.value.role,
-      is_online: true,
-      is_active: true,
-      must_change_password: newUserForm.value.must_change_password,
-      initials
-    })
-
-    newUserForm.value = {
-      full_name: '',
-      username: '',
-      email: '',
-      department: '',
-      password: '',
-      role: 'operator',
-      must_change_password: true
-    }
-    showAddModal.value = false
+    console.error('Failed to create user via API:', err)
+    formError.value = err.message || t('users.createError')
   } finally {
     isSubmitting.value = false
   }
@@ -333,6 +376,7 @@ async function handleCreateUser() {
 // Edit User (Role and Password reset only)
 function handleOpenEdit(op: OperatorItem) {
   if (!canEditUser(op)) return
+  editFormError.value = null
   editUserForm.value = {
     id: op.id,
     full_name: op.full_name,
@@ -345,16 +389,17 @@ function handleOpenEdit(op: OperatorItem) {
 }
 
 async function handleSaveEdit() {
+  if (isSubmitting.value) return
   isSubmitting.value = true
+  editFormError.value = null
   try {
+    const isSuper = editUserForm.value.role === 'superuser'
     await usersApi.update(editUserForm.value.id, {
       roles: [editUserForm.value.role],
+      is_superuser: isSuper,
       must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : undefined,
       ...(editUserForm.value.password.trim() ? { password: editUserForm.value.password.trim() } : {})
     })
-  } catch (err) {
-    console.warn('Backend update failed or offline, updating locally:', err)
-  } finally {
     const index = operators.value.findIndex((op) => op.id === editUserForm.value.id)
     if (index >= 0) {
       operators.value[index] = {
@@ -364,6 +409,10 @@ async function handleSaveEdit() {
       }
     }
     showEditModal.value = false
+  } catch (err: any) {
+    console.error('Backend update failed:', err)
+    editFormError.value = err.message || t('users.updateError')
+  } finally {
     isSubmitting.value = false
   }
 }
@@ -380,11 +429,11 @@ async function confirmDeleteUser() {
     const id = userToDelete.value.id
     try {
       await usersApi.delete(id)
-    } catch (err) {
-      console.warn('Backend delete failed, removing locally:', err)
+      operators.value = operators.value.filter((op) => op.id !== id)
+      selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
+    } catch (err: any) {
+      console.error('Backend delete failed:', err)
     }
-    operators.value = operators.value.filter((op) => op.id !== id)
-    selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
   }
   showDeleteModal.value = false
   userToDelete.value = null
@@ -404,11 +453,11 @@ async function confirmToggleLock() {
       await usersApi.update(selectedUserForAction.value.id, {
         is_active: newActiveState
       })
-    } catch (err) {
-      console.warn('Backend lock toggle failed, updating locally:', err)
+      selectedUserForAction.value.is_active = newActiveState
+      selectedUserForAction.value.is_online = newActiveState
+    } catch (err: any) {
+      console.error('Backend lock toggle failed:', err)
     }
-    selectedUserForAction.value.is_active = newActiveState
-    selectedUserForAction.value.is_online = newActiveState
   }
   showLockModal.value = false
 }
@@ -440,18 +489,20 @@ function promptBulkDelete() {
 
 async function confirmBulkDelete() {
   const idsToDelete = [...selectedUserIds.value]
+  const successfullyDeleted: string[] = []
   for (const id of idsToDelete) {
     const op = operators.value.find((u) => u.id === id)
     if (op && !isProtectedUser(op)) {
       try {
         await usersApi.delete(id)
+        successfullyDeleted.push(id)
       } catch (err) {
         console.warn(`Failed to delete user ${id}:`, err)
       }
     }
   }
-  operators.value = operators.value.filter((op) => !(selectedUserIds.value.includes(op.id) && !isProtectedUser(op)))
-  selectedUserIds.value = []
+  operators.value = operators.value.filter((op) => !successfullyDeleted.includes(op.id))
+  selectedUserIds.value = selectedUserIds.value.filter((id) => !successfullyDeleted.includes(id))
   showBulkDeleteModal.value = false
 }
 
@@ -644,7 +695,7 @@ const editRoleOptions = computed(() => {
               variant="primary"
               size="sm"
               icon="person_add"
-              @click="showAddModal = true"
+              @click="openAddModal"
             >
               {{ t('users.addNewUser') }}
             </AppButton>
@@ -962,6 +1013,12 @@ const editRoleOptions = computed(() => {
       max-width="max-w-md"
     >
       <form id="addUserForm" @submit.prevent="handleCreateUser" class="flex flex-col gap-3">
+        <!-- Error Alert -->
+        <div v-if="formError" class="p-2.5 rounded-lg bg-error-container/40 border border-error/50 text-error text-xs flex items-center gap-2">
+          <span class="material-symbols-outlined text-[16px] shrink-0">error</span>
+          <span>{{ formError }}</span>
+        </div>
+
         <BaseInput
           v-model="newUserForm.full_name"
           :label="t('users.fullName')"
@@ -992,14 +1049,18 @@ const editRoleOptions = computed(() => {
           size="sm"
         />
 
-        <BaseInput
-          v-model="newUserForm.password"
-          :label="t('users.password')"
-          placeholder="••••••••"
-          type="password"
-          :required="true"
-          size="sm"
-        />
+        <div class="flex flex-col gap-1">
+          <BaseInput
+            v-model="newUserForm.password"
+            :label="t('users.password')"
+            placeholder="Operator123!"
+            type="password"
+            size="sm"
+          />
+          <span class="text-[11px] text-on-surface-variant/80 leading-tight">
+            {{ passwordHintText }}
+          </span>
+        </div>
 
         <BaseSelect
           v-model="newUserForm.role"
@@ -1034,7 +1095,6 @@ const editRoleOptions = computed(() => {
           type="submit"
           form="addUserForm"
           :loading="isSubmitting"
-          @click="handleCreateUser"
         >
           {{ isSubmitting ? t('users.creating') : t('users.create') }}
         </AppButton>
@@ -1049,6 +1109,12 @@ const editRoleOptions = computed(() => {
       max-width="max-w-md"
     >
       <form id="editUserForm" @submit.prevent="handleSaveEdit" class="flex flex-col gap-3">
+        <!-- Error Alert -->
+        <div v-if="editFormError" class="p-2.5 rounded-lg bg-error-container/40 border border-error/50 text-error text-xs flex items-center gap-2">
+          <span class="material-symbols-outlined text-[16px] shrink-0">error</span>
+          <span>{{ editFormError }}</span>
+        </div>
+
         <!-- User Info Header -->
         <div class="p-3 bg-surface-container-high rounded-lg border border-outline-variant/50 flex items-center justify-between">
           <div class="flex flex-col">
@@ -1075,13 +1141,18 @@ const editRoleOptions = computed(() => {
             <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">lock_reset</span>
             {{ t('users.resetPassword') }}
           </span>
-          <BaseInput
-            v-model="editUserForm.password"
-            :label="t('users.newPasswordOptional')"
-            :placeholder="t('users.passwordResetPlaceholder')"
-            type="password"
-            size="sm"
-          />
+          <div class="flex flex-col gap-1">
+            <BaseInput
+              v-model="editUserForm.password"
+              :label="t('users.newPasswordOptional')"
+              :placeholder="t('users.passwordResetPlaceholder')"
+              type="password"
+              size="sm"
+            />
+            <span class="text-[11px] text-on-surface-variant/80 leading-tight">
+              {{ editPasswordHintText }}
+            </span>
+          </div>
 
           <label v-if="editUserForm.password" class="flex items-center gap-2 pt-1 cursor-pointer select-none">
             <input
@@ -1110,7 +1181,6 @@ const editRoleOptions = computed(() => {
           type="submit"
           form="editUserForm"
           :loading="isSubmitting"
-          @click="handleSaveEdit"
         >
           {{ isSubmitting ? t('users.saving') : t('users.save') }}
         </AppButton>
