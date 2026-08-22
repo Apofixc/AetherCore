@@ -22,9 +22,9 @@ async fn test_full_platform_lifecycle() {
     let _notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
 
-    // 3. Создание дефолтного админа
+    // 3. Создание дефолтного root суперпользователя
     user_service.ensure_default_admin().await.unwrap();
-    let admin = user_service.authenticate("admin", "admin").await.unwrap();
+    let admin = user_service.authenticate("root", "root").await.unwrap();
     assert!(admin.is_superuser);
 
     // 4. Загрузка реального .aether-plugin архива из каталога modules/

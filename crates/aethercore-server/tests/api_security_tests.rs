@@ -50,15 +50,15 @@ async fn setup_test_app() -> (axum::Router, AppState) {
 async fn test_api_privilege_escalation_protection() {
     let (app, state) = setup_test_app().await;
 
-    // 1. Вход под суперпользователем admin
+    // 1. Вход под суперпользователем root
     let login_req = Request::builder()
         .method("POST")
         .uri("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(
             serde_json::json!({
-                "username": "admin",
-                "password": "admin"
+                "username": "root",
+                "password": "root"
             })
             .to_string(),
         ))
@@ -149,7 +149,7 @@ async fn test_api_privilege_escalation_protection() {
     // -------------------------------------------------------------------------
     // Атака B: Обычный администратор пытается отредактировать суперпользователя -> 403
     // -------------------------------------------------------------------------
-    let root_admin = state.user_service.get_user_by_username("admin").await.unwrap();
+    let root_admin = state.user_service.get_user_by_username("root").await.unwrap();
     let edit_super_attack = Request::builder()
         .method("PUT")
         .uri(format!("/api/v1/users/{}", root_admin.id))

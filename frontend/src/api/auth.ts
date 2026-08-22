@@ -13,6 +13,7 @@ export interface User {
   permissions: string[]
   created_at?: string
   last_login_at?: string
+  login_count?: number
 }
 
 export interface LoginResponse {

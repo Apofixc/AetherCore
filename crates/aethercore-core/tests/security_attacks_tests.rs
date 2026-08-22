@@ -12,17 +12,17 @@ async fn test_attack_scenarios_and_security_edge_cases() {
     let db = Db::init_in_memory().await.unwrap();
     let service = UserService::new(db);
 
-    // 1. Инициализируем систему (admin:admin)
+    // 1. Инициализируем систему (root:root)
     service.ensure_default_admin().await.unwrap();
-    let root_admin = service.get_user_by_username("admin").await.unwrap();
+    let root_admin = service.get_user_by_username("root").await.unwrap();
     assert!(root_admin.is_superuser);
 
     // -------------------------------------------------------------------------
-    // Атака 1: Попытка создать дубликат пользователя в разном регистре ('ADMIN', 'Admin')
+    // Атака 1: Попытка создать дубликат пользователя в разном регистре ('ROOT', 'Root')
     // -------------------------------------------------------------------------
     let dup_res = service
         .create_user(CreateUserDto {
-            username: "ADMIN".into(),
+            username: "ROOT".into(),
             password: "Password123!".into(),
             is_active: Some(true),
             is_superuser: Some(false),

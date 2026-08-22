@@ -32,7 +32,7 @@ impl UserService {
         Self { db }
     }
 
-    /// Проверить наличие пользователей и инициализировать дефолтного администратора (`admin:admin`), если база пуста
+    /// Проверить наличие пользователей и инициализировать дефолтного суперпользователя (`root:root`), если база пуста
     ///
     /// # Ошибки
     /// Возвращает [`AppError`] при сбое запроса к базе данных или ошибке хэширования пароля.
@@ -43,15 +43,15 @@ impl UserService {
             .map_err(|e| AppError::database(e.to_string()))?;
 
         if count_row.0 == 0 {
-            info!("No users found in database. Initializing default admin user: 'admin'");
+            info!("No users found in database. Initializing default root user: 'root'");
             let id = Uuid::new_v4();
-            let password_hash = hash_password("admin")?;
+            let password_hash = hash_password("root")?;
             let now = Utc::now().to_rfc3339();
 
             sqlx::query(
                 r#"
                 INSERT INTO users (id, username, full_name, email, department, password_hash, is_active, is_superuser, must_change_password, login_count, failed_login_attempts, locked_until, created_at, updated_at)
-                VALUES (?, 'admin', 'System Administrator', 'admin@aethercore.local', 'Core Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
+                VALUES (?, 'root', 'Root Administrator', 'root@aethercore.local', 'Core Operations', ?, 1, 1, 0, 0, 0, NULL, ?, ?)
                 "#,
             )
             .bind(id.to_string())
@@ -60,7 +60,7 @@ impl UserService {
             .bind(&now)
             .execute(self.db.writer())
             .await
-            .map_err(|e| AppError::database(format!("Failed to insert default admin: {}", e)))?;
+            .map_err(|e| AppError::database(format!("Failed to insert default root: {}", e)))?;
 
             let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_name) VALUES (?, 'admin')")
                 .bind(id.to_string())

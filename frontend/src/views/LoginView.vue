@@ -31,8 +31,9 @@ const errorMessage = computed(() => {
 // Forgot Code / Access Recovery Modal
 const showForgotCodeModal = ref(false)
 
-// Mandatory Password Change state
+// Mandatory First-Time Account Setup state (Multi-step Wizard)
 const showPasswordChangeModal = ref(false)
+const wizardStep = ref<'username' | 'password'>('username')
 const customUsername = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
@@ -46,6 +47,45 @@ const passwordChangeError = computed(() => {
   return passwordChangeErrorRaw.value
 })
 const isChangingPassword = ref(false)
+
+const canChangeUsername = computed(() => {
+  return (
+    Boolean(authStore.user) &&
+    authStore.user?.username !== 'root' &&
+    (!authStore.user?.last_login_at || (authStore.user?.login_count ?? 0) <= 1)
+  )
+})
+
+function goToNextStep() {
+  passwordChangeErrorKey.value = null
+  passwordChangeErrorRaw.value = null
+
+  if (wizardStep.value === 'username') {
+    const uname = customUsername.value.trim()
+    if (uname.length < 3 || uname.length > 32) {
+      passwordChangeErrorKey.value = 'auth.invalidUsernameLength'
+      return
+    }
+    if (!/^[a-zA-Z0-9._-]+$/.test(uname)) {
+      passwordChangeErrorKey.value = 'auth.invalidCredentials'
+      return
+    }
+    wizardStep.value = 'password'
+  }
+}
+
+function goToPrevStep() {
+  passwordChangeErrorKey.value = null
+  passwordChangeErrorRaw.value = null
+  wizardStep.value = 'username'
+}
+
+function handleKeepCurrentUsername() {
+  if (authStore.user?.username) {
+    customUsername.value = authStore.user.username
+  }
+  goToNextStep()
+}
 
 // Password complexity rules check
 const passwordRequirements = computed(() => {
@@ -91,6 +131,7 @@ async function handleLogin() {
     const isFirstLogin = !authStore.user?.last_login_at || authStore.user?.must_change_password
     if (isFirstLogin && authStore.user && authStore.user.username !== 'root') {
       customUsername.value = authStore.user.username || ''
+      wizardStep.value = canChangeUsername.value ? 'username' : 'password'
       showPasswordChangeModal.value = true
     } else {
       router.push('/dashboard')
@@ -114,9 +155,13 @@ async function handleSaveNewPassword() {
   passwordChangeErrorParams.value = undefined
   passwordChangeErrorRaw.value = null
 
-  if (customUsername.value.trim().length < 3) {
-    passwordChangeErrorKey.value = 'auth.invalidUsernameLength'
-    return
+  if (canChangeUsername.value) {
+    const uname = customUsername.value.trim()
+    if (uname.length < 3 || uname.length > 32) {
+      passwordChangeErrorKey.value = 'auth.invalidUsernameLength'
+      wizardStep.value = 'username'
+      return
+    }
   }
 
   const isMandatoryPassword = Boolean(authStore.user?.must_change_password)
@@ -330,83 +375,157 @@ async function handleSaveNewPassword() {
       </template>
     </BaseModal>
 
-    <!-- Mandatory First-Time Account Setup Modal -->
+    <!-- Mandatory First-Time Account Setup Modal (Multi-step Wizard) -->
     <BaseModal
       v-model="showPasswordChangeModal"
       :title="t('auth.firstTimeSetupTitle')"
-      icon="lock_reset"
+      icon="admin_panel_settings"
       max-width="max-w-md"
       :show-close="false"
     >
-      <form id="changePasswordForm" @submit.prevent="handleSaveNewPassword" class="flex flex-col gap-3">
-        <p class="text-xs text-on-surface-variant leading-relaxed">
-          {{ t('auth.firstTimeSetupDescription') }}
-        </p>
+      <div class="flex flex-col gap-4">
+        <!-- Step Progress Bar & Indicators (if username change is allowed) -->
+        <div v-if="canChangeUsername" class="flex items-center justify-between border-b border-outline-variant/40 pb-3">
+          <div class="flex items-center gap-2">
+            <span
+              class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-colors"
+              :class="wizardStep === 'username' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-high text-primary-fixed-dim border border-primary-fixed-dim/40'"
+            >
+              1
+            </span>
+            <span class="text-xs font-medium" :class="wizardStep === 'username' ? 'text-on-surface font-semibold' : 'text-on-surface-variant'">
+              {{ t('auth.wizardStepUsername') }}
+            </span>
+          </div>
+          <span class="material-symbols-outlined text-outline-variant text-sm">arrow_forward</span>
+          <div class="flex items-center gap-2">
+            <span
+              class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono transition-colors"
+              :class="wizardStep === 'password' ? 'bg-primary-fixed-dim text-on-primary-fixed' : 'bg-surface-container-high text-on-surface-variant'"
+            >
+              2
+            </span>
+            <span class="text-xs font-medium" :class="wizardStep === 'password' ? 'text-on-surface font-semibold' : 'text-on-surface-variant'">
+              {{ t('auth.wizardStepPassword') }}
+            </span>
+          </div>
+        </div>
 
         <div v-if="passwordChangeError" class="p-2 bg-error-container/40 border border-error text-error rounded-lg text-xs font-mono">
           {{ passwordChangeError }}
         </div>
 
-        <BaseInput
-          v-model="customUsername"
-          :label="t('auth.permanentUsername')"
-          placeholder="e.g. alex.morgan"
-          :required="true"
-          :disabled="authStore.user?.username === 'root'"
-          size="sm"
-        />
+        <!-- STEP 1: USERNAME -->
+        <div v-if="wizardStep === 'username' && canChangeUsername" class="flex flex-col gap-3">
+          <p class="text-xs text-on-surface-variant leading-relaxed">
+            {{ t('auth.wizardStepUsernameDesc') }}
+          </p>
 
-        <BaseInput
-          v-model="newPassword"
-          :label="authStore.user?.must_change_password ? t('auth.newPassword') : t('users.newPasswordOptional')"
-          :placeholder="authStore.user?.must_change_password ? '••••••••' : t('users.passwordResetPlaceholder')"
-          type="password"
-          :required="Boolean(authStore.user?.must_change_password)"
-          size="sm"
-        />
+          <BaseInput
+            v-model="customUsername"
+            :label="t('auth.permanentUsername')"
+            placeholder="e.g. alex.morgan"
+            :required="true"
+            size="sm"
+            @keydown.enter.prevent="goToNextStep"
+          />
 
-        <!-- Password policy requirements checklist -->
-        <div v-if="newPassword.length > 0" class="p-2 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-1 text-[11px]">
-          <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>
-            <span>{{ t('auth.passwordReqLength', { min: passwordRequirements.minLength }) }}</span>
-          </div>
-          <div v-if="passwordRequirements.reqUpper" class="flex items-center gap-1.5" :class="passwordRequirements.upper ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.upper ? 'check_circle' : 'radio_button_unchecked' }}</span>
-            <span>{{ t('auth.passwordReqUpper') }}</span>
-          </div>
-          <div v-if="passwordRequirements.reqDigits" class="flex items-center gap-1.5" :class="passwordRequirements.digits ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.digits ? 'check_circle' : 'radio_button_unchecked' }}</span>
-            <span>{{ t('auth.passwordReqDigit') }}</span>
-          </div>
-          <div v-if="passwordRequirements.reqSpecial" class="flex items-center gap-1.5" :class="passwordRequirements.special ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
-            <span class="material-symbols-outlined text-sm">{{ passwordRequirements.special ? 'check_circle' : 'radio_button_unchecked' }}</span>
-            <span>{{ t('auth.passwordReqSpecial') }}</span>
-          </div>
+          <button
+            type="button"
+            class="text-left text-[11px] text-primary-fixed-dim hover:underline flex items-center gap-1 mt-1 transition-colors cursor-pointer"
+            @click="handleKeepCurrentUsername"
+          >
+            <span class="material-symbols-outlined text-sm">check</span>
+            {{ t('auth.keepCurrentUsername') }} ({{ authStore.user?.username }})
+          </button>
         </div>
 
-        <BaseInput
-          v-if="authStore.user?.must_change_password || newPassword.length > 0"
-          v-model="confirmPassword"
-          :label="t('auth.confirmPassword')"
-          placeholder="••••••••"
-          type="password"
-          :required="Boolean(authStore.user?.must_change_password)"
-          size="sm"
-        />
-      </form>
+        <!-- STEP 2: PASSWORD -->
+        <div v-if="wizardStep === 'password' || !canChangeUsername" class="flex flex-col gap-3">
+          <p class="text-xs text-on-surface-variant leading-relaxed">
+            {{ t('auth.wizardStepPasswordDesc') }}
+          </p>
+
+          <BaseInput
+            v-model="newPassword"
+            :label="authStore.user?.must_change_password ? t('auth.newPassword') : t('users.newPasswordOptional')"
+            :placeholder="authStore.user?.must_change_password ? '••••••••' : t('users.passwordResetPlaceholder')"
+            type="password"
+            :required="Boolean(authStore.user?.must_change_password)"
+            size="sm"
+          />
+
+          <!-- Password policy requirements checklist -->
+          <div v-if="newPassword.length > 0" class="p-2 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-1 text-[11px]">
+            <div class="flex items-center gap-1.5" :class="passwordRequirements.length ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.length ? 'check_circle' : 'radio_button_unchecked' }}</span>
+              <span>{{ t('auth.passwordReqLength', { min: passwordRequirements.minLength }) }}</span>
+            </div>
+            <div v-if="passwordRequirements.reqUpper" class="flex items-center gap-1.5" :class="passwordRequirements.upper ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.upper ? 'check_circle' : 'radio_button_unchecked' }}</span>
+              <span>{{ t('auth.passwordReqUpper') }}</span>
+            </div>
+            <div v-if="passwordRequirements.reqDigits" class="flex items-center gap-1.5" :class="passwordRequirements.digits ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.digits ? 'check_circle' : 'radio_button_unchecked' }}</span>
+              <span>{{ t('auth.passwordReqDigit') }}</span>
+            </div>
+            <div v-if="passwordRequirements.reqSpecial" class="flex items-center gap-1.5" :class="passwordRequirements.special ? 'text-primary-fixed-dim' : 'text-on-surface-variant'">
+              <span class="material-symbols-outlined text-sm">{{ passwordRequirements.special ? 'check_circle' : 'radio_button_unchecked' }}</span>
+              <span>{{ t('auth.passwordReqSpecial') }}</span>
+            </div>
+          </div>
+
+          <BaseInput
+            v-if="authStore.user?.must_change_password || newPassword.length > 0"
+            v-model="confirmPassword"
+            :label="t('auth.confirmPassword')"
+            placeholder="••••••••"
+            type="password"
+            :required="Boolean(authStore.user?.must_change_password)"
+            size="sm"
+            @keydown.enter.prevent="handleSaveNewPassword"
+          />
+        </div>
+      </div>
 
       <template #footer>
-        <AppButton
-          variant="primary"
-          size="sm"
-          type="submit"
-          form="changePasswordForm"
-          :loading="isChangingPassword"
-          @click="handleSaveNewPassword"
-        >
-          {{ isChangingPassword ? t('users.saving') : t('auth.saveAndEnter') }}
-        </AppButton>
+        <div class="flex items-center justify-between w-full">
+          <!-- Back button on step 2 -->
+          <div>
+            <AppButton
+              v-if="wizardStep === 'password' && canChangeUsername"
+              variant="secondary"
+              size="sm"
+              @click="goToPrevStep"
+            >
+              <span class="material-symbols-outlined text-sm mr-1">arrow_back</span>
+              {{ t('auth.wizardBack') }}
+            </AppButton>
+          </div>
+
+          <!-- Forward button on step 1 OR Final Save on step 2 -->
+          <div class="ml-auto">
+            <AppButton
+              v-if="wizardStep === 'username' && canChangeUsername"
+              variant="primary"
+              size="sm"
+              @click="goToNextStep"
+            >
+              {{ t('auth.wizardNext') }}
+              <span class="material-symbols-outlined text-sm ml-1">arrow_forward</span>
+            </AppButton>
+
+            <AppButton
+              v-else
+              variant="primary"
+              size="sm"
+              :loading="isChangingPassword"
+              @click="handleSaveNewPassword"
+            >
+              {{ isChangingPassword ? t('users.saving') : t('auth.saveAndEnter') }}
+            </AppButton>
+          </div>
+        </div>
       </template>
     </BaseModal>
   </div>

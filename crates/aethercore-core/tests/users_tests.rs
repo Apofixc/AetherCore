@@ -12,9 +12,9 @@ async fn test_user_crud_and_auth() {
     // Инициализация дефолтного админа
     service.ensure_default_admin().await.unwrap();
 
-    // Аутентификация админа
-    let admin = service.authenticate("admin", "admin").await.unwrap();
-    assert_eq!(admin.username, "admin");
+    // Аутентификация суперпользователя root
+    let admin = service.authenticate("root", "root").await.unwrap();
+    assert_eq!(admin.username, "root");
     assert!(admin.is_superuser);
 
     // Создание нового пользователя
@@ -155,7 +155,7 @@ async fn test_cannot_delete_or_demote_last_superuser() {
     let service = UserService::new(db);
 
     service.ensure_default_admin().await.unwrap();
-    let admin = service.get_user_by_username("admin").await.unwrap();
+    let admin = service.get_user_by_username("root").await.unwrap();
 
     // Попытка удалить единственного суперпользователя
     let delete_res = service.delete_user(admin.id).await;

@@ -90,10 +90,10 @@ async fn test_health_endpoint() {
 async fn test_auth_login_and_me() {
     let (app, _) = setup_test_app().await;
 
-    // 1. Логин под admin
+    // 1. Логин под root
     let login_payload = serde_json::json!({
-        "username": "admin",
-        "password": "admin"
+        "username": "root",
+        "password": "root"
     });
 
     let response = app
@@ -114,7 +114,7 @@ async fn test_auth_login_and_me() {
     let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
     let login_res: LoginResponse = serde_json::from_slice(&body_bytes).unwrap();
     assert!(login_res.success);
-    assert_eq!(login_res.user.username, "admin");
+    assert_eq!(login_res.user.username, "root");
 
     // 2. Запрос /api/v1/auth/me с полученным Bearer токеном
     let me_response = app
@@ -132,7 +132,7 @@ async fn test_auth_login_and_me() {
     assert_eq!(me_response.status(), StatusCode::OK);
     let me_bytes = me_response.into_body().collect().await.unwrap().to_bytes();
     let me_user: UserResponseDto = serde_json::from_slice(&me_bytes).unwrap();
-    assert_eq!(me_user.username, "admin");
+    assert_eq!(me_user.username, "root");
 }
 
 #[tokio::test]
@@ -200,8 +200,8 @@ async fn test_auth_config_and_disabled_web_ui_auth() {
 async fn test_modules_api_and_assets() {
     let (app, _) = setup_test_app().await;
 
-    // Логинимся под admin
-    let login_payload = serde_json::json!({"username": "admin", "password": "admin"});
+    // Логинимся под root
+    let login_payload = serde_json::json!({"username": "root", "password": "root"});
     let login_res = app
         .clone()
         .oneshot(
@@ -260,10 +260,10 @@ async fn test_modules_api_and_assets() {
 async fn test_logs_endpoints() {
     let (app, state) = setup_test_app().await;
 
-    // Авторизуемся под admin
+    // Авторизуемся под root
     let login_payload = serde_json::json!({
-        "username": "admin",
-        "password": "admin"
+        "username": "root",
+        "password": "root"
     });
 
     let login_res = app
@@ -375,10 +375,10 @@ async fn test_logs_endpoints() {
 async fn test_settings_endpoints() {
     let (app, _) = setup_test_app().await;
 
-    // 1. Авторизация под admin
+    // 1. Авторизация под root
     let login_payload = serde_json::json!({
-        "username": "admin",
-        "password": "admin"
+        "username": "root",
+        "password": "root"
     });
 
     let res = app
