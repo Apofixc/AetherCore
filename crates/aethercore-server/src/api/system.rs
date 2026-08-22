@@ -60,7 +60,7 @@ pub struct SystemInfoResponse {
 async fn system_info_handler(State(state): State<AppState>) -> Json<SystemInfoResponse> {
     let uptime = state.start_time.elapsed().as_secs();
     Json(SystemInfoResponse {
-        name: "NMSNext-Gen Universal Core",
+        name: "AetherCore Platform",
         version: env!("CARGO_PKG_VERSION"),
         uptime_seconds: uptime,
         dev_mode: state.config.server.dev_mode,

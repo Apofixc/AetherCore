@@ -211,7 +211,7 @@ async function handleSaveNewPassword() {
     <div class="absolute inset-0 z-0 pointer-events-none">
       <div
         class="w-full h-full bg-cover bg-center opacity-40 mix-blend-luminosity"
-        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAfS5AOxKg62xUntEOyPOiVxOvm4JjnrAvsp6U_9M3H77hxQAVml87QhmaMQ_pURQlREF3gZvU8RIsi_PaYGUEBZMCO5FIJhlSpmv7sJzEwcYVkMQkuqS_SpjhnFOr3ed19ybS_wuMd432c3ehqxEY4soA79FdmNHPcfcjqYgndfcLIcyh62bvG1UJWafZMl1nbbqG9NXf6m7xqAbZh1Ubnwf0ES5ol6ACJNw0uE-2f_A-hcUKpAqO1');"
+        style="background-image: url('/login-bg.jpg');"
       ></div>
       <!-- Gradient Overlays for Depth and Focus -->
       <div class="absolute inset-0 bg-gradient-to-t from-surface-deep via-surface-deep/80 to-transparent"></div>

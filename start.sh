@@ -109,7 +109,7 @@ free_port() {
 cleanup() {
     trap - INT TERM EXIT
     echo ""
-    echo -e "${CLR_YELLOW}🛑 Завершение сервисов AetherCore NMS...${CLR_RESET}"
+    echo -e "${CLR_YELLOW}🛑 Завершение сервисов AetherCore...${CLR_RESET}"
 
     # Мягкая остановка Frontend
     if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
