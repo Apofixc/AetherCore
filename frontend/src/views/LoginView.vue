@@ -17,8 +17,16 @@ const rememberedOp = localStorage.getItem('nms_remembered_operator')
 const operatorId = ref(rememberedOp || 'admin')
 const accessCode = ref('')
 const rememberMe = ref(true)
-const errorMessage = ref<string | null>(null)
 const isSubmitting = ref(false)
+
+const errorKey = ref<string | null>(null)
+const errorRawMessage = ref<string | null>(null)
+const errorMessage = computed(() => {
+  if (errorKey.value) {
+    return t(errorKey.value)
+  }
+  return errorRawMessage.value
+})
 
 // Forgot Code / Access Recovery Modal
 const showForgotCodeModal = ref(false)
@@ -28,7 +36,15 @@ const showPasswordChangeModal = ref(false)
 const customUsername = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
-const passwordChangeError = ref<string | null>(null)
+const passwordChangeErrorKey = ref<string | null>(null)
+const passwordChangeErrorParams = ref<Record<string, string | number> | undefined>(undefined)
+const passwordChangeErrorRaw = ref<string | null>(null)
+const passwordChangeError = computed(() => {
+  if (passwordChangeErrorKey.value) {
+    return t(passwordChangeErrorKey.value, passwordChangeErrorParams.value)
+  }
+  return passwordChangeErrorRaw.value
+})
 const isChangingPassword = ref(false)
 
 // Password complexity rules check
@@ -60,14 +76,16 @@ onMounted(async () => {
   }
 
   if (route.query.reason === 'inactivity' || authStore.sessionExpired) {
-    errorMessage.value = t('auth.sessionExpiredInactivity')
+    errorKey.value = 'auth.sessionExpiredInactivity'
+    errorRawMessage.value = null
   }
 })
 
 async function handleLogin() {
   if (!operatorId.value || !accessCode.value) return
   isSubmitting.value = true
-  errorMessage.value = null
+  errorKey.value = null
+  errorRawMessage.value = null
   try {
     await authStore.login(operatorId.value, accessCode.value, rememberMe.value)
     const isFirstLogin = !authStore.user?.last_login_at || authStore.user?.must_change_password
@@ -79,15 +97,25 @@ async function handleLogin() {
     }
   } catch (err: any) {
     console.error('Login failed:', err)
-    errorMessage.value = err?.message || t('auth.invalidCredentials')
+    if (err?.status === 401 || err?.i18n_key === 'core.error.unauthorized') {
+      errorKey.value = 'auth.invalidCredentials'
+      errorRawMessage.value = null
+    } else {
+      errorKey.value = null
+      errorRawMessage.value = err?.message || t('auth.invalidCredentials')
+    }
   } finally {
     isSubmitting.value = false
   }
 }
 
 async function handleSaveNewPassword() {
+  passwordChangeErrorKey.value = null
+  passwordChangeErrorParams.value = undefined
+  passwordChangeErrorRaw.value = null
+
   if (customUsername.value.trim().length < 3) {
-    passwordChangeError.value = t('auth.invalidUsernameLength')
+    passwordChangeErrorKey.value = 'auth.invalidUsernameLength'
     return
   }
 
@@ -97,29 +125,31 @@ async function handleSaveNewPassword() {
   if (isMandatoryPassword || hasPasswordInput) {
     const reqs = passwordRequirements.value
     if (!reqs.length) {
-      passwordChangeError.value = t('auth.passwordReqLength', { min: reqs.minLength })
+      passwordChangeErrorKey.value = 'auth.passwordReqLength'
+      passwordChangeErrorParams.value = { min: reqs.minLength }
       return
     }
     if (!reqs.upper) {
-      passwordChangeError.value = t('auth.passwordReqUpper')
+      passwordChangeErrorKey.value = 'auth.passwordReqUpper'
       return
     }
     if (!reqs.digits) {
-      passwordChangeError.value = t('auth.passwordReqDigit')
+      passwordChangeErrorKey.value = 'auth.passwordReqDigit'
       return
     }
     if (!reqs.special) {
-      passwordChangeError.value = t('auth.passwordReqSpecial')
+      passwordChangeErrorKey.value = 'auth.passwordReqSpecial'
       return
     }
     if (newPassword.value !== confirmPassword.value) {
-      passwordChangeError.value = t('auth.passwordsDoNotMatch')
+      passwordChangeErrorKey.value = 'auth.passwordsDoNotMatch'
       return
     }
   }
 
   isChangingPassword.value = true
-  passwordChangeError.value = null
+  passwordChangeErrorKey.value = null
+  passwordChangeErrorRaw.value = null
   try {
     if (authStore.user) {
       const payload: { username: string; password?: string; must_change_password?: boolean } = {
@@ -135,7 +165,7 @@ async function handleSaveNewPassword() {
     showPasswordChangeModal.value = false
     router.push('/dashboard')
   } catch (err: any) {
-    passwordChangeError.value = err.message || t('auth.passwordChangeError')
+    passwordChangeErrorRaw.value = err.message || t('auth.passwordChangeError')
   } finally {
     isChangingPassword.value = false
   }

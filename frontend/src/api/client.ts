@@ -30,6 +30,11 @@ class ApiClient {
       headers.set('Authorization', `Bearer ${this.token}`)
     }
 
+    const currentLocale = localStorage.getItem('nms_locale') || 'ru'
+    if (!headers.has('Accept-Language')) {
+      headers.set('Accept-Language', currentLocale)
+    }
+
     const response = await fetch(endpoint, {
       ...options,
       headers
@@ -57,7 +62,11 @@ class ApiClient {
         (typeof data?.error === 'string' ? data.error : null) ||
         data?.message ||
         `HTTP ${response.status}: ${response.statusText}`
-      throw new Error(errorMsg)
+      const err = new Error(errorMsg)
+      ;(err as any).status = response.status
+      ;(err as any).i18n_key = data?.error?.i18n_key
+      ;(err as any).data = data
+      throw err
     }
 
     return data as T
