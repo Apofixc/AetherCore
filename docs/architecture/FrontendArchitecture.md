@@ -375,3 +375,92 @@ sequenceDiagram
     Core-->>API: 200 OK
 ```
 
+---
+
+## 9. Блок-схема: Жизненный цикл, оптимизация и сквозное отображение аватаров пользователей
+
+```mermaid
+graph TD
+    %% Загрузка фото
+    UploadStart(["Клик 'Загрузить фото'"]) --> ChooseFile["Выбор файла (.png, .jpg, .webp)"]
+    ChooseFile --> ValidateFormat{"Формат image/*?"}
+    ValidateFormat -- "Нет" --> ShowFmtErr["Ошибка: Неверный формат файла"]
+    ValidateFormat -- "Да" --> ValidateSize{"Размер <= 2 MB?"}
+    ValidateSize -- "Нет" --> ShowSizeErr["Ошибка: Превышен лимит размера"]
+    ValidateSize -- "Да" --> CanvasCrop["HTML5 Canvas Processing:<br/>1. Центрирование и обрезка 1:1<br/>2. Масштабирование до 256x256 px<br/>3. Экспорт в JPEG DataURL (0.85 quality)"]
+    CanvasCrop --> UpdateLocalUI["Мгновенное обновление UI:<br/>avatar.value = dataUrl<br/>authStore.avatar = dataUrl"]
+    UpdateLocalUI --> PutPref["PUT /api/v1/settings/user-preferences<br/>{ avatar: dataUrl }"]
+    PutPref --> ServerMerge["Backend Axum handler:<br/>1. Чтение текущих preferences из KV<br/>2. Слияние (merge) JSON-патча<br/>3. Запись в SQLite KvStore: user:{id}:preferences"]
+    ServerMerge --> ShowSuccess["Статус: Фото профиля успешно обновлено"]
+
+    %% Навигация и отображение
+    NavEvent(["Переход на любую страницу приложения"]) --> CheckAuth["App.vue / AppHeader.vue"]
+    CheckAuth --> FetchStore["authStore.fetchUser() / loadPreferences()"]
+    FetchStore --> LoadAvatar{"authStore.avatar задан?"}
+    %% Сквозные компоненты
+    LoadAvatar -- "Да (Data URL)" --> RenderHeaderAvatar["AppHeader.vue:<br/>Отображение аватара rounded-xl + точка статуса"]
+    LoadAvatar -- "Да (Data URL)" --> RenderDropdownAvatar["Dropdown профиля:<br/>Отображение аватара rounded-xl"]
+    LoadAvatar -- "Да (Data URL)" --> RenderProfileAvatar["UserProfileView.vue:<br/>Отображение аватара rounded-2xl с неоновым контуром"]
+    LoadAvatar -- "Да (Data URL)" --> RenderUsersTable["UsersManagementView.vue:<br/>Для строки текущего оператора: аватар rounded-xl"]
+    LoadAvatar -- "Нет (null)" --> FallbackInitials["Fallback: Текстовые инициалы getUserInitials<br/>в цветном контейнере роли (rounded-xl)"]
+
+    %% Сброс аватара
+    ResetStart(["Клик 'Удалить фото'"]) --> ResetLocal["avatar.value = null<br/>authStore.avatar = null"]
+    ResetLocal --> PutEmpty["PUT /api/v1/settings/user-preferences<br/>avatar: пустая строка"]
+    PutEmpty --> ServerMerge
+```
+
+### Диаграмма последовательности: Загрузка аватара и сквозное отображение
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Оператор
+    participant Profile as UserProfileView.vue
+    participant Canvas as HTML5 Canvas
+    participant Store as authStore (Pinia)
+    participant Header as AppHeader.vue
+    participant UsersTable as UsersManagementView.vue
+    participant API as ApiClient (/api/v1/settings)
+    participant Backend as Axum SettingsHandler
+    participant DB as SQLite KV Store
+
+    Note over User, DB: 1. Загрузка, обрезка и сохранение фото профиля
+    User->>Profile: Выбор файла изображения (до 2MB)
+    Profile->>Canvas: Центрирование (minDim) и resize 256x256
+    Canvas-->>Profile: Data URL сжатого JPEG изображения
+    Profile->>Store: authStore.avatar = dataUrl
+    Profile->>Header: Реактивное обновление аватарки в шапке (rounded-xl)
+    Profile->>API: PUT /api/v1/settings/user-preferences (avatar = dataUrl)
+    API->>Backend: update_user_preferences_handler()
+    Backend->>DB: Чтение user preferences из KvStore
+    DB-->>Backend: Текущие настройки пользователя
+    Backend->>Backend: Merge: сохранение timezone и theme, обновление avatar
+    Backend->>DB: Запись объединенных настроек в KvStore
+    DB-->>Backend: OK
+    Backend-->>API: 200 OK (UserPreferencesDto)
+    API-->>Profile: Уведомление "Фото обновлено"
+
+    Note over User, DB: 2. Переход на страницу "Управление пользователями"
+    User->>UsersTable: Переход в раздел /settings/users
+    UsersTable->>Store: Чтение authStore.avatar для текущей учетной записи
+    UsersTable->>UsersTable: Рендеринг таблицы: для текущего юзера выводится аватарка rounded-xl
+```
+
+### Тест-кейсы для верификации аватаров
+#### ТК-Аватар-1: Загрузка и персистентность аватара
+* **Given**: Пользователь авторизован и находится в `/profile`.
+* **When**: Пользователь загружает изображение размером до 2MB.
+* **Then**: Картинка сжимается до 256x256 px, отображается в карточке профиля, шапке `AppHeader.vue` и сохраняется на бэкенде в KV-хранилище без затирания часового пояса и темы.
+
+#### ТК-Аватар-2: Сохранение аватара при навигации
+* **Given**: Аватар успешно загружен и сохранен.
+* **When**: Пользователь переходит на страницу `/settings/users` или обновляет страницу.
+* **Then**: В верхнем баре (`AppHeader`), выпадающем меню и строке текущего оператора в таблице пользователей отображается миниатюра аватара в стиле `rounded-xl`.
+
+#### ТК-Аватар-3: Сброс аватара к инициалам
+* **Given**: Пользователь имеет установленный аватар.
+* **When**: Пользователь нажимает «Удалить фото».
+* **Then**: Аватар очищается в Pinia store и на сервере, а во всех компонентах плавно возвращается отображение текстовых инициалов в цветных контейнерах ролей.
+
+

@@ -147,7 +147,13 @@ async function loadPreferences() {
   try {
     const serverPrefs = await settingsApi.getUserPreferences()
     if (serverPrefs) {
-      if (serverPrefs.avatar) avatar.value = serverPrefs.avatar
+      if (serverPrefs.avatar) {
+        avatar.value = serverPrefs.avatar
+        authStore.avatar = serverPrefs.avatar
+      } else {
+        avatar.value = null
+        authStore.avatar = null
+      }
       if (serverPrefs.timezone) timezone.value = serverPrefs.timezone
       if (serverPrefs.time_format) timeFormat.value = serverPrefs.time_format as any
       if (serverPrefs.department) department.value = serverPrefs.department
@@ -247,6 +253,7 @@ function handlePhotoUpload(event: Event) {
         ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size)
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
         avatar.value = dataUrl
+        authStore.avatar = dataUrl
         isAvatarError.value = false
         try {
           await settingsApi.updateUserPreferences({ avatar: dataUrl })
@@ -267,6 +274,7 @@ function handlePhotoUpload(event: Event) {
 
 async function handleResetPhoto() {
   avatar.value = null
+  authStore.avatar = null
   isAvatarError.value = false
   try {
     await settingsApi.updateUserPreferences({ avatar: '' })
@@ -622,11 +630,11 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
             <!-- Profile Card -->
             <div class="bg-surface-container-low border border-outline-variant p-lg rounded-lg flex flex-col items-center text-center gap-md shadow-card-dark">
               <div class="relative w-24 h-24 mx-auto">
-                <div class="w-24 h-24 rounded-full bg-surface-variant border border-primary-fixed-dim flex items-center justify-center text-2xl font-bold font-mono text-primary-fixed-dim shadow-glow-primary-md overflow-hidden">
+                <div class="w-24 h-24 rounded-2xl bg-surface-variant border-2 border-primary-fixed-dim/60 flex items-center justify-center text-2xl font-bold font-mono text-primary-fixed-dim shadow-glow-primary-md overflow-hidden">
                   <img v-if="avatar" :src="avatar" alt="Avatar" class="w-full h-full object-cover" />
                   <span v-else>{{ userInitials }}</span>
                 </div>
-                <div class="absolute bottom-1 right-1 w-4 h-4 bg-tertiary-fixed-dim rounded-full border-2 border-background animate-pulse"></div>
+                <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-background animate-pulse shadow-[0_0_8px_#10b981]"></div>
               </div>
               <div class="flex flex-col items-center">
                 <h2 class="font-display-lg text-display-lg text-on-surface font-bold">

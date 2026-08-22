@@ -99,6 +99,9 @@ pub struct UserPreferencesDto {
     /// Флаг свернутого состояния боковой панели
     #[serde(default)]
     pub sidebar_collapsed: bool,
+    /// Аватарка пользователя (base64 data URL или ссылка на изображение)
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 fn default_timezone() -> String {
@@ -152,6 +155,7 @@ impl Default for UserPreferencesDto {
             sound_error: default_sound_error(),
             module_subscriptions: default_module_subscriptions(),
             sidebar_collapsed: false,
+            avatar: None,
         }
     }
 }
@@ -178,17 +182,44 @@ async fn update_user_preferences_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
-    Json(dto): Json<UserPreferencesDto>,
+    Json(updates): Json<serde_json::Value>,
 ) -> ApiResult<UserPreferencesDto> {
     let kv = KvStore::new(state.db.clone(), format!("user:{}", claims.sub));
-    kv.set("preferences", &dto).await.map_err(|e| {
+    let current: UserPreferencesDto = kv
+        .get("preferences")
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?
+        .unwrap_or_default();
+
+    let mut current_val = serde_json::to_value(&current).map_err(|e| {
+        let err = AppError::internal(e.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_api_response(locale)))
+    })?;
+
+    if let (Some(base), Some(patch)) = (current_val.as_object_mut(), updates.as_object()) {
+        for (k, v) in patch {
+            base.insert(k.clone(), v.clone());
+        }
+    }
+
+    let merged: UserPreferencesDto = serde_json::from_value(current_val).map_err(|e| {
+        let err = AppError::validation("preferences", &e.to_string());
+        (StatusCode::BAD_REQUEST, Json(err.to_api_response(locale)))
+    })?;
+
+    kv.set("preferences", &merged).await.map_err(|e| {
         (
             StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             Json(e.to_api_response(locale)),
         )
     })?;
 
-    Ok(Json(dto))
+    Ok(Json(merged))
 }
 
 // ---------------------------------------------------------------------------

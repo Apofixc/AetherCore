@@ -170,12 +170,18 @@ function handleLogout() {
           </div>
 
           <div class="relative">
-            <div class="w-9 h-9 rounded-full bg-surface-variant border border-outline-variant flex items-center justify-center overflow-hidden shadow-sm">
-              <span class="text-xs font-bold text-on-surface font-body-mono">
+            <div class="w-9 h-9 rounded-xl bg-surface-variant border border-outline-variant/80 flex items-center justify-center overflow-hidden shadow-sm hover:border-primary-fixed-dim/60 transition-colors">
+              <img
+                v-if="authStore.avatar"
+                :src="authStore.avatar"
+                alt="Avatar"
+                class="w-full h-full object-cover"
+              />
+              <span v-else class="text-xs font-bold text-on-surface font-body-mono">
                 {{ userInitials }}
               </span>
             </div>
-            <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-tertiary-fixed-dim rounded-full border-2 border-background"></div>
+            <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-background shadow-[0_0_4px_#10b981]"></div>
           </div>
 
           <span
@@ -193,9 +199,22 @@ function handleLogout() {
           @click.stop
         >
           <!-- User info -->
-          <div class="px-4 py-2.5">
-            <p class="text-xs font-bold text-on-surface">{{ authStore.user?.full_name || t('auth.adminUser') }}</p>
-            <p class="text-[10px] font-body-mono text-on-surface-variant mt-0.5">{{ authStore.user?.email || 'root@aethercore.local' }}</p>
+          <div class="px-4 py-2.5 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-surface-variant border border-outline-variant/80 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+              <img
+                v-if="authStore.avatar"
+                :src="authStore.avatar"
+                alt="Avatar"
+                class="w-full h-full object-cover"
+              />
+              <span v-else class="text-xs font-bold text-on-surface font-body-mono">
+                {{ userInitials }}
+              </span>
+            </div>
+            <div class="overflow-hidden">
+              <p class="text-xs font-bold text-on-surface truncate">{{ authStore.user?.full_name || t('auth.adminUser') }}</p>
+              <p class="text-[10px] font-body-mono text-on-surface-variant mt-0.5 truncate">{{ authStore.user?.email || 'root@aethercore.local' }}</p>
+            </div>
           </div>
 
           <!-- Navigation Links -->

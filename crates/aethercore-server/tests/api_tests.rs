@@ -458,6 +458,47 @@ async fn test_settings_endpoints() {
         serde_json::from_slice(&pref_bytes2).unwrap();
     assert_eq!(user_prefs2.timezone, "Europe/Moscow");
     assert_eq!(user_prefs2.sound_info, "Gentle Bell");
+    assert_eq!(user_prefs2.avatar, None);
+
+    // 3.1 Тест частичного обновления avatar
+    let avatar_data = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+    let put_avatar_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings/user-preferences")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "avatar": avatar_data }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put_avatar_res.status(), StatusCode::OK);
+
+    // Проверяем, что аватар сохранился, а предыдущие поля (timezone) не затерлись
+    let get_pref_res3 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/settings/user-preferences")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let pref_bytes3 = get_pref_res3.into_body().collect().await.unwrap().to_bytes();
+    let user_prefs3: aethercore_server::api::settings::UserPreferencesDto =
+        serde_json::from_slice(&pref_bytes3).unwrap();
+    assert_eq!(user_prefs3.timezone, "Europe/Moscow");
+    assert_eq!(user_prefs3.avatar, Some(avatar_data.to_string()));
 
     // 4. Тест security policies: GET и PUT
     let get_sec_res = app

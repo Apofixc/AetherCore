@@ -33,6 +33,14 @@ interface OperatorItem {
   is_active: boolean
   must_change_password?: boolean
   initials: string
+  avatar?: string | null
+}
+
+function getOperatorAvatar(op: OperatorItem): string | null {
+  if (authStore.user && (op.id === authStore.user.id || op.username === authStore.user.username)) {
+    return authStore.avatar || op.avatar || null
+  }
+  return op.avatar || null
 }
 
 // State
@@ -885,18 +893,26 @@ const editRoleOptions = computed(() => {
                       <!-- Avatar with status indicator dot -->
                       <div class="relative shrink-0">
                         <div
-                          class="w-10 h-10 rounded-lg flex items-center justify-center font-bold font-mono border"
+                          class="w-10 h-10 rounded-xl flex items-center justify-center font-bold font-mono border overflow-hidden transition-all shadow-sm"
                           :class="op.role === 'superuser'
-                            ? 'bg-tertiary-fixed-dim/20 border-tertiary-fixed-dim/40 text-tertiary-fixed-dim'
+                            ? 'bg-tertiary-fixed-dim/20 border-tertiary-fixed-dim/50 text-tertiary-fixed-dim shadow-[0_0_12px_rgba(115,212,232,0.2)]'
                             : op.role === 'admin'
-                            ? 'bg-primary-fixed-dim/20 border-primary-fixed-dim/40 text-primary-fixed-dim'
-                            : 'bg-surface-variant border-outline-variant/60 text-on-surface'"
+                            ? 'bg-primary-fixed-dim/20 border-primary-fixed-dim/50 text-primary-fixed-dim shadow-[0_0_12px_rgba(115,212,232,0.2)]'
+                            : op.role === 'operator'
+                            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                            : 'bg-surface-variant/60 border-outline-variant text-on-surface'"
                         >
-                          {{ op.initials }}
+                          <img
+                            v-if="getOperatorAvatar(op)"
+                            :src="getOperatorAvatar(op)!"
+                            :alt="op.full_name"
+                            class="w-full h-full object-cover"
+                          />
+                          <span v-else class="text-xs font-bold">{{ op.initials }}</span>
                         </div>
                         <span
                           class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface-container-low"
-                          :class="op.is_online ? 'bg-emerald-500' : 'bg-outline-variant'"
+                          :class="op.is_online ? 'bg-emerald-500 shadow-[0_0_6px_#10b981]' : 'bg-outline-variant'"
                         ></span>
                       </div>
 

@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, type User, type AuthConfig } from '@/api/auth'
+import { settingsApi } from '@/api/settings'
 import { api } from '@/api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
+  const avatar = ref<string | null>(null)
   const token = ref<string | null>(
     localStorage.getItem('aether_token') || sessionStorage.getItem('aether_token')
   )
@@ -100,6 +102,14 @@ export const useAuthStore = defineStore('auth', () => {
           roles: ['admin'],
           permissions: ['*']
         }
+        try {
+          const prefs = await settingsApi.getUserPreferences()
+          if (prefs?.avatar) {
+            avatar.value = prefs.avatar
+          }
+        } catch (e) {
+          console.debug('Failed to load user preferences in no-auth mode:', e)
+        }
       }
       if (token.value && cfg.inactivity_timeout) {
         startInactivityTracker()
@@ -130,6 +140,17 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem('aether_token')
       }
 
+      try {
+        const prefs = await settingsApi.getUserPreferences()
+        if (prefs?.avatar) {
+          avatar.value = prefs.avatar
+        } else {
+          avatar.value = null
+        }
+      } catch (e) {
+        console.debug('Failed to load preferences on login:', e)
+      }
+
       if (authConfig.value?.inactivity_timeout) {
         startInactivityTracker()
       }
@@ -158,6 +179,16 @@ export const useAuthStore = defineStore('auth', () => {
       if (!authConfig.value) {
         await checkAuthConfig()
       }
+      try {
+        const prefs = await settingsApi.getUserPreferences()
+        if (prefs?.avatar) {
+          avatar.value = prefs.avatar
+        } else {
+          avatar.value = null
+        }
+      } catch (e) {
+        console.debug('Failed to load preferences on fetchUser:', e)
+      }
       startInactivityTracker()
       return u
     } catch (err) {
@@ -175,6 +206,7 @@ export const useAuthStore = defineStore('auth', () => {
     stopInactivityTracker()
     token.value = null
     user.value = null
+    avatar.value = null
     localStorage.removeItem('aether_token')
     sessionStorage.removeItem('aether_token')
     api.setToken(null)
@@ -182,6 +214,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     user,
+    avatar,
     token,
     authConfig,
     loading,
