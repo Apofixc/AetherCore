@@ -305,28 +305,28 @@ graph TD
 ```mermaid
 graph TD
     Mount(["Монтирование UserProfileView.vue"]) --> LoadPrefs["Загрузка профиля и предпочтений:<br/>1. authStore.fetchUser()<br/>2. settingsApi.getUserPreferences()"]
-    LoadPrefs --> ApplyState["Инициализация локального состояния Vue:<br/>• timezone (дефолт UTC / сохраненный)<br/>• time_format (24h_sec / 24h_min / 12h_sec / 12h_min / iso)<br/>• theme (dark / light / system)<br/>• locale (ru / en)<br/>• department, email, full_name"]
+    LoadPrefs --> ApplyState["Инициализация состояния Vue:<br/>• timezone (дефолт UTC / сохраненный)<br/>• time_format (24h_sec / 24h_min / 12h_sec / 12h_min / iso)<br/>• theme, locale, department, email, full_name"]
     ApplyState --> StartClock["Запуск таймера живых часов<br/>clockTimer = setInterval(updateClock, 1000)"]
-    StartClock --> RenderClock["Форматирование часов по правилам:<br/>Intl.DateTimeFormat(locale, { timeZone, hour12, ... })<br/>+ суффикс (Timezone)"]
+    StartClock --> RenderClock["Форматирование часов:<br/>Intl.DateTimeFormat(locale, timezone, timeFormat)"]
     %% Взаимодействие с часовым поясом
-    ApplyState --> TimezoneCard["Карточка 'Внешний вид и региональность'<br/>BaseCard (:overflow-visible='true')"]
-    TimezoneCard --> BaseSelectTz["Searchable BaseSelect (:searchable='true')"]
+    ApplyState --> TimezoneCard["Карточка Внешний вид и региональность<br/>BaseCard с overflow-visible"]
+    TimezoneCard --> BaseSelectTz["Searchable BaseSelect"]
     BaseSelectTz --> ClickTzTrigger{"Клик по полю выбора пояса?"}
-    ClickTzTrigger -- "Да" --> OpenDropdown["Открытие всплывающего popover (z-[100])<br/>• Фокус на строке поиска<br/>• Генерация списка IANA Intl.supportedValuesOf('timeZone')<br/>• Расчет актуального смещения (GMT±X)"]
+    ClickTzTrigger -- "Да" --> OpenDropdown["Открытие выпадающего меню z-index 100<br/>• Фокус на строке поиска<br/>• Генерация списка IANA зон<br/>• Расчет актуального смещения GMT"]
     OpenDropdown --> SearchInput["Ввод запроса в строку поиска<br/>(город, регион, IANA код или GMT)"]
     SearchInput --> FilterList["Мгновенная реактивная фильтрация списка<br/>filteredOptions"]
     FilterList --> SelectTzItem["Выбор часового пояса оператором"]
-    SelectTzItem --> UpdateTz["1. timezone.value = selectedTz<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ timezone })"]
+    SelectTzItem --> UpdateTz["1. timezone.value = selectedTz<br/>2. updateClock (мгновенный пересчет)<br/>3. Фоновое автосохранение: updateUserPreferences"]
     %% Кнопка автоопределения
-    TimezoneCard --> ClickAutoDetect{"Клик 'Автоопределение'?"}
-    ClickAutoDetect -- "Да" --> ReadClientTz["Чтение Intl.DateTimeFormat().resolvedOptions().timeZone"]
+    TimezoneCard --> ClickAutoDetect{"Клик Автоопределение?"}
+    ClickAutoDetect -- "Да" --> ReadClientTz["Чтение Intl.resolvedOptions.timeZone"]
     ReadClientTz --> UpdateTz
     %% Взаимодействие с форматом времени
-    TimezoneCard --> SelectTimeFmt["Выбор формата времени (time_format):<br/>24h_sec / 24h_min / 12h_sec / 12h_min / iso"]
-    SelectTimeFmt --> UpdateFmt["1. timeFormat.value = selectedFmt<br/>2. updateClock() (мгновенный пересчет)<br/>3. Фоновое автосохранение: settingsApi.updateUserPreferences({ time_format })"]
+    TimezoneCard --> SelectTimeFmt["Выбор формата времени time_format:<br/>24h_sec / 24h_min / 12h_sec / 12h_min / iso"]
+    SelectTimeFmt --> UpdateFmt["1. timeFormat.value = selectedFmt<br/>2. updateClock (мгновенный пересчет)<br/>3. Фоновое автосохранение: updateUserPreferences"]
     %% Полное сохранение профиля
-    TimezoneCard --> ClickSaveAll{"Клик 'Сохранить изменения'?"}
-    ClickSaveAll -- "Да" --> SaveChain["Сквозное сохранение:<br/>1. usersApi.update(id, { full_name, email }) -> SQLite users table<br/>2. settingsApi.updateUserPreferences(payload) -> SQLite kv_store (user:{id})<br/>3. authStore.fetchUser() -> обновление сессии Pinia<br/>4. Анимация кнопки: savedNotice = true"]
+    TimezoneCard --> ClickSaveAll{"Клик Сохранить изменения?"}
+    ClickSaveAll -- "Да" --> SaveChain["Сквозное сохранение:<br/>1. usersApi.update (запись в таблицу users)<br/>2. settingsApi.updateUserPreferences (запись в KV store)<br/>3. authStore.fetchUser (обновление сессии Pinia)<br/>4. Анимация кнопки: savedNotice = true"]
 ```
 
 ### Диаграмма последовательности: Выбор и синхронизация региональных настроек (Timezone & Time Format)
