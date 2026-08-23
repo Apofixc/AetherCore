@@ -112,9 +112,35 @@ export interface RestoreResult {
   message: string
 }
 
+export interface OperatorSession {
+  id: string
+  user_id: string
+  username: string
+  roles: string[]
+  role: string
+  ip_address: string
+  user_agent: string
+  created_at: string
+  last_active_at: string
+  expires_at: string
+  is_current: boolean
+}
+
 export const systemApi = {
   getInfo: async (): Promise<SystemInfo> => {
     return api.get<SystemInfo>('/api/v1/system/info')
+  },
+  getSessions: async (): Promise<OperatorSession[]> => {
+    return api.get<OperatorSession[]>('/api/v1/system/sessions')
+  },
+  revokeSession: async (id: string): Promise<{ success: boolean; session_id: string }> => {
+    return api.delete<{ success: boolean; session_id: string }>(`/api/v1/system/sessions/${encodeURIComponent(id)}`)
+  },
+  terminateOtherSessions: async (): Promise<{ success: boolean; terminated_count: number }> => {
+    return api.post<{ success: boolean; terminated_count: number }>('/api/v1/system/sessions/terminate-others', {})
+  },
+  terminateAllSessions: async (): Promise<{ success: boolean; terminated_count: number }> => {
+    return api.post<{ success: boolean; terminated_count: number }>('/api/v1/system/sessions/terminate-all', {})
   },
   getAuditLogs: async (params?: AuditQueryParams): Promise<AuditLogEntry[]> => {
     const query = new URLSearchParams()
@@ -222,3 +248,4 @@ export const systemApi = {
     return api.delete<{ success: boolean; deleted: string }>(`/api/v1/system/backup/${encodeURIComponent(filename)}`)
   }
 }
+

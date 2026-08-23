@@ -335,4 +335,90 @@ pub struct JwtClaims {
     pub iat: i64,
     /// Временная метка истечения срока действия токена в формате Unix timestamp (exp)
     pub exp: i64,
+    /// Уникальный идентификатор активной сессии (JTI/Session ID) для онлайн-валидации и принудительного отзыва
+    #[serde(default)]
+    pub session_id: Option<Uuid>,
+}
+
+/// Запись активной глобальной сессии оператора в БД
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRecord {
+    /// Уникальный идентификатор сессии (UUID)
+    pub id: Uuid,
+    /// Идентификатор пользователя
+    pub user_id: Uuid,
+    /// Логин оператора
+    pub username: String,
+    /// Роли оператора
+    pub roles: Vec<String>,
+    /// IP-адрес клиента
+    pub ip_address: String,
+    /// User-Agent клиента (браузер / приложение)
+    pub user_agent: String,
+    /// Время создания сессии (UTC)
+    pub created_at: DateTime<Utc>,
+    /// Время последней активности (UTC)
+    pub last_active_at: DateTime<Utc>,
+    /// Время истечения сессии (UTC)
+    pub expires_at: DateTime<Utc>,
+}
+
+/// DTO сессии оператора для REST API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionDto {
+    /// Уникальный идентификатор сессии
+    pub id: Uuid,
+    /// Идентификатор пользователя
+    pub user_id: Uuid,
+    /// Логин оператора
+    pub username: String,
+    /// Роли оператора
+    pub roles: Vec<String>,
+    /// Основная отображаемая роль
+    pub role: String,
+    /// IP-адрес клиента
+    pub ip_address: String,
+    /// User-Agent клиента
+    pub user_agent: String,
+    /// Время создания сессии в формате ISO 8601
+    pub created_at: DateTime<Utc>,
+    /// Время последней активности в формате ISO 8601
+    pub last_active_at: DateTime<Utc>,
+    /// Время истечения сессии
+    pub expires_at: DateTime<Utc>,
+    /// Является ли сессия текущей для запрашивающего клиента
+    pub is_current: bool,
+}
+
+impl SessionRecord {
+    /// Преобразовать запись БД в DTO для REST API
+    pub fn into_dto(self, current_session_id: Option<Uuid>) -> SessionDto {
+        let is_current = current_session_id.map(|cid| cid == self.id).unwrap_or(false);
+        let primary_role = self
+            .roles
+            .first()
+            .cloned()
+            .map(|r| {
+                let mut c = r.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            })
+            .unwrap_or_else(|| "Operator".to_string());
+
+        SessionDto {
+            id: self.id,
+            user_id: self.user_id,
+            username: self.username,
+            roles: self.roles,
+            role: primary_role,
+            ip_address: self.ip_address,
+            user_agent: self.user_agent,
+            created_at: self.created_at,
+            last_active_at: self.last_active_at,
+            expires_at: self.expires_at,
+            is_current,
+        }
+    }
 }

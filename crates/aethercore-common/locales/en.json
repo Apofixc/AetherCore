@@ -33,6 +33,7 @@
   "core.auth.password_too_short": "Password is too short (minimum length: {min_len} characters)",
   "core.auth.cannot_delete_self": "Cannot delete your own user account",
   "core.auth.cannot_disable_root": "Cannot disable or delete the root superuser account",
+  "core.auth.session_revoked": "Session has been revoked or expired",
 
   "core.modules.file_must_be_zip": "File must be a ZIP archive (.aether-plugin)",
   "core.modules.missing_manifest": "Package archive is missing manifest.yaml",

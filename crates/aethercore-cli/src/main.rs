@@ -140,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bus = EventBus::new(db.clone());
     let jwt_manager = JwtManager::new(&config.security.jwt_secret, config.security.jwt_ttl_seconds);
     let user_service = UserService::new(db.clone());
+    let session_service = aethercore_core::services::SessionService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
@@ -230,6 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bus,
         jwt_manager,
         user_service,
+        session_service,
         audit_service,
         logger_service,
         notify_service,

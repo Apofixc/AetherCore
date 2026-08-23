@@ -24,6 +24,10 @@ pub trait HasJwtManager {
     fn db(&self) -> Option<&aethercore_core::db::Db> {
         None
     }
+    /// Получить ссылку на сервис сессий (если доступен)
+    fn session_service(&self) -> Option<&aethercore_core::services::SessionService> {
+        None
+    }
 }
 
 /// Extractor для определения локали клиента из заголовка `Accept-Language`
@@ -175,6 +179,23 @@ where
                         .jwt_manager()
                         .verify_token(t)
                         .map_err(AuthErrorResponse)?;
+
+                    if let Some(session_id) = claims.session_id {
+                        if let Some(session_srv) = state.session_service() {
+                            match session_srv.is_session_valid(session_id).await {
+                                Ok(true) => {
+                                    let _ = session_srv.touch_session(session_id).await;
+                                }
+                                _ => {
+                                    return Err(AuthErrorResponse(
+                                        AppError::unauthorized("Session has been revoked or expired")
+                                            .with_i18n_key("core.auth.session_revoked"),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
                     return Ok(AuthUser(claims));
                 }
 
@@ -197,6 +218,7 @@ where
                         ],
                         exp: 0,
                         iat: 0,
+                        session_id: None,
                     }));
                 }
             }
@@ -219,6 +241,23 @@ where
                 .jwt_manager()
                 .verify_token(t)
                 .map_err(AuthErrorResponse)?;
+
+            if let Some(session_id) = claims.session_id {
+                if let Some(session_srv) = state.session_service() {
+                    match session_srv.is_session_valid(session_id).await {
+                        Ok(true) => {
+                            let _ = session_srv.touch_session(session_id).await;
+                        }
+                        _ => {
+                            return Err(AuthErrorResponse(
+                                AppError::unauthorized("Session has been revoked or expired")
+                                    .with_i18n_key("core.auth.session_revoked"),
+                            ));
+                        }
+                    }
+                }
+            }
+
             return Ok(AuthUser(claims));
         }
 

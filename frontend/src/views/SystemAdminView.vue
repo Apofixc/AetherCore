@@ -52,6 +52,7 @@ const isRotating = ref(false)
 
 interface SessionItem {
   id: string
+  user_id?: string
   username: string
   role: string
   ip: string
@@ -74,6 +75,94 @@ const selectedProviderId = ref('system')
 
 // Active sessions state
 const sessions = ref<SessionItem[]>([])
+const isLoadingSessions = ref(false)
+
+function formatUserAgent(ua?: string): string {
+  if (!ua || ua === 'Web Client') return 'Web Client'
+  let browser = 'Browser'
+  let os = 'OS'
+
+  if (ua.includes('Edg/')) browser = 'Edge'
+  else if (ua.includes('Chrome/')) browser = 'Chrome'
+  else if (ua.includes('Firefox/')) browser = 'Firefox'
+  else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Safari'
+  else if (ua.includes('Opera/') || ua.includes('OPR/')) browser = 'Opera'
+
+  if (ua.includes('Windows')) os = 'Windows'
+  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS'
+  else if (ua.includes('Linux')) os = 'Linux'
+  else if (ua.includes('Android')) os = 'Android'
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
+
+  return `${browser} on ${os}`
+}
+
+function formatSessionTime(isoStr?: string): string {
+  if (!isoStr) return ''
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return isoStr
+  }
+}
+
+async function loadSessions() {
+  isLoadingSessions.value = true
+  try {
+    const list = await systemApi.getSessions()
+    if (list && Array.isArray(list) && list.length > 0) {
+      sessions.value = list.map((item) => ({
+        id: item.id,
+        user_id: item.user_id,
+        username: item.username,
+        role: item.role || 'Operator',
+        ip: item.ip_address,
+        time: formatSessionTime(item.last_active_at || item.created_at),
+        client: formatUserAgent(item.user_agent),
+        isCurrent: item.is_current
+      }))
+    } else if (authStore.user) {
+      sessions.value = [
+        {
+          id: `sess-${authStore.user.id.slice(0, 8)}`,
+          user_id: authStore.user.id,
+          username: authStore.user.username,
+          role: authStore.user.is_superuser
+            ? 'Superuser'
+            : (authStore.user.roles?.[0]
+                ? authStore.user.roles[0].charAt(0).toUpperCase() + authStore.user.roles[0].slice(1)
+                : 'Operator'),
+          ip: '127.0.0.1',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          client: 'Web Client',
+          isCurrent: true
+        }
+      ]
+    } else {
+      sessions.value = []
+    }
+  } catch (err) {
+    console.debug('Failed to load active sessions:', err)
+    if (authStore.user && sessions.value.length === 0) {
+      sessions.value = [
+        {
+          id: `sess-${authStore.user.id.slice(0, 8)}`,
+          user_id: authStore.user.id,
+          username: authStore.user.username,
+          role: authStore.user.is_superuser ? 'Superuser' : 'Operator',
+          ip: '127.0.0.1',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          client: 'Web Client',
+          isCurrent: true
+        }
+      ]
+    }
+  } finally {
+    isLoadingSessions.value = false
+  }
+}
+
 
 // System logs state
 const selectedLogLevel = ref('ALL')
@@ -390,9 +479,15 @@ function requestRevokeSession(s: SessionItem) {
     variant: 'danger',
     icon: 'no_accounts',
     confirmText: t('system.revokeSession'),
-    action: () => {
-      sessions.value = sessions.value.filter((item) => item.id !== s.id)
-      notify(t('system.revokeSession') + ` (${s.username}) - OK`)
+    action: async () => {
+      try {
+        await systemApi.revokeSession(s.id)
+        notify(t('system.revokeSession') + ` (${s.username}) - OK`)
+        await loadSessions()
+      } catch (err: any) {
+        console.error('Failed to revoke session:', err)
+        notify(err?.message || 'Error revoking session')
+      }
     }
   }
   showConfirmModal.value = true
@@ -405,9 +500,15 @@ function requestTerminateOthers() {
     variant: 'danger',
     icon: 'security',
     confirmText: t('system.terminateOthers'),
-    action: () => {
-      sessions.value = sessions.value.filter((s) => s.isCurrent)
-      notify(t('system.confirmRevokeOthersTitle') + ' - OK')
+    action: async () => {
+      try {
+        const res = await systemApi.terminateOtherSessions()
+        notify(t('system.confirmRevokeOthersTitle') + ` (${res.terminated_count}) - OK`)
+        await loadSessions()
+      } catch (err: any) {
+        console.error('Failed to terminate other sessions:', err)
+        notify(err?.message || 'Error terminating sessions')
+      }
     }
   }
   showConfirmModal.value = true
@@ -420,7 +521,12 @@ function requestAllLogout() {
     variant: 'danger',
     icon: 'logout',
     confirmText: t('system.allLogout'),
-    action: () => {
+    action: async () => {
+      try {
+        await systemApi.terminateAllSessions()
+      } catch (err) {
+        console.debug('Failed to terminate all sessions on backend:', err)
+      }
       authStore.logout()
       router.push('/login')
     }
@@ -530,20 +636,7 @@ async function loadSystemData() {
     console.warn('Could not fetch system info:', e)
   }
 
-  if (authStore.user) {
-    sessions.value = [
-      {
-        id: `sess-${authStore.user.id.slice(0, 6)}`,
-        username: authStore.user.username,
-        role: authStore.user.is_superuser ? 'Superuser' : (authStore.user.roles?.[0] ? authStore.user.roles[0].charAt(0).toUpperCase() + authStore.user.roles[0].slice(1) : 'User'),
-        ip: '127.0.0.1',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        client: 'Web Client',
-        isCurrent: true
-      }
-    ]
-  }
-
+  await loadSessions()
   await fetchRealLogs()
 }
 
@@ -772,6 +865,15 @@ onUnmounted(() => {
           >
             <template #headerActions>
               <AppButton
+                variant="ghost"
+                size="xs"
+                icon="refresh"
+                :loading="isLoadingSessions"
+                @click="loadSessions"
+              >
+                {{ t('common.refresh') }}
+              </AppButton>
+              <AppButton
                 v-if="authStore.canManageSystem"
                 variant="danger"
                 size="xs"
@@ -793,6 +895,12 @@ onUnmounted(() => {
 
             <!-- Sessions List -->
             <div class="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
+              <div
+                v-if="sessions.length === 0 && !isLoadingSessions"
+                class="text-xs text-on-surface-variant/70 font-mono py-6 text-center"
+              >
+                {{ t('system.noActiveSessions') }}
+              </div>
               <div
                 v-for="s in sessions"
                 :key="s.id"

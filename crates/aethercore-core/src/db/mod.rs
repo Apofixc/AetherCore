@@ -433,6 +433,29 @@ impl Db {
         .await
         .map_err(|e| AppError::database(format!("Failed to create scheduler tables: {}", e)))?;
 
+        // 7. Таблица активных сессий операторов
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS active_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                roles TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                user_agent TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_active_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON active_sessions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON active_sessions(expires_at);
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(format!("Failed to create active_sessions table: {}", e)))?;
+
         // Сидирование стандартных ролей и прав
         self.seed_default_rbac().await?;
 

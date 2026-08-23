@@ -9,7 +9,9 @@ use aethercore_core::auth::JwtManager;
 use aethercore_core::bus::EventBus;
 use aethercore_core::db::Db;
 use aethercore_core::plugins::PluginManager;
-use aethercore_core::services::{AuditService, BackupService, LoggerService, NotifyService, SchedulerService};
+use aethercore_core::services::{
+    AuditService, BackupService, LoggerService, NotifyService, SchedulerService, SessionService,
+};
 use aethercore_core::users::UserService;
 use std::sync::Arc;
 use std::time::Instant;
@@ -29,6 +31,8 @@ pub struct AppState {
     pub jwt_manager: JwtManager,
     /// Сервис управления пользователями и RBAC ([`UserService`])
     pub user_service: UserService,
+    /// Сервис управления глобальными сессиями операторов ([`SessionService`])
+    pub session_service: SessionService,
     /// Сервис персистентного журнала аудита ([`AuditService`])
     pub audit_service: AuditService,
     /// Сервис системного логирования ([`LoggerService`])
@@ -53,4 +57,9 @@ impl HasJwtManager for AppState {
     fn db(&self) -> Option<&aethercore_core::db::Db> {
         Some(&self.db)
     }
+
+    fn session_service(&self) -> Option<&SessionService> {
+        Some(&self.session_service)
+    }
 }
+

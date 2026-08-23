@@ -91,6 +91,29 @@ impl JwtManager {
         permissions: Vec<String>,
         ttl_seconds: i64,
     ) -> Result<String> {
+        self.generate_token_with_session(user_id, username, is_superuser, roles, permissions, None, ttl_seconds)
+    }
+
+    /// Сгенерировать новый JWT токен с привязкой к идентификатору сессии оператора
+    ///
+    /// # Аргументы
+    /// * `user_id` — Уникальный идентификатор пользователя ([`Uuid`]).
+    /// * `username` — Имя пользователя.
+    /// * `is_superuser` — Флаг суперпользователя.
+    /// * `roles` — Список назначенных ролей.
+    /// * `permissions` — Список строковых прав доступа.
+    /// * `session_id` — Опциональный ID активной глобальной сессии.
+    /// * `ttl_seconds` — Время жизни токена в секундах.
+    pub fn generate_token_with_session(
+        &self,
+        user_id: Uuid,
+        username: &str,
+        is_superuser: bool,
+        roles: Vec<String>,
+        permissions: Vec<String>,
+        session_id: Option<Uuid>,
+        ttl_seconds: i64,
+    ) -> Result<String> {
         let now = Utc::now().timestamp();
         let exp = now + ttl_seconds;
 
@@ -102,6 +125,7 @@ impl JwtManager {
             permissions,
             iat: now,
             exp,
+            session_id,
         };
 
         let encoding_key = EncodingKey::from_secret(self.secret.as_bytes());

@@ -26,6 +26,7 @@ async fn setup_test_app() -> (axum::Router, AppState) {
     let bus = EventBus::new(db.clone());
     let jwt_manager = JwtManager::new("test-secret-key-12345", 3600);
     let user_service = UserService::new(db.clone());
+    let session_service = aethercore_core::services::SessionService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
     let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
@@ -70,6 +71,7 @@ description: "Test module for API"
         bus,
         jwt_manager,
         user_service,
+        session_service,
         audit_service,
         logger_service,
         notify_service,

@@ -12,6 +12,7 @@ pub mod backup;
 pub mod logger;
 pub mod notify;
 pub mod scheduler;
+pub mod session;
 
 pub use audit::{AuditArchiveInfo, AuditLogRecord, AuditService};
 pub use backup::{BackupInfo, BackupService, RestoreResult};
@@ -20,3 +21,5 @@ pub use logger::{
 };
 pub use notify::{AlertMessage, AlertSeverity, NotifyService};
 pub use scheduler::{handlers, SchedulerService, TaskHandler};
+pub use session::SessionService;
+

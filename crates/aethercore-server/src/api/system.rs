@@ -18,6 +18,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use aethercore_common::error::{AppError, ErrorResponse};
 use aethercore_common::i18n::{global, Locale};
+use aethercore_common::models::user::SessionDto;
 use aethercore_core::auth::check_permission;
 use aethercore_core::db::DbStorageStats;
 use aethercore_core::services::{
@@ -27,6 +28,8 @@ use aethercore_core::services::{
 use axum::extract::Multipart;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
+
 
 /// Создать вложенный роутер системных эндпоинтов `/system`
 pub fn router() -> Router<AppState> {
@@ -50,6 +53,10 @@ pub fn router() -> Router<AppState> {
         .route("/backup/restore", post(restore_backup_handler))
         .route("/backup/upload-restore", post(upload_restore_backup_handler))
         .route("/backup/{filename}", axum::routing::delete(delete_backup_handler))
+        .route("/sessions", get(list_sessions_handler))
+        .route("/sessions/{id}", axum::routing::delete(revoke_session_handler))
+        .route("/sessions/terminate-others", post(terminate_others_handler))
+        .route("/sessions/terminate-all", post(terminate_all_handler))
 }
 
 /// Ответ REST API с метаинформацией о запущенном экземпляре ядра платформы
@@ -969,3 +976,175 @@ async fn delete_backup_handler(
         "deleted": filename
     })))
 }
+
+/// GET /api/v1/system/sessions
+///
+/// Получить список всех активных глобальных сессий операторов платформы
+async fn list_sessions_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Vec<SessionDto>>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let sessions = state
+        .session_service
+        .list_active_sessions()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let dtos: Vec<SessionDto> = sessions
+        .into_iter()
+        .map(|s| s.into_dto(claims.session_id))
+        .collect();
+
+    Ok(Json(dtos))
+}
+
+/// DELETE /api/v1/system/sessions/{id}
+///
+/// Принудительно отозвать конкретную сессию оператора
+async fn revoke_session_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Path(id_str): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let session_id = Uuid::parse_str(&id_str).map_err(|e| {
+        let err = AppError::validation("id", format!("Invalid session UUID: {}", e));
+        (StatusCode::BAD_REQUEST, Json(err.to_api_response(locale)))
+    })?;
+
+    let revoked = state
+        .session_service
+        .revoke_session(session_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "session.revoke",
+            "system",
+            if revoked { "SUCCESS" } else { "NOT_FOUND" },
+            Some(&format!("Revoked operator session: {}", session_id)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": revoked,
+        "session_id": session_id.to_string()
+    })))
+}
+
+/// POST /api/v1/system/sessions/terminate-others
+///
+/// Принудительно сбросить все сессии других операторов (кроме текущей)
+async fn terminate_others_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let count = match claims.session_id {
+        Some(current_sid) => state.session_service.revoke_all_except(current_sid).await,
+        None => state.session_service.revoke_all_sessions().await,
+    }
+    .map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "session.terminate_others",
+            "system",
+            "SUCCESS",
+            Some(&format!("Terminated {} other operator sessions", count)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "terminated_count": count
+    })))
+}
+
+/// POST /api/v1/system/sessions/terminate-all
+///
+/// Принудительно сбросить абсолютно все активные сессии в системе (включая текущую)
+async fn terminate_all_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let count = state
+        .session_service
+        .revoke_all_sessions()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "session.terminate_all",
+            "system",
+            "SUCCESS",
+            Some(&format!("Terminated all {} active operator sessions", count)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "terminated_count": count
+    })))
+}
+

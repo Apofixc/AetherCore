@@ -33,6 +33,7 @@
   "core.auth.password_too_short": "Пароль слишком короткий (минимальная длина: {min_len} символов)",
   "core.auth.cannot_delete_self": "Нельзя удалить собственного пользователя",
   "core.auth.cannot_disable_root": "Нельзя отключить или удалить единственного суперадминистратора",
+  "core.auth.session_revoked": "Сессия была отозвана или истек срок ее действия",
 
   "core.modules.file_must_be_zip": "Файл должен быть ZIP архивом (.aether-plugin)",
   "core.modules.missing_manifest": "В архиве отсутствует manifest.yaml",

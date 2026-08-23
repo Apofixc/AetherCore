@@ -150,6 +150,16 @@ pub struct LoginResponse {
     pub backup_codes_left: Option<usize>,
 }
 
+/// Извлечь User-Agent клиента из заголовков HTTP
+fn extract_user_agent(headers: &axum::http::HeaderMap) -> String {
+    headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|h| h.to_str().ok())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("Web Client")
+        .to_string()
+}
+
 /// POST /api/v1/auth/login
 ///
 /// Обработчик входа пользователя. Проверяет учетные данные через [`aethercore_core::users::UserService::authenticate`],
@@ -183,6 +193,8 @@ async fn login_handler(
             let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::UNAUTHORIZED);
             (status, Json(e.to_api_response(locale)))
         })?;
+
+    let user_agent = extract_user_agent(&headers);
 
     // Проверка необходимости 2FA
     if user.is_totp_enabled {
@@ -237,14 +249,32 @@ async fn login_handler(
         }
 
         let ttl_seconds = (policy.session_ttl.max(1) as i64) * 3600;
+
+        let session = state
+            .session_service
+            .create_session(
+                user.id,
+                &user.username,
+                &user.roles,
+                &client_ip,
+                &user_agent,
+                ttl_seconds,
+            )
+            .await
+            .map_err(|e| {
+                let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                (status, Json(e.to_api_response(locale)))
+            })?;
+
         let token = state
             .jwt_manager
-            .generate_token_with_ttl(
+            .generate_token_with_session(
                 user.id,
                 &user.username,
                 user.is_superuser,
                 user.roles.clone(),
                 user.permissions.clone(),
+                Some(session.id),
                 ttl_seconds,
             )
             .map_err(|e| {
@@ -260,8 +290,8 @@ async fn login_handler(
                 "auth.login_2fa",
                 "auth",
                 "success",
-                None,
-                None,
+                Some(&format!("session_id: {}", session.id)),
+                Some(&client_ip),
             )
             .await;
 
@@ -277,14 +307,31 @@ async fn login_handler(
 
     let ttl_seconds = (policy.session_ttl.max(1) as i64) * 3600;
 
+    let session = state
+        .session_service
+        .create_session(
+            user.id,
+            &user.username,
+            &user.roles,
+            &client_ip,
+            &user_agent,
+            ttl_seconds,
+        )
+        .await
+        .map_err(|e| {
+            let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(e.to_api_response(locale)))
+        })?;
+
     let token = state
         .jwt_manager
-        .generate_token_with_ttl(
+        .generate_token_with_session(
             user.id,
             &user.username,
             user.is_superuser,
             user.roles.clone(),
             user.permissions.clone(),
+            Some(session.id),
             ttl_seconds,
         )
         .map_err(|e| {
@@ -300,8 +347,8 @@ async fn login_handler(
             "auth.login",
             "auth",
             "success",
-            None,
-            None,
+            Some(&format!("session_id: {}", session.id)),
+            Some(&client_ip),
         )
         .await;
 
@@ -333,6 +380,7 @@ pub struct VerifyLogin2faRequest {
 async fn verify_login_2fa_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
+    headers: axum::http::HeaderMap,
     Json(req): Json<VerifyLogin2faRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
     let claims = state
@@ -384,16 +432,34 @@ async fn verify_login_2fa_handler(
         .unwrap_or_default()
         .unwrap_or_default();
 
+    let client_ip = crate::middleware::extract_client_ip(&headers);
+    let user_agent = extract_user_agent(&headers);
     let ttl_seconds = (policy.session_ttl.max(1) as i64) * 3600;
+
+    let session = state
+        .session_service
+        .create_session(
+            user.id,
+            &user.username,
+            &user.roles,
+            &client_ip,
+            &user_agent,
+            ttl_seconds,
+        )
+        .await
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_api_response(locale)))
+        })?;
 
     let token = state
         .jwt_manager
-        .generate_token_with_ttl(
+        .generate_token_with_session(
             user.id,
             &user.username,
             user.is_superuser,
             user.roles.clone(),
             user.permissions.clone(),
+            Some(session.id),
             ttl_seconds,
         )
         .map_err(|e| {
@@ -411,8 +477,8 @@ async fn verify_login_2fa_handler(
             "auth.login_2fa",
             "auth",
             "success",
-            None,
-            None,
+            Some(&format!("session_id: {}", session.id)),
+            Some(&client_ip),
         )
         .await;
 
