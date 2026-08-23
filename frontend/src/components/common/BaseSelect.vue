@@ -23,11 +23,13 @@ const props = withDefaults(
     size?: 'sm' | 'md' | 'lg'
     icon?: string
     searchable?: boolean
+    placement?: 'left' | 'right'
   }>(),
   {
     disabled: false,
     size: 'sm',
-    searchable: false
+    searchable: false,
+    placement: 'left'
   }
 )
 
@@ -123,7 +125,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="rootRef" class="flex flex-col gap-1 w-full relative" :class="isOpen ? 'z-30' : ''">
+  <div ref="rootRef" class="flex flex-col gap-1 relative" :class="isOpen ? 'z-30' : ''">
     <!-- Label -->
     <label
       v-if="label"
@@ -134,60 +136,72 @@ onUnmounted(() => {
       <slot name="labelRight" />
     </label>
 
-    <!-- Unified Custom Dropdown Trigger -->
+    <!-- Trigger (Slot or Default Input) -->
     <div class="relative w-full" :class="isOpen ? 'z-30' : ''">
-      <button
-        type="button"
-        :id="id"
+      <slot
+        name="trigger"
+        :is-open="isOpen"
+        :toggle="toggleDropdown"
+        :selected-option="selectedOption"
+        :selected-label="selectedLabel"
         :disabled="disabled"
-        @click="toggleDropdown"
-        class="relative flex items-center justify-between w-full rounded-lg transition-all duration-150 border bg-surface-container-highest text-left outline-none font-body-mono select-none text-on-surface"
-        :class="[
-          isOpen ? 'ring-1 ring-primary-fixed-dim border-primary-fixed-dim' : '',
-          error
-            ? 'border-error focus:border-error focus:ring-1 focus:ring-error'
-            : 'border-outline-variant hover:border-outline-variant focus:border-primary-fixed-dim focus:ring-1 focus:ring-primary-fixed-dim',
-          disabled ? 'opacity-50 cursor-not-allowed bg-surface-container-low' : 'cursor-pointer',
-          size === 'sm' ? 'h-8 py-1 text-xs' : size === 'lg' ? 'h-11 py-2 text-base' : 'h-9 py-1.5 text-xs',
-          currentIcon ? 'pl-8' : 'pl-3',
-          'pr-8'
-        ]"
       >
-        <!-- Leading Icon -->
-        <span
-          v-if="currentIcon"
-          class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/70 pointer-events-none select-none"
-          :class="size === 'sm' ? 'text-base' : 'text-lg'"
-        >
-          {{ currentIcon }}
-        </span>
-
-        <!-- Current Value / Placeholder / Custom Slot -->
-        <span
-          class="truncate mr-2"
-          :class="selectedOption ? 'text-on-surface' : 'text-on-surface-variant/70'"
-        >
-          <slot name="selected" :option="selectedOption">
-            {{ selectedLabel }}
-          </slot>
-        </span>
-
-        <!-- Dropdown Chevron Icon -->
-        <span
-          class="material-symbols-outlined absolute right-2 text-on-surface-variant/70 pointer-events-none select-none transition-transform duration-150"
+        <button
+          type="button"
+          :id="id"
+          :disabled="disabled"
+          @click="toggleDropdown"
+          class="relative flex items-center justify-between w-full rounded-lg transition-all duration-150 border bg-surface-container-highest text-left outline-none font-body-mono select-none text-on-surface"
           :class="[
-            size === 'sm' ? 'text-base' : 'text-lg',
-            isOpen ? 'rotate-180 text-primary-fixed-dim' : ''
+            isOpen ? 'ring-1 ring-primary-fixed-dim border-primary-fixed-dim' : '',
+            error
+              ? 'border-error focus:border-error focus:ring-1 focus:ring-error'
+              : 'border-outline-variant hover:border-outline-variant focus:border-primary-fixed-dim focus:ring-1 focus:ring-primary-fixed-dim',
+            disabled ? 'opacity-50 cursor-not-allowed bg-surface-container-low' : 'cursor-pointer',
+            size === 'sm' ? 'h-8 py-1 text-xs' : size === 'lg' ? 'h-11 py-2 text-base' : 'h-9 py-1.5 text-xs',
+            currentIcon ? 'pl-8' : 'pl-3',
+            'pr-8'
           ]"
         >
-          expand_more
-        </span>
-      </button>
+          <!-- Leading Icon -->
+          <span
+            v-if="currentIcon"
+            class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/70 pointer-events-none select-none"
+            :class="size === 'sm' ? 'text-base' : 'text-lg'"
+          >
+            {{ currentIcon }}
+          </span>
+
+          <!-- Current Value / Placeholder / Custom Slot -->
+          <span
+            class="truncate mr-2"
+            :class="selectedOption ? 'text-on-surface' : 'text-on-surface-variant/70'"
+          >
+            <slot name="selected" :option="selectedOption">
+              {{ selectedLabel }}
+            </slot>
+          </span>
+
+          <!-- Dropdown Chevron Icon -->
+          <span
+            class="material-symbols-outlined absolute right-2 text-on-surface-variant/70 pointer-events-none select-none transition-transform duration-150"
+            :class="[
+              size === 'sm' ? 'text-base' : 'text-lg',
+              isOpen ? 'rotate-180 text-primary-fixed-dim' : ''
+            ]"
+          >
+            expand_more
+          </span>
+        </button>
+      </slot>
 
       <!-- Custom Popover Menu -->
       <div
         v-if="isOpen"
-        class="absolute left-0 top-full mt-1 w-full min-w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-2xl z-[100] overflow-hidden flex flex-col backdrop-blur-md animate-fade-in"
+        class="absolute top-full mt-1 min-w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-2xl z-[100] overflow-hidden flex flex-col backdrop-blur-md animate-fade-in"
+        :class="[
+          placement === 'right' ? 'right-0 w-52' : 'left-0 w-full'
+        ]"
       >
         <!-- Search Input Box (when searchable is true) -->
         <div
