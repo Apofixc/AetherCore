@@ -18,10 +18,12 @@ import { useAuthStore } from '@/stores/auth'
 import { settingsApi } from '@/api/settings'
 import { systemApi } from '@/api/system'
 import { usersApi } from '@/api/users'
+import { useToast } from '@/composables/useToast'
 
 const { t, te } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
+const toast = useToast()
 
 // Policies state
 const initialWebUiAuth = ref(true)
@@ -286,7 +288,6 @@ const totalLogsCount = ref(0)
 const isRefreshingLogs = ref(false)
 const showClearConfirmModal = ref(false)
 const isClearingLogs = ref(false)
-const clearNotification = ref('')
 
 const auditCategories = computed(() => [
   { value: 'all', id: 'all', label: t('accessIdentity.filterAll'), icon: 'list_alt' },
@@ -351,13 +352,11 @@ async function handleClearLogs() {
   try {
     const res = await systemApi.clearAuditLogs()
     showClearConfirmModal.value = false
-    clearNotification.value = t('accessIdentity.logsClearedSuccess', { count: res.deleted_count })
+    toast.success(t('accessIdentity.logsClearedSuccess', { count: res.deleted_count }))
     await fetchAuditLogs()
-    setTimeout(() => {
-      clearNotification.value = ''
-    }, 4000)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to clear audit logs:', err)
+    toast.error(err?.message || 'Failed to clear audit logs')
   } finally {
     isClearingLogs.value = false
   }
@@ -418,13 +417,11 @@ async function executeImportLogs() {
   try {
     const res = await systemApi.importAuditLogs(importedLogsPreview.value)
     showImportModal.value = false
-    clearNotification.value = t('accessIdentity.importSuccess', { count: res.imported_count })
+    toast.success(t('accessIdentity.importSuccess', { count: res.imported_count }))
     await fetchAuditLogs()
-    setTimeout(() => {
-      clearNotification.value = ''
-    }, 4000)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to import audit logs:', err)
+    toast.error(err?.message || 'Failed to import audit logs')
   } finally {
     isImporting.value = false
   }
@@ -980,10 +977,6 @@ function getItemDescription(item: PermissionItem): string {
                   <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.securityAuditLog') }}</h2>
                   <span v-if="totalLogsCount > 0" class="px-2 py-0.5 rounded-full text-[10px] font-body-mono font-bold bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
                     {{ totalLogsCount }}
-                  </span>
-                  <span v-if="clearNotification" class="text-xs text-primary-fixed-dim font-bold flex items-center gap-1 animate-fade-in">
-                    <span class="material-symbols-outlined text-[16px]">check_circle</span>
-                    {{ clearNotification }}
                   </span>
                 </div>
                 <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>

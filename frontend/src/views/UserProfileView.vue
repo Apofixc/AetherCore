@@ -19,10 +19,12 @@ import { usersApi } from '@/api/users'
 import { settingsApi } from '@/api/settings'
 import { authApi, type TotpSetupResponse } from '@/api/auth'
 import { getUserInitials } from '@/utils/user'
+import { useToast } from '@/composables/useToast'
 
 const { t, locale, setLocale } = useI18n()
 const { theme, setTheme } = useTheme()
 const authStore = useAuthStore()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 
@@ -417,15 +419,6 @@ const disableCode = ref('')
 const disableError = ref<string | null>(null)
 const isDisabling = ref(false)
 
-const toastMessage = ref<string | null>(null)
-
-function showToast(msg: string) {
-  toastMessage.value = msg
-  setTimeout(() => {
-    toastMessage.value = null
-  }, 4000)
-}
-
 async function start2faSetup() {
   setupError.value = null
   isSettingUp.value = true
@@ -521,7 +514,7 @@ function downloadBackupCodesFile() {
 
 function finish2faSetup() {
   showSetup2faModal.value = false
-  showToast(t('profile.twoFactorEnabledSuccess'))
+  toast.success(t('profile.twoFactorEnabledSuccess'))
 }
 
 async function confirmDisable2fa() {
@@ -538,7 +531,7 @@ async function confirmDisable2fa() {
     showDisable2faModal.value = false
     disablePassword.value = ''
     disableCode.value = ''
-    showToast(t('profile.twoFactorDisabledSuccess'))
+    toast.success(t('profile.twoFactorDisabledSuccess'))
   } catch (err: any) {
     console.error('Failed to disable 2FA:', err)
     if (err?.status === 403 || err?.i18n_key === 'core.auth.force_2fa_active') {
@@ -564,7 +557,7 @@ async function handleRegenerateBackupCodes() {
       setupStep.value = 'backup'
       backupCodesAcknowledged.value = false
       showSetup2faModal.value = true
-      showToast(t('profile.backupCodesRegeneratedSuccess'))
+      toast.success(t('profile.backupCodesRegeneratedSuccess'))
     }
   } catch (err) {
     console.error('Failed to regenerate backup codes:', err)
@@ -902,10 +895,10 @@ function requestTerminateUserOthers() {
     action: async () => {
       try {
         const res = await authApi.terminateOtherSessions()
-        showToast(t('profile.terminateOthersSuccess', { count: res.terminated_count || 0 }))
+        toast.success(t('profile.terminateOthersSuccess', { count: res.terminated_count || 0 }))
         await loadUserSessions()
       } catch (err: any) {
-        showToast(err?.message || 'Error terminating sessions')
+        toast.error(err?.message || 'Error terminating sessions')
       }
     }
   }
@@ -951,7 +944,7 @@ function requestRevokeUserSession(s: UserSessionItem) {
         authStore.logout()
         router.push('/login')
       } else {
-        showToast(t('profile.sessionRevokedSuccess'))
+        toast.success(t('profile.sessionRevokedSuccess'))
         await loadUserSessions()
       }
     }
@@ -1643,15 +1636,6 @@ function handleSessionConfirm() {
         </div>
       </div>
     </main>
-
-    <!-- Toast Notification -->
-    <div
-      v-if="toastMessage"
-      class="fixed bottom-12 right-6 z-[70] p-3.5 bg-surface-container-high/95 backdrop-blur-md border border-primary-fixed-dim text-on-surface text-xs rounded-xl shadow-glow-primary-md flex items-center gap-3 animate-fade-in"
-    >
-      <span class="material-symbols-outlined text-primary-fixed-dim text-xl">check_circle</span>
-      <span class="font-medium font-mono">{{ toastMessage }}</span>
-    </div>
 
     <!-- 2FA Setup Modal (3 Steps) -->
     <BaseModal

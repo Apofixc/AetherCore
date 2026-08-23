@@ -24,10 +24,12 @@ import {
 import { settingsApi } from '@/api/settings'
 import { modulesApi } from '@/api/modules'
 import SchedulerManager from '@/components/system/SchedulerManager.vue'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
+const toast = useToast()
 
 // DB Stats & Backup state
 const dbStats = ref<DbStatsResponse | null>(null)
@@ -173,7 +175,6 @@ const logConsoleRef = ref<HTMLDivElement | null>(null)
 const isUserScrolledUp = ref(false)
 const isFullscreenLogs = ref(false)
 const showServiceStatusModal = ref(false)
-const notificationMessage = ref('')
 let refreshTimer: number | null = null
 let searchDebounce: number | null = null
 
@@ -223,11 +224,14 @@ const filteredLogs = computed(() => {
   })
 })
 
-function notify(msg: string) {
-  notificationMessage.value = msg
-  setTimeout(() => {
-    notificationMessage.value = ''
-  }, 3000)
+function notify(msg: string, type?: 'success' | 'error' | 'info') {
+  if (type === 'error' || msg.toLowerCase().includes('error')) {
+    toast.error(msg)
+  } else if (type === 'success' || msg.includes('OK') || msg.includes('успешно') || msg.includes('Success')) {
+    toast.success(msg)
+  } else {
+    toast.info(msg)
+  }
 }
 
 function handleScroll(e: Event) {
@@ -765,15 +769,6 @@ onUnmounted(() => {
     <!-- Main Content Area -->
     <main class="flex-1 main-content-scroll bg-background overflow-y-auto pb-xl relative">
       <div class="p-lg flex flex-col gap-lg w-full">
-        <!-- Toast Notification Banner -->
-        <div
-          v-if="notificationMessage"
-          class="fixed bottom-12 right-6 z-[70] bg-surface-container-high/95 backdrop-blur-md border border-primary-fixed-dim/50 text-primary-fixed-dim px-4 py-2.5 rounded-xl shadow-glow-primary-md flex items-center gap-2 text-xs font-bold font-mono animate-fade-in"
-        >
-          <span class="material-symbols-outlined text-base">check_circle</span>
-          <span>{{ notificationMessage }}</span>
-        </div>
-
         <!-- Top Page Header -->
         <PageHeader
           :title="t('system.title')"

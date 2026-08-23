@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
+import { ToastContainer } from '@/components/common'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -20,6 +21,9 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Global Toast Notifications Container -->
+  <ToastContainer />
+
   <!-- Public Layout (Login Screen) -->
   <div v-if="isPublicRoute" class="min-h-screen bg-background text-on-surface">
     <router-view />

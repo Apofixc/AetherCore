@@ -12,6 +12,7 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
 import {
   schedulerApi,
   type ScheduledTask,
@@ -23,11 +24,11 @@ import {
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const toast = useToast()
 
 const tasks = ref<ScheduledTask[]>([])
 const isLoading = ref(false)
 const executingTasks = ref<Record<string, boolean>>({})
-const notification = ref<{ message: string; type: 'success' | 'error' } | null>(null)
 
 // Select options
 const scheduleTypeOptions = computed(() => [
@@ -86,10 +87,11 @@ const showDeleteModal = ref(false)
 const taskToDelete = ref<ScheduledTask | null>(null)
 
 function showToast(message: string, type: 'success' | 'error' = 'success') {
-  notification.value = { message, type }
-  setTimeout(() => {
-    notification.value = null
-  }, 4000)
+  if (type === 'error') {
+    toast.error(message)
+  } else {
+    toast.success(message)
+  }
 }
 
 async function loadTasks() {
@@ -360,23 +362,6 @@ onUnmounted(() => {
         />
       </div>
     </template>
-
-    <!-- Notification Toast inside card -->
-    <div
-      v-if="notification"
-      class="mx-4 mt-3 p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-all"
-      :class="notification.type === 'success' ? 'bg-primary/10 border-primary-fixed-dim/40 text-primary-fixed-dim' : 'bg-error/10 border-error/40 text-error'"
-    >
-      <div class="flex items-center gap-2">
-        <span class="material-symbols-outlined text-sm">
-          {{ notification.type === 'success' ? 'check_circle' : 'error' }}
-        </span>
-        <span>{{ notification.message }}</span>
-      </div>
-      <button class="opacity-60 hover:opacity-100" @click="notification = null">
-        <span class="material-symbols-outlined text-xs">close</span>
-      </button>
-    </div>
 
     <!-- Tasks Table -->
     <div class="overflow-x-auto">
