@@ -519,9 +519,8 @@ onUnmounted(() => {
             />
 
             <!-- Action Buttons -->
-            <div v-if="authStore.canManageSystem || authStore.canManageAccess" class="flex flex-wrap gap-sm pt-1">
+            <div v-if="authStore.canManageSystem" class="flex flex-wrap gap-sm pt-1 mb-4 pb-4 border-b border-outline-variant/30">
               <AppButton
-                v-if="authStore.canManageSystem"
                 variant="primary"
                 size="sm"
                 icon="download"
@@ -530,7 +529,6 @@ onUnmounted(() => {
                 {{ t('system.downloadBackup') }}
               </AppButton>
               <AppButton
-                v-if="authStore.canManageSystem"
                 variant="outline"
                 size="sm"
                 icon="upload_file"
@@ -539,7 +537,6 @@ onUnmounted(() => {
                 {{ t('system.restoreFromFile') }}
               </AppButton>
               <AppButton
-                v-if="authStore.canManageSystem || authStore.canManageAccess"
                 variant="outline"
                 size="sm"
                 icon="history"
@@ -550,7 +547,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Database & Backup Health Status Grid -->
-            <div class="mt-4 pt-4 border-t border-outline-variant/30 grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div class="bg-surface-container-highest/40 p-2.5 rounded-xl border border-outline-variant/30 flex flex-col">
                 <span class="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">{{ t('system.dbSize') }}</span>
                 <span class="text-xs font-mono font-bold text-on-surface mt-0.5">24.8 MB (WAL)</span>
