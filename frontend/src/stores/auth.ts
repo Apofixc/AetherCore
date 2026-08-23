@@ -21,6 +21,34 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !isAuthRequired.value || !!token.value)
   const isSuperuser = computed(() => !isAuthRequired.value || (user.value?.is_superuser ?? false))
 
+  function hasPermission(permission: string): boolean {
+    if (!isAuthRequired.value || isSuperuser.value) return true
+    const perms = user.value?.permissions || []
+    if (perms.includes('*') || perms.includes(permission)) return true
+
+    // Иерархия: manage дает view
+    if (permission.endsWith('.view')) {
+      const domain = permission.slice(0, -5)
+      if (perms.includes(`${domain}.manage`) || perms.includes('system.manage') || user.value?.roles?.includes('admin')) {
+        return true
+      }
+    }
+
+    // Совместимость с составными кодами
+    if ((permission === 'access.roles.view' || permission === 'settings.view' || permission === 'audit.view') &&
+        (perms.includes('access.view') || perms.includes('access.manage') || perms.includes('system.view') || perms.includes('system.manage') || user.value?.roles?.includes('admin'))) {
+      return true
+    }
+
+    if ((permission === 'access.roles.manage' || permission === 'settings.manage' || permission === 'settings.security.manage' || permission === 'audit.export') &&
+        (perms.includes('access.manage') || perms.includes('system.manage') || user.value?.roles?.includes('admin'))) {
+      return true
+    }
+
+    if (user.value?.roles?.includes('admin')) return true
+    return false
+  }
+
   const currentUserRoleLevel = computed(() => {
     if (!isAuthRequired.value || isSuperuser.value || user.value?.roles?.includes('superuser')) return 4
     if (user.value?.roles?.includes('admin')) return 3
@@ -28,17 +56,19 @@ export const useAuthStore = defineStore('auth', () => {
     return 1
   })
 
-  const canManageUsers = computed(() => {
-    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('users.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
-  })
+  const canViewModules = computed(() => hasPermission('modules.view'))
+  const canManageModules = computed(() => hasPermission('modules.manage'))
 
-  const canManageSecurity = computed(() => {
-    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('settings.security.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
-  })
+  const canViewUsers = computed(() => hasPermission('users.view'))
+  const canManageUsers = computed(() => hasPermission('users.manage'))
 
-  const canManageRoles = computed(() => {
-    return !isAuthRequired.value || isSuperuser.value || (user.value?.permissions?.includes('access.roles.manage') ?? false) || (user.value?.roles?.includes('admin') ?? false)
-  })
+  const canViewAccess = computed(() => hasPermission('access.view'))
+  const canManageAccess = computed(() => hasPermission('access.manage'))
+  const canManageSecurity = computed(() => hasPermission('access.manage'))
+  const canManageRoles = computed(() => hasPermission('access.manage'))
+
+  const canViewSystem = computed(() => hasPermission('system.view'))
+  const canManageSystem = computed(() => hasPermission('system.manage'))
 
   const is2faRequiredForCurrentUser = computed(() => {
     if (!user.value) return false
@@ -290,9 +320,17 @@ export const useAuthStore = defineStore('auth', () => {
     isSuperuser,
     currentUserRoleLevel,
     is2faRequiredForCurrentUser,
+    canViewModules,
+    canManageModules,
+    canViewUsers,
     canManageUsers,
+    canViewAccess,
+    canManageAccess,
     canManageSecurity,
     canManageRoles,
+    canViewSystem,
+    canManageSystem,
+    hasPermission,
     checkAuthConfig,
     login,
     verify2faLogin,

@@ -33,9 +33,31 @@ pub fn check_permission(claims: &JwtClaims, required_permission: &str) -> Result
         return Ok(());
     }
 
-    if claims.permissions.iter().any(|p| p == required_permission) {
-        Ok(())
-    } else {
-        Err(AppError::forbidden(required_permission))
+    // 1. Прямое совпадение или wildcard
+    if claims.permissions.iter().any(|p| p == "*" || p == required_permission) {
+        return Ok(());
     }
+
+    // 2. Иерархическое наследование (manage дает доступ к view)
+    if let Some(domain) = required_permission.strip_suffix(".view") {
+        let manage_perm = format!("{}.manage", domain);
+        if claims.permissions.iter().any(|p| p == &manage_perm || p == "system.manage" || p == "system.admin") {
+            return Ok(());
+        }
+    }
+
+    // 3. Обратная совместимость для составных прав
+    if (required_permission == "access.roles.view" || required_permission == "settings.view" || required_permission == "audit.view")
+        && claims.permissions.iter().any(|p| p == "access.view" || p == "access.manage" || p == "system.view" || p == "system.manage")
+    {
+        return Ok(());
+    }
+
+    if (required_permission == "access.roles.manage" || required_permission == "settings.manage" || required_permission == "settings.security.manage" || required_permission == "audit.export")
+        && claims.permissions.iter().any(|p| p == "access.manage" || p == "system.manage")
+    {
+        return Ok(());
+    }
+
+    Err(AppError::forbidden(required_permission))
 }

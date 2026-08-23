@@ -920,4 +920,32 @@ impl UserService {
 
         Ok(raw_codes)
     }
+
+    /// Синхронизировать матрицу прав ролей с таблицей `role_permissions` в базе данных
+    pub async fn sync_role_permissions(&self, roles_to_clear: &[&str], role_perms: &[(&str, &str)]) -> Result<()> {
+        let pool = self.db.writer();
+        let mut tx = pool.begin().await.map_err(|e| AppError::database(e.to_string()))?;
+
+        for role in roles_to_clear {
+            sqlx::query("DELETE FROM role_permissions WHERE role_name = ?")
+                .bind(role)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::database(e.to_string()))?;
+        }
+
+        for (role, perm) in role_perms {
+            if roles_to_clear.contains(role) {
+                sqlx::query("INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES (?, ?)")
+                    .bind(role)
+                    .bind(perm)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| AppError::database(e.to_string()))?;
+            }
+        }
+
+        tx.commit().await.map_err(|e| AppError::database(e.to_string()))?;
+        Ok(())
+    }
 }

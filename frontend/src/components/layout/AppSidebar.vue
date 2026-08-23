@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   collapsed?: boolean
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const dataProcessorOpen = ref(false)
 const fileExplorerOpen = ref(false)
@@ -30,6 +32,14 @@ function isSettingsActive() {
          route.path === '/system' ||
          route.path === '/profile'
 }
+
+const firstSettingsRoute = computed(() => {
+  if (authStore.canViewModules) return '/settings/modules'
+  if (authStore.canViewAccess) return '/settings/access-identity'
+  if (authStore.canViewUsers) return '/settings/users'
+  if (authStore.canViewSystem) return '/settings/system'
+  return '/settings/profile'
+})
 
 function selectSubItem(item: string) {
   activeSubItem.value = item
@@ -86,7 +96,7 @@ function selectSubItem(item: string) {
       </div>
 
       <!-- DYNAMIC MODULES -->
-      <div class="flex flex-col gap-xs">
+      <div v-if="authStore.canViewModules" class="flex flex-col gap-xs">
         <h3 class="text-label-caps font-label-caps text-on-surface-variant uppercase tracking-wider px-md mb-sm mt-md">
           {{ t('nav.dynamicModules') }}
         </h3>
@@ -183,6 +193,7 @@ function selectSubItem(item: string) {
 
         <!-- Add Module Button -->
         <button
+          v-if="authStore.canManageModules"
           type="button"
           class="flex items-center gap-md px-md py-sm mt-lg text-primary-fixed-dim hover:text-primary-fixed-dim/90 transition-all duration-200 rounded-lg bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 shadow-glow-primary-sm hover:bg-primary-fixed-dim/20 hover:shadow-glow-primary-md cursor-pointer active:scale-95"
           @click="router.push('/settings/modules')"
@@ -194,9 +205,12 @@ function selectSubItem(item: string) {
     </div>
 
     <!-- Footer Tabs & CTA -->
-    <div class="mt-auto flex flex-col gap-sm border-t border-outline-variant pt-md">
+    <div
+      v-if="authStore.canViewModules || authStore.canViewAccess || authStore.canViewUsers || authStore.canViewSystem"
+      class="mt-auto flex flex-col gap-sm border-t border-outline-variant pt-md"
+    >
       <router-link
-        to="/settings/modules"
+        :to="firstSettingsRoute"
         class="flex items-center gap-md px-md py-sm rounded-lg transition-all duration-200 ease-in-out cursor-pointer"
         :class="isSettingsActive()
           ? 'bg-gradient-to-r from-primary-fixed-dim/20 to-transparent border-l-2 border-primary-fixed-dim text-primary-fixed-dim font-bold shadow-[inset_0_0_10px_rgba(115,212,232,0.15)] hover:from-primary-fixed-dim/30 hover:to-transparent'

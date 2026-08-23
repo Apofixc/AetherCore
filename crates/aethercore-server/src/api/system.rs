@@ -16,7 +16,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use aethercore_common::error::ErrorResponse;
+use aethercore_common::error::{AppError, ErrorResponse};
 use aethercore_common::i18n::{global, Locale};
 use aethercore_core::auth::check_permission;
 use aethercore_core::services::{AuditArchiveInfo, AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
@@ -147,9 +147,17 @@ async fn audit_count_handler(
 async fn audit_logs_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    _auth: AuthUser,
+    AuthUser(claims): AuthUser,
     Query(query): Query<AuditQuery>,
 ) -> Result<(HeaderMap, Json<Vec<AuditLogRecord>>), (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser
+        && check_permission(&claims, "access.view").is_err()
+        && check_permission(&claims, "system.view").is_err()
+    {
+        let err = AppError::forbidden("access.view or system.view required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    }
+
     let limit = query.limit.unwrap_or(50);
     let total = state
         .audit_service
@@ -193,17 +201,19 @@ pub struct ClearAuditResponse {
 
 /// DELETE /api/v1/system/audit
 ///
-/// Очистить журнал аудита безопасности (доступно только суперпользователю или администратору).
+/// Очистить журнал аудита безопасности (доступно суперпользователю или с правами access.manage / system.manage).
 async fn clear_audit_logs_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
     headers: HeaderMap,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<ClearAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
+    if !claims.is_superuser
+        && check_permission(&claims, "access.manage").is_err()
+        && check_permission(&claims, "system.manage").is_err()
+    {
+        let err = AppError::forbidden("access.manage or system.manage required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -274,10 +284,12 @@ async fn rotate_audit_logs_handler(
     AuthUser(claims): AuthUser,
     Json(payload): Json<RotateAuditRequest>,
 ) -> Result<Json<RotateAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
+    if !claims.is_superuser
+        && check_permission(&claims, "access.manage").is_err()
+        && check_permission(&claims, "system.manage").is_err()
+    {
+        let err = AppError::forbidden("access.manage or system.manage required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -320,19 +332,19 @@ async fn rotate_audit_logs_handler(
     }))
 }
 
-/// Запрос на импорт записей аудита
+/// Запрос на импорт записей аудита из архива
 #[derive(Debug, Deserialize)]
 pub struct ImportAuditRequest {
-    /// Массив восстанавливаемых записей
+    /// Список записей аудита для вставки
     pub records: Vec<AuditLogRecord>,
 }
 
-/// Ответ на импорт записей аудита
+/// Ответ на запрос импорта записей аудита
 #[derive(Debug, Serialize)]
 pub struct ImportAuditResponse {
     /// Флаг успеха
     pub success: bool,
-    /// Количество импортированных записей
+    /// Количество успешно импортированных записей
     pub imported_count: usize,
 }
 
@@ -346,10 +358,12 @@ async fn import_audit_logs_handler(
     AuthUser(claims): AuthUser,
     Json(payload): Json<ImportAuditRequest>,
 ) -> Result<Json<ImportAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
+    if !claims.is_superuser
+        && check_permission(&claims, "access.manage").is_err()
+        && check_permission(&claims, "system.manage").is_err()
+    {
+        let err = AppError::forbidden("access.manage or system.manage required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -394,10 +408,12 @@ async fn list_audit_archives_handler(
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<Vec<AuditArchiveInfo>>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
+    if !claims.is_superuser
+        && check_permission(&claims, "access.view").is_err()
+        && check_permission(&claims, "system.view").is_err()
+    {
+        let err = AppError::forbidden("access.view or system.view required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
     }
 
     let archive_dir = std::path::PathBuf::from("data/archives");
@@ -423,10 +439,12 @@ async fn download_audit_archive_handler(
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
-        })?;
+    if !claims.is_superuser
+        && check_permission(&claims, "access.view").is_err()
+        && check_permission(&claims, "system.view").is_err()
+    {
+        let err = AppError::forbidden("access.view or system.view required");
+        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
     }
 
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {

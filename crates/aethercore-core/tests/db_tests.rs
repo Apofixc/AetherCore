@@ -19,7 +19,7 @@ async fn test_database_init_in_memory() {
         .fetch_one(db.reader())
         .await
         .unwrap();
-    assert_eq!(row.0, 7);
+    assert_eq!(row.0, 15);
 }
 
 #[tokio::test]

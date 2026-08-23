@@ -228,6 +228,28 @@ const filteredCategories = computed(() => {
     .filter((cat: PermissionCategory) => cat.items.length > 0)
 })
 
+function onPermissionChange(cat: PermissionCategory, changedItem: PermissionItem, role: 'admin' | 'operator' | 'viewer') {
+  const isView = changedItem.code.endsWith('.view')
+  if (isView) {
+    // Если сняли view -> автоматически снимаем и все зависимые manage права в этой категории
+    if (!changedItem[role]) {
+      cat.items.forEach((i: PermissionItem) => {
+        if (!i.code.endsWith('.view')) {
+          i[role] = false
+        }
+      })
+    }
+  } else {
+    // Если включили manage/export -> автоматически включаем view в этой категории
+    if (changedItem[role]) {
+      const viewItem = cat.items.find((i: PermissionItem) => i.code.endsWith('.view'))
+      if (viewItem) {
+        viewItem[role] = true
+      }
+    }
+  }
+}
+
 function toggleCategoryRole(catId: string, role: 'admin' | 'operator' | 'viewer') {
   const cat = permissionCategories.value.find((c: PermissionCategory) => c.id === catId)
   if (!cat) return
@@ -902,21 +924,21 @@ function clearFilters() {
                       <!-- Administrator -->
                       <td class="py-3 px-lg text-center">
                         <label class="relative inline-flex items-center justify-center" :class="authStore.isSuperuser ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
-                          <input class="sr-only peer" type="checkbox" v-model="item.admin" :disabled="!authStore.isSuperuser">
+                          <input class="sr-only peer" type="checkbox" v-model="item.admin" :disabled="!authStore.isSuperuser" @change="onPermissionChange(cat, item, 'admin')">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>
                       <!-- Operator -->
                       <td class="py-3 px-lg text-center">
                         <label class="relative inline-flex items-center justify-center" :class="authStore.currentUserRoleLevel >= 3 ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
-                          <input class="sr-only peer" type="checkbox" v-model="item.operator" :disabled="authStore.currentUserRoleLevel < 3">
+                          <input class="sr-only peer" type="checkbox" v-model="item.operator" :disabled="authStore.currentUserRoleLevel < 3" @change="onPermissionChange(cat, item, 'operator')">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>
                       <!-- Viewer -->
                       <td class="py-3 px-lg text-center">
                         <label class="relative inline-flex items-center justify-center" :class="authStore.currentUserRoleLevel >= 3 ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
-                          <input class="sr-only peer" type="checkbox" v-model="item.viewer" :disabled="authStore.currentUserRoleLevel < 3">
+                          <input class="sr-only peer" type="checkbox" v-model="item.viewer" :disabled="authStore.currentUserRoleLevel < 3" @change="onPermissionChange(cat, item, 'viewer')">
                           <div class="w-10 h-5 bg-surface-container-highest rounded-full border border-outline-variant peer-checked:bg-primary-fixed-dim peer-checked:border-primary-fixed-dim transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-on-primary peer-checked:after:translate-x-5 after:rounded-full after:h-3.5 after:w-3.5 after:transition-transform"></div>
                         </label>
                       </td>

@@ -791,11 +791,10 @@ const editRoleOptions = computed(() => {
             </div>
 
             <AppButton
+              v-if="authStore.canManageUsers"
               variant="primary"
               size="sm"
               icon="person_add"
-              :disabled="!authStore.canManageUsers"
-              :title="!authStore.canManageUsers ? t('users.noPermission') : ''"
               @click="openAddModal"
             >
               {{ t('users.addNewUser') }}
@@ -873,7 +872,7 @@ const editRoleOptions = computed(() => {
             <table class="w-full text-left border-collapse">
               <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant/60">
                 <tr>
-                  <th class="py-3 px-md w-12 text-center">
+                  <th v-if="authStore.canManageUsers" class="py-3 px-md w-12 text-center">
                     <input
                       type="checkbox"
                       :checked="isAllSelected"
@@ -928,7 +927,7 @@ const editRoleOptions = computed(() => {
                   <th class="py-3 px-md">
                     <span>{{ t('users.mfaCol') }}</span>
                   </th>
-                  <th class="py-3 px-md text-right">
+                  <th v-if="authStore.canManageUsers" class="py-3 px-md text-right">
                     {{ t('users.actionsCol') }}
                   </th>
                 </tr>
@@ -941,7 +940,7 @@ const editRoleOptions = computed(() => {
                   :class="{ 'bg-surface-variant/30': selectedUserIds.includes(op.id) }"
                 >
                   <!-- Checkbox -->
-                  <td class="py-3 px-md text-center">
+                  <td v-if="authStore.canManageUsers" class="py-3 px-md text-center">
                     <input
                       type="checkbox"
                       :checked="selectedUserIds.includes(op.id)"
@@ -1057,7 +1056,7 @@ const editRoleOptions = computed(() => {
                   </td>
 
                   <!-- Action Buttons -->
-                  <td class="py-3 px-md text-right">
+                  <td v-if="authStore.canManageUsers" class="py-3 px-md text-right">
                     <div class="flex items-center justify-end gap-1.5 text-on-surface-variant">
                       <!-- Edit User Button -->
                       <button
@@ -1105,7 +1104,7 @@ const editRoleOptions = computed(() => {
                 </tr>
 
                 <tr v-if="loading && filteredOperators.length === 0">
-                  <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="6">
+                  <td class="py-xl px-md text-center text-sm text-on-surface-variant" :colspan="authStore.canManageUsers ? 7 : 5">
                     <div class="flex flex-col items-center justify-center gap-2 py-6">
                       <span class="material-symbols-outlined text-3xl text-primary-fixed-dim animate-spin">progress_activity</span>
                       <p>{{ t('common.loading') }}</p>
@@ -1114,7 +1113,7 @@ const editRoleOptions = computed(() => {
                 </tr>
 
                 <tr v-else-if="filteredOperators.length === 0">
-                  <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="6">
+                  <td class="py-xl px-md text-center text-sm text-on-surface-variant" :colspan="authStore.canManageUsers ? 7 : 5">
                     <div class="flex flex-col items-center justify-center gap-2 py-6">
                       <span class="material-symbols-outlined text-3xl text-outline-variant">person_search</span>
                       <p>{{ t('users.noUsersFound') }}</p>

@@ -350,7 +350,7 @@ async fn get_permissions_matrix_handler(
     AuthUser(claims): AuthUser,
 ) -> ApiResult<serde_json::Value> {
     if !claims.is_superuser {
-        check_permission(&claims, "access.roles.view").map_err(|e| {
+        check_permission(&claims, "access.view").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
     }
@@ -377,7 +377,7 @@ async fn update_permissions_matrix_handler(
     Json(dto): Json<serde_json::Value>,
 ) -> ApiResult<serde_json::Value> {
     if !claims.is_superuser {
-        check_permission(&claims, "access.roles.manage").map_err(|e| {
+        check_permission(&claims, "access.manage").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
 
@@ -394,6 +394,50 @@ async fn update_permissions_matrix_handler(
         }
     }
 
+    // 1. Транзакционная синхронизация в реляционную таблицу role_permissions
+    let roles_to_clear = if claims.is_superuser {
+        vec!["admin", "operator", "viewer"]
+    } else {
+        vec!["operator", "viewer"]
+    };
+
+    let mut role_perms: Vec<(&str, &str)> = Vec::new();
+    if let Some(categories) = dto.as_array() {
+        for cat in categories {
+            if let Some(items) = cat.get("items").and_then(|i| i.as_array()) {
+                for item in items {
+                    if let Some(code) = item.get("code").and_then(|c| c.as_str()) {
+                        let is_admin = item.get("admin").and_then(|b| b.as_bool()).unwrap_or(false);
+                        let is_operator = item.get("operator").and_then(|b| b.as_bool()).unwrap_or(false);
+                        let is_viewer = item.get("viewer").and_then(|b| b.as_bool()).unwrap_or(false);
+
+                        if is_admin {
+                            role_perms.push(("admin", code));
+                        }
+                        if is_operator {
+                            role_perms.push(("operator", code));
+                        }
+                        if is_viewer {
+                            role_perms.push(("viewer", code));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    state
+        .user_service
+        .sync_role_permissions(&roles_to_clear, &role_perms)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    // 2. Сохранение визуального состояния в KvStore
     let kv = KvStore::system(state.db.clone());
     kv.set("permissions_matrix", &dto).await.map_err(|e| {
         (
@@ -421,12 +465,12 @@ async fn update_permissions_matrix_handler(
 fn default_permissions_matrix() -> serde_json::Value {
     serde_json::json!([
         {
-            "id": "system",
-            "name": "System",
-            "icon": "terminal",
+            "id": "modules",
+            "name": "Modules",
+            "icon": "view_in_ar",
             "items": [
-                { "id": "system_view", "name": "View System", "code": "system.view", "description": "View system status, health, and logs", "admin": true, "operator": true, "viewer": true },
-                { "id": "system_manage", "name": "Manage System", "code": "system.manage", "description": "Modify system parameters, maintenance and backups", "admin": true, "operator": false, "viewer": false }
+                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "View installed plugins, telemetry and module runtime state", "admin": true, "operator": true, "viewer": true },
+                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "Install, update, configure and enable/disable dynamic WASM modules", "admin": true, "operator": false, "viewer": false }
             ]
         },
         {
@@ -434,52 +478,26 @@ fn default_permissions_matrix() -> serde_json::Value {
             "name": "Users",
             "icon": "group",
             "items": [
-                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "View users directory and account details", "admin": true, "operator": true, "viewer": true },
-                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "Create, edit, block, and delete user accounts", "admin": true, "operator": false, "viewer": false }
+                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "View users directory and account details", "admin": true, "operator": true, "viewer": false },
+                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "Create, edit, block, unlock, and delete user accounts", "admin": true, "operator": false, "viewer": false }
             ]
         },
         {
-            "id": "modules",
-            "name": "Modules",
-            "icon": "view_in_ar",
-            "items": [
-                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "View installed plugins and module runtime state", "admin": true, "operator": true, "viewer": true },
-                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "Install, update, enable/disable dynamic WASM modules", "admin": true, "operator": false, "viewer": false }
-            ]
-        },
-        {
-            "id": "events",
-            "name": "Events & Telemetry",
-            "icon": "sensors",
-            "items": [
-                { "id": "events_view", "name": "View Events", "code": "events.view", "description": "View real-time and historical event journal", "admin": true, "operator": true, "viewer": true }
-            ]
-        },
-        {
-            "id": "audit_logs",
-            "name": "Audit Logs",
-            "icon": "history_edu",
-            "items": [
-                { "id": "audit_view", "name": "View Audit Logs", "code": "audit.view", "description": "View security audit log history", "admin": true, "operator": true, "viewer": true },
-                { "id": "audit_export", "name": "Export Audit Logs", "code": "audit.export", "description": "Export security audit log history", "admin": true, "operator": false, "viewer": false }
-            ]
-        },
-        {
-            "id": "access_control",
-            "name": "Access Control",
+            "id": "access",
+            "name": "Access & Security",
             "icon": "vpn_key",
             "items": [
-                { "id": "access_roles_view", "name": "View Roles & Permissions", "code": "access.roles.view", "description": "View access roles and permissions matrix", "admin": true, "operator": true, "viewer": true },
-                { "id": "access_roles_manage", "name": "Manage Roles & Permissions", "code": "access.roles.manage", "description": "Create, edit, delete access roles and assign permissions", "admin": true, "operator": false, "viewer": false }
+                { "id": "access_view", "name": "View Access & Audit", "code": "access.view", "description": "View security policies, MFA config, IP whitelist, roles matrix and audit logs", "admin": true, "operator": true, "viewer": false },
+                { "id": "access_manage", "name": "Manage Access & Audit", "code": "access.manage", "description": "Configure security policies, 2FA, IP restrictions, roles matrix and rotate audit logs", "admin": true, "operator": false, "viewer": false }
             ]
         },
         {
-            "id": "settings",
-            "name": "Settings",
-            "icon": "settings",
+            "id": "system",
+            "name": "System & Settings",
+            "icon": "terminal",
             "items": [
-                { "id": "settings_view", "name": "View System Settings", "code": "settings.view", "description": "View global application settings and configuration", "admin": true, "operator": true, "viewer": true },
-                { "id": "settings_manage", "name": "Manage System Settings", "code": "settings.manage", "description": "Modify global application settings and configuration", "admin": true, "operator": false, "viewer": false }
+                { "id": "system_view", "name": "View System", "code": "system.view", "description": "View system status, health, logs, storage stats and settings", "admin": true, "operator": true, "viewer": true },
+                { "id": "system_manage", "name": "Manage System", "code": "system.manage", "description": "Modify system parameters, create backups, restore, rotate logs and maintenance", "admin": true, "operator": false, "viewer": false }
             ]
         }
     ])

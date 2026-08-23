@@ -312,15 +312,24 @@ impl Db {
     async fn seed_default_rbac(&self) -> Result<()> {
         let pool = &self.writer_pool;
 
-        // Встроенные права
+        // Встроенные права (4 основных домена системы)
         let default_permissions = [
-            ("system.view", "Просмотр системы", "System", "Просмотр системного статуса и настроек"),
-            ("system.manage", "Управление системой", "System", "Изменение системных параметров и перезапуск"),
+            ("modules.view", "Просмотр модулей", "Modules", "Просмотр установленных плагинов и телеметрии"),
+            ("modules.manage", "Управление модулями", "Modules", "Установка, включение, отключение и настройка плагинов"),
             ("users.view", "Просмотр пользователей", "Users", "Просмотр списка учетных записей"),
             ("users.manage", "Управление пользователями", "Users", "Создание, редактирование и блокировка пользователей"),
-            ("modules.view", "Просмотр модулей", "Modules", "Просмотр установленных плагинов"),
-            ("modules.manage", "Управление модулями", "Modules", "Установка, включение, отключение и настройка плагинов"),
-            ("events.view", "Просмотр событий", "Events", "Чтение системного журнала событий"),
+            ("access.view", "Просмотр безопасности и доступа", "Access", "Просмотр политик 2FA, IP, матрицы прав и журнала аудита"),
+            ("access.manage", "Управление безопасностью и доступом", "Access", "Настройка политик 2FA, IP, матрицы прав и ротация аудита"),
+            ("system.view", "Просмотр системы", "System", "Просмотр системного статуса, логов, метрик и базы данных"),
+            ("system.manage", "Управление системой", "System", "Резервное копирование, обслуживание, ротация логов и перезапуск"),
+            // Дополнительные алиасы для обратной совместимости
+            ("events.view", "Просмотр событий", "System", "Чтение системного журнала событий"),
+            ("audit.view", "Просмотр аудита", "Access", "Чтение журнала безопасности"),
+            ("audit.export", "Экспорт аудита", "Access", "Выгрузка журнала безопасности"),
+            ("access.roles.view", "Просмотр ролей", "Access", "Просмотр матрицы прав"),
+            ("access.roles.manage", "Управление ролями", "Access", "Изменение матрицы прав"),
+            ("settings.view", "Просмотр настроек", "System", "Просмотр параметров"),
+            ("settings.manage", "Управление настройками", "System", "Изменение параметров"),
         ];
 
         for (id, name, cat, desc) in default_permissions {
@@ -358,8 +367,12 @@ impl Db {
 
         // Назначение прав ролям
         let admin_perms = [
-            "system.view", "system.manage", "users.view", "users.manage",
-            "modules.view", "modules.manage", "events.view",
+            "modules.view", "modules.manage",
+            "users.view", "users.manage",
+            "access.view", "access.manage",
+            "system.view", "system.manage",
+            "events.view", "audit.view", "audit.export",
+            "access.roles.view", "access.roles.manage", "settings.view", "settings.manage",
         ];
         for perm in admin_perms {
             sqlx::query(
@@ -371,7 +384,21 @@ impl Db {
             .map_err(|e| AppError::database(e.to_string()))?;
         }
 
-        let viewer_perms = ["system.view", "modules.view", "events.view"];
+        let operator_perms = [
+            "modules.view", "users.view", "access.view", "system.view",
+            "events.view", "audit.view", "access.roles.view", "settings.view",
+        ];
+        for perm in operator_perms {
+            sqlx::query(
+                "INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES ('operator', ?)",
+            )
+            .bind(perm)
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        }
+
+        let viewer_perms = ["modules.view", "system.view", "events.view"];
         for perm in viewer_perms {
             sqlx::query(
                 "INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES ('viewer', ?)",

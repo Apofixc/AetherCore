@@ -130,6 +130,24 @@ router.beforeEach(async (to: RouteLocationNormalized, _from: RouteLocationNormal
       }
       return
     }
+
+    // Проверка прав доступа к закрытым разделам
+    if ((to.path === '/settings/modules' || to.path === '/modules') && !authStore.canViewModules) {
+      next('/dashboard')
+      return
+    }
+    if ((to.path === '/settings/users' || to.path === '/users') && !authStore.canViewUsers) {
+      next('/dashboard')
+      return
+    }
+    if ((to.path === '/settings/access-identity' || to.path === '/settings/access') && !authStore.canViewAccess) {
+      next('/dashboard')
+      return
+    }
+    if ((to.path === '/settings/system' || to.path === '/system') && !authStore.canViewSystem) {
+      next('/dashboard')
+      return
+    }
   }
 
   next()

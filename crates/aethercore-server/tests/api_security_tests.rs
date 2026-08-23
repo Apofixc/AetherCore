@@ -302,4 +302,68 @@ async fn test_role_hierarchy_escalation_and_permissions_matrix() {
         StatusCode::FORBIDDEN,
         "Оператор не должен иметь возможности сохранять матрицу прав ролей"
     );
+
+    // 3. Суперпользователь обновляет матрицу прав, выдавая оператору право modules.manage
+    let super_token = state
+        .jwt_manager
+        .generate_token(
+            uuid::Uuid::new_v4(),
+            "root_admin",
+            true,
+            vec!["superuser".into()],
+            vec!["*".into()],
+        )
+        .unwrap();
+
+    let new_matrix = serde_json::json!([
+        {
+            "id": "modules",
+            "name": "Modules",
+            "icon": "view_in_ar",
+            "items": [
+                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "", "admin": true, "operator": true, "viewer": true },
+                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "", "admin": true, "operator": true, "viewer": false }
+            ]
+        },
+        {
+            "id": "users",
+            "name": "Users",
+            "icon": "group",
+            "items": [
+                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "", "admin": true, "operator": true, "viewer": false },
+                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "", "admin": true, "operator": false, "viewer": false }
+            ]
+        }
+    ]);
+
+    let update_matrix_by_super = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/settings/permissions")
+        .header(header::AUTHORIZATION, format!("Bearer {}", super_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&new_matrix).unwrap()))
+        .unwrap();
+
+    let resp_super = app.clone().oneshot(update_matrix_by_super).await.unwrap();
+    assert_eq!(resp_super.status(), StatusCode::OK);
+
+    // 4. Создаем оператора через UserService и проверяем, что его разрешения загрузились из обновленной role_permissions таблицы
+    let created_op = state
+        .user_service
+        .create_user(CreateUserDto {
+            username: "test_operator_dyn".into(),
+            password: "Password123!".into(),
+            full_name: Some("Operator Dyn".into()),
+            email: Some("op_dyn@example.com".into()),
+            department: Some("Operations".into()),
+            roles: Some(vec!["operator".into()]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        created_op.permissions.contains(&"modules.manage".to_string()),
+        "Оператор должен динамически получить право modules.manage из обновленной матрицы ролей"
+    );
 }

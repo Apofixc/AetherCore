@@ -10,10 +10,12 @@ import {
   BaseSelect
 } from '@/components/common'
 import { useI18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 import { useModulesStore } from '@/stores/modules'
 import type { ModuleDto } from '@/api/modules'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 const modulesStore = useModulesStore()
 const viewMode = ref<'table' | 'graph'>('table')
 const isScanning = ref(false)
@@ -177,6 +179,7 @@ const filterOptions = computed(() => [
                 {{ t('modules.scanNewModules') }}
               </AppButton>
               <AppButton
+                v-if="authStore.canManageModules"
                 variant="primary"
                 size="sm"
                 icon="add"
@@ -349,7 +352,7 @@ const filterOptions = computed(() => [
                       <th class="py-3 px-md w-1/6">
                         {{ t('modules.status') }}
                       </th>
-                      <th class="py-3 px-md text-right">
+                      <th v-if="authStore.canManageModules" class="py-3 px-md text-right">
                         {{ t('modules.actions') }}
                       </th>
                     </tr>
@@ -389,7 +392,7 @@ const filterOptions = computed(() => [
                           {{ mod.is_active ? t('modules.activeStatus') : t('modules.disabledStatus') }}
                         </StatusBadge>
                       </td>
-                      <td class="py-md px-md text-right">
+                      <td v-if="authStore.canManageModules" class="py-md px-md text-right">
                         <AppButton
                           :variant="mod.is_active ? 'danger' : 'tertiary'"
                           size="xs"
@@ -403,7 +406,7 @@ const filterOptions = computed(() => [
                     </tr>
 
                     <tr v-if="modulesStore.filteredModules.length === 0">
-                      <td class="py-xl px-md text-center text-sm text-on-surface-variant" colspan="5">
+                      <td class="py-xl px-md text-center text-sm text-on-surface-variant" :colspan="authStore.canManageModules ? 5 : 4">
                         {{ t('modules.noModulesFound') }}
                       </td>
                     </tr>
