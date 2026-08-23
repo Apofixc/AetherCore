@@ -125,16 +125,30 @@ async function fetchAuditLogs() {
   try {
     const rawLogs = await systemApi.getAuditLogs({ limit: 50 })
     if (Array.isArray(rawLogs)) {
-      auditLogs.value = rawLogs.map((l: any) => ({
-        id: `#LOG-${l.id ? l.id.slice(0, 6) : Math.floor(Math.random() * 10000)}`,
-        timestamp: l.created_at ? new Date(l.created_at).toLocaleString() : new Date().toLocaleString(),
-        user: l.username || 'system',
-        action: l.action || 'Action',
-        actionType: (l.action && l.action.includes('login') ? 'login' : l.action && l.action.includes('role') ? 'role' : l.action && l.action.includes('policy') ? 'policy' : l.action && l.action.includes('backup') ? 'backup' : 'policy') as any,
-        resource: l.resource || 'system',
-        details: l.status === 'success' ? `${l.action} on ${l.resource}` : `Status: ${l.status}`,
-        ip: l.ip_address || '127.0.0.1'
-      }))
+      auditLogs.value = rawLogs.map((l: any) => {
+        const isFailed = l.status === 'failed' || l.status === 'forbidden'
+        let actionType: 'role' | 'login' | 'policy' | 'failed' | 'backup' = 'policy'
+        if (isFailed) {
+          actionType = 'failed'
+        } else if (l.action && (l.action.includes('login') || l.action.includes('2fa'))) {
+          actionType = 'login'
+        } else if (l.action && l.action.includes('backup')) {
+          actionType = 'backup'
+        } else if (l.action && (l.action.includes('role') || l.action.includes('user'))) {
+          actionType = 'role'
+        }
+
+        return {
+          id: `#LOG-${l.id != null ? String(l.id).padStart(4, '0') : Math.floor(Math.random() * 10000)}`,
+          timestamp: l.created_at ? new Date(l.created_at).toLocaleString() : new Date().toLocaleString(),
+          user: l.username || 'system',
+          action: l.action || 'Action',
+          actionType,
+          resource: l.resource || 'system',
+          details: l.details || (l.status === 'success' ? `${l.action} on ${l.resource}` : `Status: ${l.status}`),
+          ip: l.ip_address || '127.0.0.1'
+        }
+      })
     }
   } catch (err) {
     console.debug('Failed to fetch audit logs:', err)
@@ -861,6 +875,11 @@ const filteredAuditLogs = computed(() => {
                     :class="log.actionType === 'failed' ? 'text-error' : 'text-on-surface-variant'"
                   >
                     {{ log.ip }}
+                  </td>
+                </tr>
+                <tr v-if="filteredAuditLogs.length === 0">
+                  <td colspan="7" class="py-8 text-center text-on-surface-variant font-medium">
+                    {{ auditSearch ? t('users.noUsersFound') : t('accessIdentity.securityAuditLogDesc') }}
                   </td>
                 </tr>
               </tbody>
