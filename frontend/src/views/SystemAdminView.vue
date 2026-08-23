@@ -632,6 +632,25 @@ onUnmounted(() => {
             :subtitle="t('system.backupDesc')"
             icon="cloud_sync"
           >
+            <template #headerActions v-if="authStore.canManageSystem">
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="history"
+                @click="requestRotateAudit"
+              >
+                {{ t('system.rotateAudit') }}
+              </AppButton>
+              <AppButton
+                variant="primary"
+                size="xs"
+                icon="storage"
+                @click="openBackupsModal"
+              >
+                {{ t('system.manageBackups') }}
+              </AppButton>
+            </template>
+
             <input
               ref="fileInputRef"
               type="file"
@@ -639,44 +658,6 @@ onUnmounted(() => {
               class="hidden"
               @change="handleFileSelected"
             />
-
-            <!-- Action Buttons -->
-            <div v-if="authStore.canManageSystem" class="flex flex-wrap gap-sm pt-1 mb-4 pb-4 border-b border-outline-variant/30">
-              <AppButton
-                variant="primary"
-                size="sm"
-                icon="cloud_download"
-                :loading="isCreatingBackup"
-                @click="handleCreateBackup('manual')"
-              >
-                {{ t('system.createBackupNow') }}
-              </AppButton>
-              <AppButton
-                variant="outline"
-                size="sm"
-                icon="storage"
-                @click="openBackupsModal"
-              >
-                {{ t('system.manageBackups') }}
-              </AppButton>
-              <AppButton
-                variant="outline"
-                size="sm"
-                icon="upload_file"
-                :loading="isRestoringBackup"
-                @click="triggerRestoreFile"
-              >
-                {{ t('system.restoreFromFile') }}
-              </AppButton>
-              <AppButton
-                variant="outline"
-                size="sm"
-                icon="history"
-                @click="requestRotateAudit"
-              >
-                {{ t('system.rotateAudit') }}
-              </AppButton>
-            </div>
 
             <!-- Database & Backup Health Status Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1154,22 +1135,33 @@ onUnmounted(() => {
     >
       <div class="space-y-4">
         <!-- Top Toolbar inside modal -->
-        <div class="flex items-center justify-between p-3 bg-surface-container-highest/40 rounded-xl border border-outline-variant/40">
+        <div class="flex items-center justify-between p-3 bg-surface-container-highest/40 rounded-xl border border-outline-variant/40 gap-2 flex-wrap">
           <div>
             <h4 class="text-xs font-bold text-on-surface">{{ t('system.backupsListTitle') }}</h4>
             <p class="text-[11px] text-on-surface-variant mt-0.5">
               {{ t('system.restoreWarning') }}
             </p>
           </div>
-          <AppButton
-            variant="primary"
-            size="xs"
-            icon="add"
-            :loading="isCreatingBackup"
-            @click="handleCreateBackup('manual')"
-          >
-            {{ t('system.createBackupNow') }}
-          </AppButton>
+          <div class="flex items-center gap-2">
+            <AppButton
+              variant="outline"
+              size="xs"
+              icon="upload_file"
+              :loading="isRestoringBackup"
+              @click="triggerRestoreFile"
+            >
+              {{ t('system.restoreFromFile') }}
+            </AppButton>
+            <AppButton
+              variant="primary"
+              size="xs"
+              icon="add"
+              :loading="isCreatingBackup"
+              @click="handleCreateBackup('manual')"
+            >
+              {{ t('system.createBackupNow') }}
+            </AppButton>
+          </div>
         </div>
 
         <!-- Backups List Table / Cards -->
