@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
@@ -258,6 +258,8 @@ interface AuditLogEntry {
 const auditSearch = ref('')
 const auditLogs = ref<AuditLogEntry[]>([])
 const selectedAuditCategory = ref<'all' | 'auth' | 'role' | 'policy' | 'module' | 'failed'>('all')
+const showFilterDropdown = ref(false)
+const filterDropdownRef = ref<HTMLElement | null>(null)
 const pageSize = ref(25)
 const currentPage = ref(1)
 const totalLogsCount = ref(0)
@@ -474,11 +476,39 @@ function nextPage() {
   }
 }
 
+function selectCategory(catId: string) {
+  selectedAuditCategory.value = catId as any
+  currentPage.value = 1
+  showFilterDropdown.value = false
+}
+
 function clearFilters() {
   auditSearch.value = ''
   selectedAuditCategory.value = 'all'
   currentPage.value = 1
 }
+
+function handleClickOutsideFilter(e: MouseEvent) {
+  if (filterDropdownRef.value && !filterDropdownRef.value.contains(e.target as Node)) {
+    showFilterDropdown.value = false
+  }
+}
+
+function handleKeydownFilter(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showFilterDropdown.value) {
+    showFilterDropdown.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutsideFilter)
+  document.addEventListener('keydown', handleKeydownFilter)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutsideFilter)
+  document.removeEventListener('keydown', handleKeydownFilter)
+})
 </script>
 
 <template>
@@ -960,14 +990,46 @@ function clearFilters() {
                 @input="currentPage = 1"
               />
 
-              <!-- Filter Dropdown -->
-              <div class="w-48">
-                <BaseSelect
-                  v-model="selectedAuditCategory"
-                  :options="auditCategories"
-                  size="sm"
-                  @update:model-value="currentPage = 1"
-                />
+              <!-- Filter Dropdown Container -->
+              <div ref="filterDropdownRef" class="relative">
+                <button
+                  type="button"
+                  class="h-8 px-2.5 bg-surface-container-highest border border-outline-variant rounded-lg text-xs font-medium hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
+                  :class="selectedAuditCategory !== 'all' ? 'text-primary-fixed-dim border-primary-fixed-dim/50 bg-primary-fixed-dim/10' : 'text-on-surface-variant'"
+                  :title="t('common.filter')"
+                  @click="showFilterDropdown = !showFilterDropdown"
+                >
+                  <span class="material-symbols-outlined text-[18px]">filter_list</span>
+                  <span v-if="selectedAuditCategory !== 'all'" class="text-[11px] font-bold">
+                    {{ auditCategories.find(c => c.id === selectedAuditCategory)?.label }}
+                  </span>
+                </button>
+
+                <!-- Filter Popover -->
+                <div
+                  v-if="showFilterDropdown"
+                  class="absolute right-0 top-10 w-52 bg-surface-container-high border border-outline-variant rounded-lg shadow-xl z-20 py-1 divide-y divide-outline-variant/30 animate-fade-in"
+                >
+                  <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    {{ t('accessIdentity.filterCategory') }}
+                  </div>
+                  <div class="py-1">
+                    <button
+                      v-for="cat in auditCategories"
+                      :key="cat.id"
+                      type="button"
+                      class="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface-variant/40 transition-colors cursor-pointer text-left"
+                      :class="selectedAuditCategory === cat.id ? 'text-primary-fixed-dim font-bold bg-primary-fixed-dim/10' : 'text-on-surface'"
+                      @click="selectCategory(cat.id)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[16px]">{{ cat.icon }}</span>
+                        <span>{{ cat.label }}</span>
+                      </div>
+                      <span v-if="selectedAuditCategory === cat.id" class="material-symbols-outlined text-[16px]">check</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <!-- Refresh Button -->
