@@ -1230,6 +1230,91 @@ sequenceDiagram
   3. У `operator_offline` отображается нейтральный серый бейдж «Не в сети».
   4. Виджет «В сети сейчас» корректно учитывает только пользователей с `is_online === true`.
 
+---
+
+## 18. Блок-схема и диаграмма последовательности: Глобальная система Toast-уведомлений и асинхронные модальные окна
+
+### 18.1. Архитектурная блок-схема жизненного цикла Toast и ConfirmModal
+
+```mermaid
+graph TD
+    subgraph UI_Layer ["Слой пользовательского интерфейса (Views & Modals)"]
+        ViewAction["Действие пользователя в View<br/>(Клик по 'Сохранить', 'Удалить', 'Запустить' и др.)"]
+        OpenConfirmModal{"Требуется<br/>подтверждение?"}
+        ViewAction --> OpenConfirmModal
+        
+        OpenConfirmModal -- "Да" --> ShowModal["ConfirmModal.vue<br/>(Отображение диалога, блокировка действий)"]
+        ShowModal --> UserConfirm["Пользователь нажал 'Подтвердить'"]
+        UserConfirm --> SetLoading["Установка флага :loading = true<br/>Блокировка кнопки подтверждения"]
+        
+        OpenConfirmModal -- "Нет" --> DirectApiCall["Прямой вызов API клиента"]
+        SetLoading --> DirectApiCall
+    end
+
+    subgraph API_Integration ["Слой API и интеграции"]
+        DirectApiCall --> ExecuteApi["Axum REST API / WebSocket"]
+        ExecuteApi --> ApiResponse{"Результат выполнения"}
+    end
+
+    subgraph Toast_System ["Глобальная система Toast (useToast & ToastContainer)"]
+        ApiResponse -- "Успешно (200 OK / 204)" --> ToastSuccess["toast.success(message, options)<br/>Иконка check_circle, Primary glow"]
+        ApiResponse -- "Ошибка (4xx / 5xx / Network)" --> ToastError["toast.error(message, options)<br/>Иконка error, Error red border"]
+        
+        ToastSuccess --> AddToastQueue["useToast: addToast()<br/>Генерация ID, FIFO очередь (max 5)"]
+        ToastError --> AddToastQueue
+        
+        AddToastQueue --> AutoTimer["Запуск таймаута скрытия<br/>(4000 ms / setTimeout)"]
+        AddToastQueue --> ContainerRender["ToastContainer.vue (App.vue)<br/>TransitionGroup, Backdrop Blur, Glassmorphism"]
+        
+        AutoTimer --> RemoveToast["useToast: removeToast(id)"]
+        UserClose["Клик по кнопке 'Закрыть' (крестик)"] --> RemoveToast
+        RemoveToast --> SlideOutAnim["Анимация slide-out / fade-out<br/>Удаление из DOM"]
+    end
+
+    subgraph Modal_Completion ["Завершение модального окна"]
+        ApiResponse --> CloseModal["Сброс :loading = false<br/>Закрытие v-model диалога"]
+    end
+```
+
+### 18.2. Диаграмма последовательности асинхронного подтверждения и отправки уведомления
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Оператор
+    participant View as View / Component (UserProfile, Users, SystemAdmin)
+    participant Modal as ConfirmModal.vue
+    participant ToastStore as useToast Composable
+    participant Container as ToastContainer.vue (App.vue)
+    participant API as ApiClient
+    participant Server as Backend Core
+
+    Operator->>View: Клик по защищенному действию (напр. «Завершить сессии»)
+    View->>Modal: v-model = true (открытие ConfirmModal)
+    Modal-->>Operator: Отображение диалогового окна с предупреждением
+    
+    Operator->>Modal: Нажатие кнопки «Подтвердить»
+    Modal->>View: emit('confirm')
+    View->>View: isExecuting = true (кнопка переходит в режим loading)
+    
+    View->>API: authApi.terminateOtherSessions()
+    API->>Server: POST /api/v1/auth/terminate-others
+    Server-->>API: 200 OK { terminated_count: 3 }
+    API-->>View: Promise resolve
+    
+    View->>ToastStore: toast.success('Сессии успешно завершены (3)')
+    ToastStore->>ToastStore: Добавление в реактивный массив toasts
+    ToastStore-->>Container: Реактивное обновление v-for в TransitionGroup
+    Container-->>Operator: Всплывающий стек уведомлений (Glassmorphism, glow effect)
+    
+    View->>Modal: v-model = false (закрытие диалога)
+    View->>View: isExecuting = false
+    
+    Note over ToastStore, Container: Автоматическое скрытие через 4000мс
+    ToastStore->>Container: Удаление элемента по таймеру
+    Container-->>Operator: Плавная анимация исчезновения тоста
+```
+
 
 
 
