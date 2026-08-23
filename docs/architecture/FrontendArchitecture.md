@@ -932,6 +932,108 @@ graph TD
         UI_SYS --> BTN_SESSIONS["Кнопки сброса глобальных сессий операторов"]
         UI_SYS --> BTN_LOGS_MANAGE["Кнопки ротации и очистки системных логов"]
     end
+```
+
+---
+
+## 14. Сквозная архитектурная блок-схема Frontend: Инициализация, Роутинг, Pinia, Слой API и Глобальные сессии
+
+Схема наглядно иллюстрирует взаимодействие компонентов, жизненный цикл авторизации, защиту маршрутов через Navigation Guards, централизованный перехват ошибок и работу с глобальными сессиями операторов.
+
+```mermaid
+flowchart TD
+    %% Entry Point & Core Boot
+    subgraph Boot ["1. Инициализация и Запуск (Boot Layer)"]
+        IndexHtml["index.html"] --> MainTs["main.ts (Vue 3 + Pinia + Router + i18n)"]
+        MainTs --> AppVue["App.vue (Корневой лейаут, всплывающие уведомления, темы)"]
+    end
+
+    %% Routing & Auth Guard Flow
+    subgraph Navigation ["2. Роутинг и Защита Маршрутов (Router & Navigation Guards)"]
+        Router["vue-router (router/index.ts)"]
+        Guard{"router.beforeEach"}
+        CheckConfig["authStore.checkAuthConfig()"]
+        IsAuthEnabled{"web_ui_auth включен?"}
+        HasToken{"Есть aether_token в Storage?"}
+        ValidateUser["authStore.loadCurrentUser() (/api/v1/auth/me)"]
+        
+        Router --> Guard
+        Guard --> CheckConfig --> IsAuthEnabled
+        IsAuthEnabled -- "Нет (анонимный режим)" --> AllowAccess["Разрешить переход (next())"]
+        IsAuthEnabled -- "Да" --> HasToken
+        HasToken -- "Нет" --> CheckPublic{"Публичный роут (/login)?"}
+        CheckPublic -- "Да" --> AllowAccess
+        CheckPublic -- "Нет" --> RedirectLogin["Редирект на /login"]
+        HasToken -- "Да" --> ValidateUser
+        ValidateUser -- "Успех (200 OK)" --> CheckLoginRoute{"Переход на /login?"}
+        CheckLoginRoute -- "Да" --> RedirectDash["Редирект на /dashboard"]
+        CheckLoginRoute -- "Нет" --> AllowAccess
+        ValidateUser -- "Ошибка (401 / 403)" --> RedirectLogin
+    end
+
+    %% Views Layer
+    subgraph Views ["3. Представления и Экраны (Views)"]
+        AllowAccess --> ViewsSwitch
+        ViewsSwitch["Маршруты приложения"]
+        
+        ViewsSwitch --> LoginV["/login — LoginView.vue<br/>(Логин, 2FA/TOTP проверка, Backup Codes)"]
+        ViewsSwitch --> DashV["/dashboard — DashboardView.vue<br/>(Сводка модулей, системный статус, метрики)"]
+        ViewsSwitch --> ModV["/settings/modules — ModuleManagementView.vue<br/>(Каталог, DAG зависимостей, импорт/экспорт)"]
+        ViewsSwitch --> UsersV["/settings/users — UsersManagementView.vue<br/>(Операторы, квота 4 суперадмина, пароли)"]
+        ViewsSwitch --> AccessV["/settings/access-identity — AccessIdentityView.vue<br/>(RBAC матрица, IP-белые списки, парольные политики)"]
+        ViewsSwitch --> SysV["/settings/system — SystemAdminView.vue<br/>(Глобальные сессии, SQLite WAL, Бэкапы, Аудит, Логи, Scheduler)"]
+        ViewsSwitch --> ProfV["/settings/profile — UserProfileView.vue<br/>(Профиль, 2FA TOTP активация, Резервные коды)"]
+    end
+
+    %% State Management (Pinia)
+    subgraph Stores ["4. Хранилища Состояния (Pinia Stores)"]
+        AuthStore["useAuthStore (stores/auth.ts)<br/>• user & claims (session_id)<br/>• token storage<br/>• rbac permissions<br/>• 2fa state"]
+        ModulesStore["useModulesStore (stores/modules.ts)<br/>• active modules<br/>• manifests & configs<br/>• module operations"]
+        
+        LoginV --> AuthStore
+        DashV --> AuthStore & ModulesStore
+        UsersV --> AuthStore
+        SysV --> AuthStore
+        ProfV --> AuthStore
+        ModV --> ModulesStore
+    end
+
+    %% API Client & Network Layer
+    subgraph ApiLayer ["5. Слой API и Сетевых Запросов (api/)"]
+        ApiClient["ApiClient (api/client.ts)<br/>• Авто-подстановка Bearer JWT<br/>• Accept-Language (i18n ru/en)<br/>• Перехват 401 Unauthorized<br/>• Централизованная обработка ошибок"]
+        
+        AuthApi["api/auth.ts<br/>(login, verify-2fa, me, totp)"]
+        UsersApi["api/users.ts<br/>(CRUD пользователей, квоты)"]
+        ModulesApi["api/modules.ts<br/>(модули, манифесты)"]
+        SystemApi["api/system.ts<br/>(сессии, SQLite stats, бэкапы, аудит, логи)"]
+        SchedApi["api/scheduler.ts<br/>(cron задачи, история)"]
+        EventsApi["api/events.ts<br/>(поток событий)"]
+        
+        AuthStore --> AuthApi
+        ModulesStore --> ModulesApi
+        SysV --> SystemApi & SchedApi
+        UsersV --> UsersApi
+        AccessV --> SystemApi
+        
+        AuthApi & UsersApi & ModulesApi & SystemApi & SchedApi & EventsApi --> ApiClient
+    end
+
+    %% Backend Server
+    subgraph Backend ["6. Бэкенд Платформы (AetherCore Server)"]
+        ApiClient --> |"HTTP REST (Axum) /api/v1/*"| Server["AetherCore Backend Router"]
+        Server --> |"401 Session Revoked / Expired"| ApiClient
+        ApiClient --> |"On 401: Clear token & Redirect"| RedirectLogin
+    end
+
+    %% Localization & Theme
+    subgraph I18nTheme ["7. Локализация и Оформление"]
+        I18n["i18n (ru.ts / en.ts)"]
+        Theme["Система тем (Dark/Light + Tailwind)"]
+        I18n -.-> Views
+        Theme -.-> AppVue
+    end
+```
+
 
 
 
