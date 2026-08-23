@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsNav from '@/components/layout/SettingsNav.vue'
 import {
@@ -62,7 +62,7 @@ interface SessionItem {
 interface LogEntry {
   id: string
   timestamp: string
-  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG' | 'TRACE'
   source: string
   message: string
 }
@@ -75,7 +75,6 @@ const selectedProviderId = ref('system')
 const sessions = ref<SessionItem[]>([])
 
 // System logs state
-const selectedLogFile = ref('[system] backend.log')
 const selectedLogLevel = ref('ALL')
 const logSearchQuery = ref('')
 const isAutoRefresh = ref(true)
@@ -86,6 +85,7 @@ const isFullscreenLogs = ref(false)
 const showServiceStatusModal = ref(false)
 const notificationMessage = ref('')
 let refreshTimer: number | null = null
+let searchDebounce: number | null = null
 
 // Confirm modal state
 const showConfirmModal = ref(false)
@@ -113,7 +113,7 @@ const logCounts = computed(() => {
     errors: logs.value.filter((l) => l.level === 'ERROR').length,
     warns: logs.value.filter((l) => l.level === 'WARN').length,
     info: logs.value.filter((l) => l.level === 'INFO').length,
-    debug: logs.value.filter((l) => l.level === 'DEBUG').length
+    debug: logs.value.filter((l) => l.level === 'DEBUG' || l.level === 'TRACE').length
   }
 })
 
@@ -448,10 +448,20 @@ async function fetchRealLogs() {
       provider: selectedProviderId.value,
       level: selectedLogLevel.value !== 'ALL' ? selectedLogLevel.value : undefined,
       search: logSearchQuery.value.trim() || undefined,
-      limit: 100
+      limit: 200
     })
-    if (res && Array.isArray(res.lines) && res.lines.length > 0) {
-      logs.value = res.lines.map((line, idx) => parseLogLine(line, idx))
+    if (res) {
+      if (Array.isArray(res.entries)) {
+        logs.value = res.entries.map((item, idx) => ({
+          id: `${idx}-${item.timestamp}`,
+          timestamp: item.timestamp ? item.timestamp.replace('T', ' ').slice(0, 19) : new Date().toISOString().replace('T', ' ').slice(0, 19),
+          level: ((item.level || 'INFO').toUpperCase()) as any,
+          source: item.target || 'core',
+          message: item.message || item.raw || ''
+        }))
+      } else if (Array.isArray(res.lines)) {
+        logs.value = res.lines.map((line, idx) => parseLogLine(line, idx))
+      }
       if (!isUserScrolledUp.value) {
         scrollToBottom(false)
       }
@@ -460,6 +470,17 @@ async function fetchRealLogs() {
     // API offline or error, maintain existing log lines
   }
 }
+
+watch([selectedProviderId, selectedLogLevel], () => {
+  fetchRealLogs()
+})
+
+watch(logSearchQuery, () => {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = window.setTimeout(() => {
+    fetchRealLogs()
+  }, 300)
+})
 
 async function loadSystemData() {
   try {
@@ -527,7 +548,7 @@ async function downloadCurrentLog() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `system_${selectedLogFile.value.replace(/[^a-zA-Z0-9]/g, '_')}.log`
+    link.download = `system_${selectedProviderId.value}_${new Date().toISOString().slice(0, 10)}.log`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -567,14 +588,16 @@ const logFileOptions = computed(() => {
   if (logProviders.value.length > 0) {
     return logProviders.value.map((p) => ({
       value: p.id,
-      label: `[${p.kind}] ${p.name}`
+      label: `[${p.category || p.kind || 'system'}] ${p.name}`
     }))
   }
   return [
-    { value: 'system', label: '[system] backend.log (3.5 MB)' },
-    { value: 'error', label: '[system] error.log (1.2 MB)' },
-    { value: 'auth', label: '[auth] access.log (0.8 MB)' },
-    { value: 'database', label: '[database] query.log (12.4 MB)' }
+    { value: 'system', label: '[system] Системный лог ядра' },
+    { value: 'server', label: '[server] HTTP & REST API' },
+    { value: 'scheduler', label: '[scheduler] Планировщик задач' },
+    { value: 'auth', label: '[auth] Аутентификация' },
+    { value: 'database', label: '[database] База данных' },
+    { value: 'plugins', label: '[plugins] WASM Модули' }
   ]
 })
 
@@ -583,7 +606,8 @@ const logLevelOptions = [
   { value: 'ERROR', label: 'ERROR' },
   { value: 'WARN', label: 'WARN' },
   { value: 'INFO', label: 'INFO' },
-  { value: 'DEBUG', label: 'DEBUG' }
+  { value: 'DEBUG', label: 'DEBUG' },
+  { value: 'TRACE', label: 'TRACE' }
 ]
 
 onMounted(() => {
@@ -597,6 +621,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  if (searchDebounce) clearTimeout(searchDebounce)
 })
 </script>
 
@@ -806,9 +831,9 @@ onUnmounted(() => {
               </div>
 
               <!-- Log File Selector -->
-              <div class="w-44">
+              <div class="w-52">
                 <BaseSelect
-                  v-model="selectedLogFile"
+                  v-model="selectedProviderId"
                   :options="logFileOptions"
                   size="sm"
                 />
@@ -918,7 +943,8 @@ onUnmounted(() => {
                       'bg-error/20 text-error border border-error/40': entry.level === 'ERROR',
                       'bg-warning-yellow/20 text-warning-yellow border border-warning-yellow/40': entry.level === 'WARN',
                       'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40': entry.level === 'INFO',
-                      'bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40': entry.level === 'DEBUG'
+                      'bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40': entry.level === 'DEBUG',
+                      'bg-slate-500/20 text-slate-400 border border-slate-500/40': entry.level === 'TRACE'
                     }"
                   >
                     {{ entry.level }}

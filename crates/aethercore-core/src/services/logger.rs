@@ -155,14 +155,69 @@ impl LoggerService {
     pub fn with_config(config: LoggerConfig) -> Self {
         let mut providers = HashMap::new();
 
-        // Регистрируем системного провайдера по умолчанию
+        // Регистрируем базовых системных провайдеров по умолчанию
         providers.insert(
             "system".to_string(),
             LogProvider {
                 id: "system".to_string(),
-                name: "Системный лог ядра".to_string(),
+                name: "Системный лог ядра (All Core)".to_string(),
                 category: "system".to_string(),
                 file_path: config.log_file_path.clone(),
+                available: true,
+            },
+        );
+
+        providers.insert(
+            "server".to_string(),
+            LogProvider {
+                id: "server".to_string(),
+                name: "HTTP & REST API Сервер".to_string(),
+                category: "server".to_string(),
+                file_path: None,
+                available: true,
+            },
+        );
+
+        providers.insert(
+            "scheduler".to_string(),
+            LogProvider {
+                id: "scheduler".to_string(),
+                name: "Планировщик фоновых задач".to_string(),
+                category: "scheduler".to_string(),
+                file_path: None,
+                available: true,
+            },
+        );
+
+        providers.insert(
+            "auth".to_string(),
+            LogProvider {
+                id: "auth".to_string(),
+                name: "Аутентификация и сессии".to_string(),
+                category: "auth".to_string(),
+                file_path: None,
+                available: true,
+            },
+        );
+
+        providers.insert(
+            "database".to_string(),
+            LogProvider {
+                id: "database".to_string(),
+                name: "База данных SQLite WAL".to_string(),
+                category: "database".to_string(),
+                file_path: None,
+                available: true,
+            },
+        );
+
+        providers.insert(
+            "plugins".to_string(),
+            LogProvider {
+                id: "plugins".to_string(),
+                name: "WASM Модули и шина".to_string(),
+                category: "plugins".to_string(),
+                file_path: None,
                 available: true,
             },
         );
@@ -297,44 +352,7 @@ impl LoggerService {
         let limit = limit.clamp(1, 1000);
         let search = search_query.map(|s| s.to_lowercase());
 
-        // Если это system и нет отдельного файла, или если файл не существует — читаем из in-memory буфера
-        if provider_id == "system" && (provider.file_path.is_none() || !provider.file_path.as_ref().map_or(false, |p| p.exists())) {
-            let mut matched = Vec::new();
-
-            for entry in guard.buffer.iter().rev() {
-                if let Some(lvl) = min_level {
-                    if entry.level < lvl {
-                        continue;
-                    }
-                }
-
-                if let Some(ref q) = search {
-                    let in_msg = entry.message.to_lowercase().contains(q);
-                    let in_target = entry.target.to_lowercase().contains(q);
-                    let in_raw = entry.raw.to_lowercase().contains(q);
-                    if !in_msg && !in_target && !in_raw {
-                        continue;
-                    }
-                }
-
-                matched.push(entry.clone());
-                if matched.len() >= limit {
-                    break;
-                }
-            }
-
-            // Возвращаем в хронологическом порядке
-            matched.reverse();
-            let total = matched.len();
-
-            return Ok(LogQueryResult {
-                provider_id: provider_id.to_string(),
-                total,
-                entries: matched,
-            });
-        }
-
-        // Если у провайдера есть файл — читаем хвост файла
+        // Если у провайдера есть существующий файл на диске — читаем хвост файла
         if let Some(ref path) = provider.file_path {
             if path.exists() {
                 let entries = read_tail_from_file(path, limit, min_level, search.as_deref())?;
@@ -347,10 +365,43 @@ impl LoggerService {
             }
         }
 
+        // Иначе читаем из кольцевого in-memory буфера с фильтрацией по целевому источнику
+        let mut matched = Vec::new();
+
+        for entry in guard.buffer.iter().rev() {
+            if !matches_provider(&entry.target, provider_id) {
+                continue;
+            }
+
+            if let Some(lvl) = min_level {
+                if entry.level < lvl {
+                    continue;
+                }
+            }
+
+            if let Some(ref q) = search {
+                let in_msg = entry.message.to_lowercase().contains(q);
+                let in_target = entry.target.to_lowercase().contains(q);
+                let in_raw = entry.raw.to_lowercase().contains(q);
+                if !in_msg && !in_target && !in_raw {
+                    continue;
+                }
+            }
+
+            matched.push(entry.clone());
+            if matched.len() >= limit {
+                break;
+            }
+        }
+
+        // Возвращаем в хронологическом порядке
+        matched.reverse();
+        let total = matched.len();
+
         Ok(LogQueryResult {
             provider_id: provider_id.to_string(),
-            total: 0,
-            entries: Vec::new(),
+            total,
+            entries: matched,
         })
     }
 
@@ -389,11 +440,101 @@ impl LoggerService {
         // Если файла нет на диске, генерируем из in-memory буфера
         let mut buffer = String::new();
         for entry in &guard.buffer {
-            buffer.push_str(&entry.raw);
-            buffer.push('\n');
+            if matches_provider(&entry.target, provider_id) {
+                buffer.push_str(&entry.raw);
+                buffer.push('\n');
+            }
         }
 
         Ok((buffer.into_bytes(), filename))
+    }
+}
+
+/// Сопоставление цели логирования с идентификатором провайдера
+fn matches_provider(target: &str, provider_id: &str) -> bool {
+    match provider_id {
+        "system" => true,
+        "server" => {
+            target.starts_with("aethercore_server")
+                || target.starts_with("tower_http")
+                || target.starts_with("axum")
+        }
+        "scheduler" => target.contains("scheduler") || target.contains("task"),
+        "auth" => target.contains("auth") || target.contains("jwt") || target.contains("user"),
+        "database" => target.contains("db") || target.contains("sqlx") || target.contains("database"),
+        "plugins" => target.contains("plugin") || target.contains("wasm") || target.contains("bus"),
+        other => target.to_lowercase().contains(&other.to_lowercase()),
+    }
+}
+
+/// Tracing Subscriber Layer, перенаправляющий события в [`LoggerService`]
+#[derive(Clone)]
+pub struct LoggerServiceLayer {
+    logger: LoggerService,
+}
+
+impl LoggerServiceLayer {
+    /// Создать новый tracing subscriber layer для сервиса логирования
+    pub fn new(logger: LoggerService) -> Self {
+        Self { logger }
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for LoggerServiceLayer
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let metadata = event.metadata();
+        let level = match *metadata.level() {
+            tracing::Level::ERROR => LogLevel::Error,
+            tracing::Level::WARN => LogLevel::Warn,
+            tracing::Level::INFO => LogLevel::Info,
+            tracing::Level::DEBUG => LogLevel::Debug,
+            tracing::Level::TRACE => LogLevel::Trace,
+        };
+        let target = metadata.target();
+
+        struct MessageVisitor {
+            message: String,
+            fields: Vec<String>,
+        }
+
+        impl tracing::field::Visit for MessageVisitor {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    self.message = format!("{:?}", value).trim_matches('"').to_string();
+                } else {
+                    self.fields.push(format!("{}={:?}", field.name(), value));
+                }
+            }
+
+            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                if field.name() == "message" {
+                    self.message = value.to_string();
+                } else {
+                    self.fields.push(format!("{}={}", field.name(), value));
+                }
+            }
+        }
+
+        let mut visitor = MessageVisitor {
+            message: String::new(),
+            fields: Vec::new(),
+        };
+        event.record(&mut visitor);
+
+        let final_message = if visitor.message.is_empty() {
+            visitor.fields.join(" ")
+        } else if visitor.fields.is_empty() {
+            visitor.message
+        } else {
+            format!("{} ({})", visitor.message, visitor.fields.join(" "))
+        };
+
+        if !final_message.is_empty() {
+            self.logger.log(level, target, &final_message);
+        }
     }
 }
 

@@ -25,14 +25,27 @@ export interface AuditLogEntry {
 export interface LogProvider {
   id: string
   name: string
-  kind: string
+  category: string
+  file_path?: string
+  available: boolean
+  kind?: string
   description?: string
 }
 
+export interface LogEntryItem {
+  timestamp: string
+  level: 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
+  target: string
+  message: string
+  raw: string
+}
+
 export interface LogQueryResult {
-  lines: string[]
-  total_lines: number
-  provider: string
+  provider_id: string
+  total: number
+  entries: LogEntryItem[]
+  lines?: string[]
+  total_lines?: number
 }
 
 export interface LogQueryParams {

@@ -15,6 +15,8 @@ pub mod scheduler;
 
 pub use audit::{AuditArchiveInfo, AuditLogRecord, AuditService};
 pub use backup::{BackupInfo, BackupService, RestoreResult};
-pub use logger::{LogEntry, LogLevel, LogProvider, LogQueryResult, LoggerConfig, LoggerService};
+pub use logger::{
+    LogEntry, LogLevel, LogProvider, LogQueryResult, LoggerConfig, LoggerService, LoggerServiceLayer,
+};
 pub use notify::{AlertMessage, AlertSeverity, NotifyService};
 pub use scheduler::{handlers, SchedulerService, TaskHandler};

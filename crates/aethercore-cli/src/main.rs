@@ -10,9 +10,11 @@ use aethercore_core::bus::EventBus;
 use aethercore_core::db::Db;
 use aethercore_core::plugins::loader::PluginPackage;
 use aethercore_core::plugins::PluginManager;
-use aethercore_core::services::{AuditService, LoggerService, NotifyService};
+use aethercore_core::services::{AuditService, LoggerService, LoggerServiceLayer, NotifyService};
 use aethercore_core::users::UserService;
 use aethercore_server::state::AppState;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -83,14 +85,24 @@ enum PluginCommands {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    let logger_service = LoggerService::with_log_file("data/aethercore.log");
+
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         if cli.dev {
-            tracing_subscriber::EnvFilter::new("info,tower_http=debug,aethercore_server=debug")
+            tracing_subscriber::EnvFilter::new("info,tower_http=debug,aethercore_server=debug,aethercore_core=debug")
         } else {
             tracing_subscriber::EnvFilter::new("info")
         }
     });
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let logger_layer = LoggerServiceLayer::new(logger_service.clone());
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .with(logger_layer)
+        .init();
 
     // Обработка подкоманд CLI
     if let Some(Commands::Plugin { action }) = cli.command {
@@ -129,7 +141,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwt_manager = JwtManager::new(&config.security.jwt_secret, config.security.jwt_ttl_seconds);
     let user_service = UserService::new(db.clone());
     let audit_service = AuditService::new(db.clone());
-    let logger_service = LoggerService::with_log_file("data/aethercore.log");
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
     let backup_dir = config
