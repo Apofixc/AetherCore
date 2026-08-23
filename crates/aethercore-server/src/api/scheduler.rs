@@ -55,7 +55,7 @@ async fn list_tasks_handler(
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
 ) -> ApiResult<Vec<ScheduledTask>> {
-    check_permission(&claims, "scheduler.view").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.view").map_err(|e| map_err(e, locale))?;
 
     let tasks = state
         .scheduler_service
@@ -75,7 +75,7 @@ async fn get_task_handler(
     AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> ApiResult<ScheduledTask> {
-    check_permission(&claims, "scheduler.view").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.view").map_err(|e| map_err(e, locale))?;
 
     let task = state
         .scheduler_service
@@ -96,7 +96,7 @@ async fn create_task_handler(
     AuthUser(claims): AuthUser,
     Json(dto): Json<CreateTaskDto>,
 ) -> Result<(StatusCode, Json<ScheduledTask>), (StatusCode, Json<ErrorResponse>)> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     let task = state
         .scheduler_service
@@ -131,7 +131,7 @@ async fn update_task_handler(
     Path(id): Path<String>,
     Json(dto): Json<UpdateTaskDto>,
 ) -> ApiResult<ScheduledTask> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     let task = state
         .scheduler_service
@@ -165,7 +165,7 @@ async fn delete_task_handler(
     AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     state
         .scheduler_service
@@ -199,7 +199,7 @@ async fn run_task_handler(
     AuthUser(claims): AuthUser,
     Path(id): Path<String>,
 ) -> ApiResult<TaskExecutionRecord> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     let triggered_by = format!("manual:{}", claims.username);
     let record = state
@@ -246,7 +246,7 @@ async fn toggle_task_handler(
     Path(id): Path<String>,
     Json(dto): Json<ToggleDto>,
 ) -> ApiResult<ScheduledTask> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     let task = state
         .scheduler_service
@@ -281,7 +281,7 @@ async fn task_history_handler(
     Path(id): Path<String>,
     Query(query): Query<HistoryQueryDto>,
 ) -> ApiResult<Vec<TaskExecutionRecord>> {
-    check_permission(&claims, "scheduler.view").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.view").map_err(|e| map_err(e, locale))?;
 
     let mut q = query;
     q.task_id = Some(id);
@@ -303,7 +303,7 @@ async fn all_history_handler(
     AuthUser(claims): AuthUser,
     Query(query): Query<HistoryQueryDto>,
 ) -> ApiResult<Vec<TaskExecutionRecord>> {
-    check_permission(&claims, "scheduler.view").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.view").map_err(|e| map_err(e, locale))?;
 
     let history = state
         .scheduler_service
@@ -339,7 +339,7 @@ async fn prune_history_handler(
     AuthUser(claims): AuthUser,
     Query(dto): Query<PruneHistoryDto>,
 ) -> ApiResult<PruneHistoryResponse> {
-    check_permission(&claims, "scheduler.manage").map_err(|e| map_err(e, locale))?;
+    check_permission(&claims, "system.manage").map_err(|e| map_err(e, locale))?;
 
     let deleted = state
         .scheduler_service

@@ -60,8 +60,6 @@ async fn setup_test_app() -> (axum::Router, AppState, String) {
             false,
             vec!["admin".to_string()],
             vec![
-                "scheduler.view".to_string(),
-                "scheduler.manage".to_string(),
                 "system.view".to_string(),
                 "system.manage".to_string(),
             ],

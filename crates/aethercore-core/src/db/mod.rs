@@ -368,8 +368,6 @@ impl Db {
             ("access.manage", "Управление безопасностью и доступом", "Access", "Настройка политик 2FA, IP, матрицы прав и ротация аудита"),
             ("system.view", "Просмотр системы", "System", "Просмотр системного статуса, логов, метрик и базы данных"),
             ("system.manage", "Управление системой", "System", "Резервное копирование, обслуживание, ротация логов и перезапуск"),
-            ("scheduler.view", "Просмотр планировщика задач", "System", "Просмотр запланированных задач и истории их выполнения"),
-            ("scheduler.manage", "Управление планировщиком задач", "System", "Создание, редактирование, удаление и запуск задач планировщика"),
         ];
 
         for (id, name, cat, desc) in default_permissions {
@@ -411,7 +409,6 @@ impl Db {
             "users.view", "users.manage",
             "access.view", "access.manage",
             "system.view", "system.manage",
-            "scheduler.view", "scheduler.manage",
         ];
         for perm in admin_perms {
             sqlx::query(
@@ -424,7 +421,7 @@ impl Db {
         }
 
         let operator_perms = [
-            "modules.view", "users.view", "access.view", "system.view", "scheduler.view",
+            "modules.view", "users.view", "access.view", "system.view",
         ];
         for perm in operator_perms {
             sqlx::query(
@@ -436,7 +433,7 @@ impl Db {
             .map_err(|e| AppError::database(e.to_string()))?;
         }
 
-        let viewer_perms = ["modules.view", "system.view", "scheduler.view"];
+        let viewer_perms = ["modules.view", "system.view"];
         for perm in viewer_perms {
             sqlx::query(
                 "INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES ('viewer', ?)",
