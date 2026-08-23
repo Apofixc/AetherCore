@@ -49,6 +49,24 @@ export interface AuditQueryParams {
   after_id?: number
 }
 
+export interface AuditArchiveInfo {
+  filename: string
+  size_bytes: number
+  created_at: string
+  records_count?: number
+}
+
+export interface RotateAuditResponse {
+  success: boolean
+  deleted_count: number
+  archive_filename?: string
+}
+
+export interface ImportAuditResponse {
+  success: boolean
+  imported_count: number
+}
+
 export const systemApi = {
   getInfo: async (): Promise<SystemInfo> => {
     return api.get<SystemInfo>('/api/v1/system/info')
@@ -71,6 +89,18 @@ export const systemApi = {
   },
   clearAuditLogs: async (): Promise<{ success: boolean; deleted_count: number }> => {
     return api.delete<{ success: boolean; deleted_count: number }>('/api/v1/system/audit')
+  },
+  rotateAuditLogs: async (params?: { days?: number; archive?: boolean }): Promise<RotateAuditResponse> => {
+    return api.post<RotateAuditResponse>('/api/v1/system/audit/rotate', {
+      days: params?.days ?? 90,
+      archive: params?.archive ?? true
+    })
+  },
+  importAuditLogs: async (records: any[]): Promise<ImportAuditResponse> => {
+    return api.post<ImportAuditResponse>('/api/v1/system/audit/import', { records })
+  },
+  getAuditArchives: async (): Promise<AuditArchiveInfo[]> => {
+    return api.get<AuditArchiveInfo[]>('/api/v1/system/audit/archives')
   },
   getProviders: async (): Promise<LogProvider[]> => {
     return api.get<LogProvider[]>('/api/v1/system/logs/providers')

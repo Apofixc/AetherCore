@@ -14,12 +14,12 @@ use axum::extract::{Path, Query, State};
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use aethercore_common::error::ErrorResponse;
 use aethercore_common::i18n::{global, Locale};
 use aethercore_core::auth::check_permission;
-use aethercore_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
+use aethercore_core::services::{AuditArchiveInfo, AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -30,6 +30,10 @@ pub fn router() -> Router<AppState> {
         .route("/i18n/{locale}", get(i18n_export_handler))
         .route("/audit", get(audit_logs_handler).delete(clear_audit_logs_handler))
         .route("/audit/count", get(audit_count_handler))
+        .route("/audit/rotate", post(rotate_audit_logs_handler))
+        .route("/audit/import", post(import_audit_logs_handler))
+        .route("/audit/archives", get(list_audit_archives_handler))
+        .route("/audit/archives/{filename}", get(download_audit_archive_handler))
         .route("/logs/providers", get(log_providers_handler))
         .route("/logs", get(logs_query_handler))
         .route("/logs/download", get(logs_download_handler))
@@ -233,6 +237,225 @@ async fn clear_audit_logs_handler(
         success: true,
         deleted_count,
     }))
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Параметры запроса на ротацию журнала аудита
+#[derive(Debug, Deserialize)]
+pub struct RotateAuditRequest {
+    /// Срок давности в днях (по умолчанию 90)
+    pub days: Option<u32>,
+    /// Сохранить ли архивный JSON-файл перед удалением
+    #[serde(default = "default_true")]
+    pub archive: bool,
+}
+
+/// Ответ на запрос ротации журнала аудита
+#[derive(Debug, Serialize)]
+pub struct RotateAuditResponse {
+    /// Флаг успеха
+    pub success: bool,
+    /// Количество удаленных записей
+    pub deleted_count: u64,
+    /// Имя созданного архивного файла
+    pub archive_filename: Option<String>,
+}
+
+/// POST /api/v1/system/audit/rotate
+///
+/// Выполнить ротацию журнала аудита (удаление записей старше N дней с опциональной архивацией).
+async fn rotate_audit_logs_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    headers: HeaderMap,
+    AuthUser(claims): AuthUser,
+    Json(payload): Json<RotateAuditRequest>,
+) -> Result<Json<RotateAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let client_ip = crate::middleware::extract_client_ip(&headers);
+    let retention_days = payload.days.unwrap_or(90);
+    let archive_dir = std::path::PathBuf::from("data/archives");
+
+    let (deleted_count, archive_filename) = state
+        .audit_service
+        .archive_and_prune(retention_days, payload.archive, &archive_dir)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let details = format!(
+        "Rotated audit logs older than {} days (deleted: {}, archive: {:?})",
+        retention_days, deleted_count, archive_filename
+    );
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "audit.rotate",
+            "system/audit",
+            "success",
+            Some(&details),
+            Some(&client_ip),
+        )
+        .await;
+
+    Ok(Json(RotateAuditResponse {
+        success: true,
+        deleted_count,
+        archive_filename,
+    }))
+}
+
+/// Запрос на импорт записей аудита
+#[derive(Debug, Deserialize)]
+pub struct ImportAuditRequest {
+    /// Массив восстанавливаемых записей
+    pub records: Vec<AuditLogRecord>,
+}
+
+/// Ответ на импорт записей аудита
+#[derive(Debug, Serialize)]
+pub struct ImportAuditResponse {
+    /// Флаг успеха
+    pub success: bool,
+    /// Количество импортированных записей
+    pub imported_count: usize,
+}
+
+/// POST /api/v1/system/audit/import
+///
+/// Импортировать записи аудита из файла архива в базу данных.
+async fn import_audit_logs_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    headers: HeaderMap,
+    AuthUser(claims): AuthUser,
+    Json(payload): Json<ImportAuditRequest>,
+) -> Result<Json<ImportAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let client_ip = crate::middleware::extract_client_ip(&headers);
+
+    let imported_count = state
+        .audit_service
+        .import_logs(&payload.records)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let details = format!("Imported {} audit records from archive", imported_count);
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "audit.import",
+            "system/audit",
+            "success",
+            Some(&details),
+            Some(&client_ip),
+        )
+        .await;
+
+    Ok(Json(ImportAuditResponse {
+        success: true,
+        imported_count,
+    }))
+}
+
+/// GET /api/v1/system/audit/archives
+///
+/// Получить список всех сохраненных файлов архива журнала аудита.
+async fn list_audit_archives_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Vec<AuditArchiveInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let archive_dir = std::path::PathBuf::from("data/archives");
+    let archives = state
+        .audit_service
+        .list_archives(&archive_dir)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    Ok(Json(archives))
+}
+
+/// GET /api/v1/system/audit/archives/{filename}
+///
+/// Скачать архивный JSON-файл журнала аудита.
+async fn download_audit_archive_handler(
+    Path(filename): Path<String>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+        let err = aethercore_common::error::AppError::bad_request("Invalid filename");
+        return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
+    }
+
+    let archive_path = std::path::PathBuf::from("data/archives").join(&filename);
+    if !archive_path.exists() {
+        let err = aethercore_common::error::AppError::not_found(format!("Archive '{}' not found", filename));
+        return Err((StatusCode::NOT_FOUND, Json(err.to_api_response(locale))));
+    }
+
+    let content = tokio::fs::read(&archive_path).await.map_err(|e| {
+        let err = aethercore_common::error::AppError::internal(e.to_string());
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_api_response(locale)))
+    })?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json".parse().unwrap(),
+    );
+    headers.insert(
+        CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", filename).parse().unwrap(),
+    );
+
+    Ok((headers, content))
 }
 
 /// GET /api/v1/system/logs/providers

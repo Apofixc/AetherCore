@@ -254,4 +254,181 @@ impl AuditService {
 
         Ok(res.rows_affected())
     }
+
+    /// Выполнить архивацию и ротацию (удаление) устаревших записей аудита
+    ///
+    /// Если `save_archive` равен `true`, записи перед удалением выгружаются в файл `audit_archive_YYYYMMDD_HHMMSS.json`.
+    ///
+    /// # Возвращаемое значение
+    /// Кортеж `(удалено_записей, опциональное_имя_файла_архива)`.
+    pub async fn archive_and_prune(
+        &self,
+        retention_days: u32,
+        save_archive: bool,
+        archive_dir: &std::path::Path,
+    ) -> Result<(u64, Option<String>)> {
+        if retention_days == 0 {
+            return Ok((0, None));
+        }
+
+        let threshold = Utc::now() - chrono::Duration::days(retention_days as i64);
+        let threshold_str = threshold.to_rfc3339();
+
+        let mut archive_filename = None;
+
+        if save_archive {
+            let rows: Vec<(
+                i64,
+                Option<String>,
+                Option<String>,
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                String,
+            )> = sqlx::query_as(
+                r#"
+                SELECT id, user_id, username, action, resource, status, details, ip_address, created_at
+                FROM audit_logs
+                WHERE created_at < ?
+                ORDER BY id ASC
+                "#,
+            )
+            .bind(&threshold_str)
+            .fetch_all(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+            if !rows.is_empty() {
+                let records: Vec<AuditLogRecord> = rows
+                    .into_iter()
+                    .map(|(id, u_id, u_name, action, res, status, details, ip, created_str)| {
+                        let created_at = DateTime::parse_from_rfc3339(&created_str)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|_| Utc::now());
+                        AuditLogRecord {
+                            id,
+                            user_id: u_id,
+                            username: u_name,
+                            action,
+                            resource: res,
+                            status,
+                            details,
+                            ip_address: ip,
+                            created_at,
+                        }
+                    })
+                    .collect();
+
+                let _ = tokio::fs::create_dir_all(archive_dir).await;
+                let fname = format!("audit_archive_{}.json", Utc::now().format("%Y%m%d_%H%M%S"));
+                let filepath = archive_dir.join(&fname);
+
+                if let Ok(json_data) = serde_json::to_string_pretty(&records) {
+                    if tokio::fs::write(&filepath, json_data).await.is_ok() {
+                        archive_filename = Some(fname);
+                    }
+                }
+            }
+        }
+
+        let res = sqlx::query("DELETE FROM audit_logs WHERE created_at < ?")
+            .bind(threshold_str)
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok((res.rows_affected(), archive_filename))
+    }
+
+    /// Импортировать записи журнала аудита из архива
+    ///
+    /// # Аргументы
+    /// * `records` — Список восстанавливаемых записей аудита.
+    ///
+    /// # Возвращаемое значение
+    /// Количество успешно импортированных записей.
+    pub async fn import_logs(&self, records: &[AuditLogRecord]) -> Result<usize> {
+        let mut inserted_count = 0;
+        for r in records {
+            let created_str = r.created_at.to_rfc3339();
+            let res = sqlx::query(
+                r#"
+                INSERT INTO audit_logs (user_id, username, action, resource, status, details, ip_address, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(&r.user_id)
+            .bind(&r.username)
+            .bind(&r.action)
+            .bind(&r.resource)
+            .bind(&r.status)
+            .bind(&r.details)
+            .bind(&r.ip_address)
+            .bind(&created_str)
+            .execute(self.db.writer())
+            .await;
+
+            if res.is_ok() {
+                inserted_count += 1;
+            }
+        }
+        Ok(inserted_count)
+    }
+
+    /// Получить список файлов архива аудита из каталога архивов
+    pub async fn list_archives(&self, archive_dir: &std::path::Path) -> Result<Vec<AuditArchiveInfo>> {
+        let mut archives = Vec::new();
+        if !archive_dir.exists() {
+            return Ok(archives);
+        }
+
+        let mut entries = tokio::fs::read_dir(archive_dir)
+            .await
+            .map_err(|e| AppError::internal(format!("Failed to read archive dir: {}", e)))?;
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
+                if let Ok(metadata) = entry.metadata().await {
+                    let filename = entry.file_name().to_string_lossy().to_string();
+                    let size_bytes = metadata.len();
+                    let created_at = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| {
+                            DateTime::<Utc>::from_timestamp(d.as_secs() as i64, 0)
+                                .unwrap_or_else(Utc::now)
+                                .to_rfc3339()
+                        })
+                        .unwrap_or_else(|| Utc::now().to_rfc3339());
+
+                    archives.push(AuditArchiveInfo {
+                        filename,
+                        size_bytes,
+                        created_at,
+                        records_count: None,
+                    });
+                }
+            }
+        }
+
+        archives.sort_by(|a, b| b.filename.cmp(&a.filename));
+        Ok(archives)
+    }
+}
+
+/// Информация о сохраненном архивном файле журнала аудита
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditArchiveInfo {
+    /// Имя файла архива
+    pub filename: String,
+    /// Размер файла в байтах
+    pub size_bytes: u64,
+    /// Время создания/модификации файла
+    pub created_at: String,
+    /// Количество записей в архиве (если удалось определить)
+    pub records_count: Option<usize>,
 }

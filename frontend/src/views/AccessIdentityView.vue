@@ -9,6 +9,7 @@ import {
   NumberInput,
   SearchInput,
   StatusBadge,
+  BaseModal,
   ConfirmModal
 } from '@/components/common'
 import { useI18n } from '@/i18n'
@@ -341,6 +342,62 @@ function handleExportLogs() {
   document.body.appendChild(downloadAnchor)
   downloadAnchor.click()
   downloadAnchor.remove()
+}
+
+const importFileInputRef = ref<HTMLInputElement | null>(null)
+const showImportModal = ref(false)
+const importedLogsPreview = ref<any[]>([])
+const importErrorMessage = ref('')
+const isImporting = ref(false)
+
+function triggerImportFile() {
+  importErrorMessage.value = ''
+  importedLogsPreview.value = []
+  importFileInputRef.value?.click()
+}
+
+function handleImportFileSelected(e: Event) {
+  const target = e.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    const file = target.files[0]
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string
+        const parsed = JSON.parse(text)
+        const records = Array.isArray(parsed) ? parsed : (parsed.records || [])
+        if (records.length === 0) {
+          importErrorMessage.value = t('accessIdentity.invalidArchiveFormat')
+          return
+        }
+        importedLogsPreview.value = records
+        showImportModal.value = true
+      } catch (err) {
+        importErrorMessage.value = t('accessIdentity.invalidArchiveFormat')
+      } finally {
+        target.value = ''
+      }
+    }
+    reader.readAsText(file)
+  }
+}
+
+async function executeImportLogs() {
+  if (importedLogsPreview.value.length === 0) return
+  isImporting.value = true
+  try {
+    const res = await systemApi.importAuditLogs(importedLogsPreview.value)
+    showImportModal.value = false
+    clearNotification.value = t('accessIdentity.importSuccess', { count: res.imported_count })
+    await fetchAuditLogs()
+    setTimeout(() => {
+      clearNotification.value = ''
+    }, 4000)
+  } catch (err) {
+    console.error('Failed to import audit logs:', err)
+  } finally {
+    isImporting.value = false
+  }
 }
 
 const filteredAuditLogs = computed(() => {
@@ -963,6 +1020,24 @@ function clearFilters() {
                 <span class="material-symbols-outlined text-[18px]">download</span>
               </button>
 
+              <!-- Import Archive Button -->
+              <input
+                ref="importFileInputRef"
+                type="file"
+                accept=".json"
+                class="hidden"
+                @change="handleImportFileSelected"
+              />
+              <button
+                v-if="authStore.isSuperuser || authStore.canManageSecurity"
+                type="button"
+                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                :title="t('accessIdentity.importArchive')"
+                @click="triggerImportFile"
+              >
+                <span class="material-symbols-outlined text-[18px]">upload_file</span>
+              </button>
+
               <!-- Clear Logs Button -->
               <button
                 v-if="authStore.isSuperuser || authStore.canManageSecurity"
@@ -1159,5 +1234,52 @@ function clearFilters() {
       :loading="isClearingLogs"
       @confirm="handleClearLogs"
     />
+
+    <!-- Modal: Import Audit Archive Preview -->
+    <BaseModal
+      v-model="showImportModal"
+      :title="t('accessIdentity.importArchiveTitle')"
+      icon="upload_file"
+      max-width="max-w-md"
+    >
+      <div class="space-y-4">
+        <p class="text-xs text-on-surface-variant">
+          {{ t('accessIdentity.importArchiveDesc') }}
+        </p>
+
+        <div class="p-3 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary-fixed-dim text-lg">description</span>
+            <span class="text-xs font-bold text-on-surface">{{ t('accessIdentity.recordsToImport', { count: importedLogsPreview.length }) }}</span>
+          </div>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary-fixed-dim font-bold">JSON</span>
+        </div>
+
+        <div v-if="importErrorMessage" class="p-2.5 bg-error/10 border border-error/30 rounded-lg text-xs text-error">
+          {{ importErrorMessage }}
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-end gap-2 w-full">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            @click="showImportModal = false"
+          >
+            {{ t('common.cancel') }}
+          </AppButton>
+          <AppButton
+            variant="primary"
+            size="sm"
+            icon="upload"
+            :loading="isImporting"
+            @click="executeImportLogs"
+          >
+            {{ t('accessIdentity.importArchive') }}
+          </AppButton>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>

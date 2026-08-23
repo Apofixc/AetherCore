@@ -15,10 +15,19 @@ import {
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { systemApi, type SystemInfo, type LogProvider } from '@/api/system'
+import { settingsApi } from '@/api/settings'
 
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
+
+// Retention & Rotation state
+const auditRetentionDays = ref(90)
+const isSavingRetention = ref(false)
+const showRotateModal = ref(false)
+const rotateDays = ref(90)
+const rotateSaveArchive = ref(true)
+const isRotating = ref(false)
 
 interface SessionItem {
   id: string
@@ -173,24 +182,55 @@ function handleFileSelected(e: Event) {
 }
 
 function requestRotateAudit() {
-  confirmModalConfig.value = {
-    title: t('system.confirmRotateTitle'),
-    message: t('system.confirmRotateMsg'),
-    variant: 'warning',
-    icon: 'history',
-    confirmText: t('system.rotateAudit'),
-    action: () => {
-      logs.value.unshift({
-        id: String(Date.now()),
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        level: 'INFO',
-        source: 'aethercore.audit.rotator',
-        message: 'Audit log rotated: active log archived to audit_archive_2026_08.db'
-      })
-      notify(t('system.rotateAudit') + ' - OK')
+  rotateDays.value = auditRetentionDays.value
+  showRotateModal.value = true
+}
+
+async function loadMaintenanceSettings() {
+  try {
+    const maint = await settingsApi.getMaintenanceSettings()
+    if (maint && maint.audit_retention_days) {
+      auditRetentionDays.value = maint.audit_retention_days
+      rotateDays.value = maint.audit_retention_days
     }
+  } catch (err) {
+    console.debug('Failed to load maintenance settings:', err)
   }
-  showConfirmModal.value = true
+}
+
+async function updateRetentionDays(days: number) {
+  auditRetentionDays.value = days
+  rotateDays.value = days
+  isSavingRetention.value = true
+  try {
+    await settingsApi.updateMaintenanceSettings({
+      audit_retention_days: days
+    })
+    notify(t('common.save') + ' - OK')
+  } catch (err) {
+    console.error('Failed to update retention settings:', err)
+  } finally {
+    isSavingRetention.value = false
+  }
+}
+
+async function executeRotateAudit() {
+  isRotating.value = true
+  try {
+    const res = await systemApi.rotateAuditLogs({
+      days: rotateDays.value,
+      archive: rotateSaveArchive.value
+    })
+    showRotateModal.value = false
+    const archiveText = res.archive_filename
+      ? t('system.archiveCreated', { file: res.archive_filename })
+      : ''
+    notify(t('system.rotateSuccess', { deleted: res.deleted_count, archive: archiveText }))
+  } catch (err) {
+    console.error('Failed to rotate audit logs:', err)
+  } finally {
+    isRotating.value = false
+  }
 }
 
 function requestRevokeSession(s: SessionItem) {
@@ -312,6 +352,7 @@ async function loadSystemData() {
     if (providers && providers.length > 0) {
       logProviders.value = providers
     }
+    await loadMaintenanceSettings()
   } catch (e) {
     console.warn('Could not fetch system info:', e)
   }
@@ -524,6 +565,29 @@ onUnmounted(() => {
                     {{ t('system.autoBackupEnabled') }}
                   </StatusBadge>
                 </div>
+              </div>
+            </div>
+
+            <!-- Audit Retention Policy Bar -->
+            <div class="mt-4 pt-4 border-t border-outline-variant/30 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <span class="text-xs font-bold text-on-surface block">{{ t('system.auditRetentionTitle') }}</span>
+                <span class="text-[11px] text-on-surface-variant block">{{ t('system.auditRetentionDesc') }}</span>
+              </div>
+              <div class="flex items-center gap-1.5 bg-surface-container-highest/60 p-1 rounded-lg border border-outline-variant/40">
+                <button
+                  v-for="d in [30, 60, 90, 180, 365]"
+                  :key="d"
+                  type="button"
+                  class="px-2.5 py-1 rounded text-xs font-mono font-medium transition-all cursor-pointer"
+                  :class="auditRetentionDays === d
+                    ? 'bg-primary text-on-primary font-bold shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
+                  :disabled="isSavingRetention"
+                  @click="updateRetentionDays(d)"
+                >
+                  {{ d }}d
+                </button>
               </div>
             </div>
           </BaseCard>
@@ -842,6 +906,73 @@ onUnmounted(() => {
         >
           {{ t('common.close') }}
         </AppButton>
+      </template>
+    </BaseModal>
+
+    <!-- Modal: Rotate Audit Dialog -->
+    <BaseModal
+      v-model="showRotateModal"
+      :title="t('system.rotateAuditModalTitle')"
+      icon="history"
+      max-width="max-w-md"
+    >
+      <div class="space-y-4">
+        <p class="text-xs text-on-surface-variant">
+          {{ t('system.confirmRotateMsg') }}
+        </p>
+
+        <div>
+          <label class="block text-xs font-bold text-on-surface mb-2">
+            {{ t('system.rotateAuditDaysLabel') }}
+          </label>
+          <div class="grid grid-cols-4 gap-2">
+            <button
+              v-for="d in [30, 60, 90, 180]"
+              :key="d"
+              type="button"
+              class="py-2 px-2 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer text-center"
+              :class="rotateDays === d
+                ? 'bg-primary/15 border-primary text-primary-fixed-dim'
+                : 'bg-surface-container-highest border-outline-variant/50 text-on-surface-variant hover:border-outline-variant'"
+              @click="rotateDays = d"
+            >
+              {{ d }} {{ t('system.daysCount', { count: '' }).trim() }}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-2 border-t border-outline-variant/30">
+          <input
+            id="saveArchiveCheck"
+            v-model="rotateSaveArchive"
+            type="checkbox"
+            class="rounded border-outline-variant bg-surface-container-highest text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+          />
+          <label for="saveArchiveCheck" class="text-xs text-on-surface cursor-pointer select-none">
+            {{ t('system.saveArchiveCheckbox') }}
+          </label>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-end gap-2 w-full">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            @click="showRotateModal = false"
+          >
+            {{ t('common.cancel') }}
+          </AppButton>
+          <AppButton
+            variant="primary"
+            size="sm"
+            icon="history"
+            :loading="isRotating"
+            @click="executeRotateAudit"
+          >
+            {{ t('system.rotateAudit') }}
+          </AppButton>
+        </div>
       </template>
     </BaseModal>
   </div>

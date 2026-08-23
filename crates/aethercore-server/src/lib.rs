@@ -100,9 +100,10 @@ fn default_audit_retention_days() -> u32 {
 fn spawn_audit_retention_worker(state: &AppState) {
     let db = state.db.clone();
     let audit_service = state.audit_service.clone();
+    let archive_dir = std::path::PathBuf::from("data/archives");
 
     tokio::spawn(async move {
-        // Запуск раз в 24 часа для удаления записей аудита старше audit_retention_days
+        // Запуск раз в 24 часа для удаления записей аудита старше audit_retention_days с автоархивацией
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 3600));
         loop {
             interval.tick().await;
@@ -113,11 +114,11 @@ fn spawn_audit_retention_worker(state: &AppState) {
             };
 
             if retention_days > 0 {
-                match audit_service.prune_old_logs(retention_days).await {
-                    Ok(pruned) if pruned > 0 => {
+                match audit_service.archive_and_prune(retention_days, true, &archive_dir).await {
+                    Ok((pruned, archive_opt)) if pruned > 0 => {
                         info!(
-                            "Audit retention worker: pruned {} log records older than {} days",
-                            pruned, retention_days
+                            "Audit retention worker: pruned {} log records older than {} days (archive: {:?})",
+                            pruned, retention_days, archive_opt
                         );
                     }
                     Ok(_) => {}

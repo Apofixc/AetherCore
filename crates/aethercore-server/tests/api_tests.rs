@@ -614,4 +614,138 @@ async fn test_settings_endpoints() {
     assert_eq!(put_maint_res.status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn test_audit_clear_rotate_and_import() {
+    let (app, state) = setup_test_app().await;
+
+    let login_payload = serde_json::json!({
+        "username": "root",
+        "password": "root"
+    });
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&login_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let login_res: LoginResponse = serde_json::from_slice(&bytes).unwrap();
+    let token = login_res.token;
+
+    // 1. Создаем тестовые записи аудита
+    for i in 1..=5 {
+        state
+            .audit_service
+            .log(
+                Some("usr-1"),
+                Some("admin"),
+                &format!("action.{}", i),
+                "resource/test",
+                "success",
+                Some("test details"),
+                Some("127.0.0.1"),
+            )
+            .await
+            .unwrap();
+    }
+
+    // Проверяем количество
+    let count = state.audit_service.count_logs(None).await.unwrap();
+    assert!(count >= 5);
+
+    // 2. Тест POST /api/v1/system/audit/rotate (ротация с днями = 0 для очистки тестовых)
+    let rotate_payload = serde_json::json!({
+        "days": 0,
+        "archive": true
+    });
+
+    let rotate_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/system/audit/rotate")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&rotate_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rotate_res.status(), StatusCode::OK);
+    let rotate_bytes = rotate_res.into_body().collect().await.unwrap().to_bytes();
+    let rotate_data: serde_json::Value = serde_json::from_slice(&rotate_bytes).unwrap();
+    assert_eq!(rotate_data["success"], true);
+
+    // 3. Тест POST /api/v1/system/audit/import
+    let import_payload = serde_json::json!({
+        "records": [
+            {
+                "id": 9999,
+                "user_id": "usr-restored",
+                "username": "restored_admin",
+                "action": "restored.action",
+                "resource": "audit/archive",
+                "status": "success",
+                "details": "Restored event from cold archive",
+                "ip_address": "10.0.0.1",
+                "created_at": "2026-08-01T12:00:00Z"
+            }
+        ]
+    });
+
+    let import_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/system/audit/import")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&import_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(import_res.status(), StatusCode::OK);
+    let import_bytes = import_res.into_body().collect().await.unwrap().to_bytes();
+    let import_data: serde_json::Value = serde_json::from_slice(&import_bytes).unwrap();
+    assert_eq!(import_data["success"], true);
+    assert_eq!(import_data["imported_count"], 1);
+
+    // 4. Тест DELETE /api/v1/system/audit (ручная очистка)
+    let clear_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/system/audit")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(clear_res.status(), StatusCode::OK);
+    let clear_bytes = clear_res.into_body().collect().await.unwrap().to_bytes();
+    let clear_data: serde_json::Value = serde_json::from_slice(&clear_bytes).unwrap();
+    assert_eq!(clear_data["success"], true);
+
+    // В журнале должен остаться только 1 лог (о факте очистки audit.clear)
+    let logs_after = state.audit_service.list_logs(50, None, None).await.unwrap();
+    assert_eq!(logs_after.len(), 1);
+    assert_eq!(logs_after[0].action, "audit.clear");
+}
+
 
