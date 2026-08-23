@@ -58,10 +58,15 @@ export function setLocale(locale: Locale) {
   }
 }
 
+export function te(path: string): boolean {
+  return t(path) !== path
+}
+
 export function useI18n() {
   return {
     locale: computed(() => currentLocale.value),
     setLocale,
-    t
+    t,
+    te
   }
 }

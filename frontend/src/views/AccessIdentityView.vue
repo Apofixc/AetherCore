@@ -19,7 +19,7 @@ import { settingsApi } from '@/api/settings'
 import { systemApi } from '@/api/system'
 import { usersApi } from '@/api/users'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
 
@@ -501,6 +501,23 @@ function clearFilters() {
   selectedAuditCategory.value = 'all'
   currentPage.value = 1
 }
+
+function getCategoryName(cat: PermissionCategory): string {
+  const key = `permissions.categories.${cat.id}`
+  return te(key) ? t(key) : cat.name
+}
+
+function getItemName(item: PermissionItem): string {
+  const idKey = item.id || item.code.replace('.', '_')
+  const key = `permissions.items.${idKey}.name`
+  return te(key) ? t(key) : item.name
+}
+
+function getItemDescription(item: PermissionItem): string {
+  const idKey = item.id || item.code.replace('.', '_')
+  const key = `permissions.items.${idKey}.desc`
+  return te(key) ? t(key) : item.description
+}
 </script>
 
 <template>
@@ -861,7 +878,7 @@ function clearFilters() {
                     <tr class="bg-surface-container-highest/40 font-bold border-t border-outline-variant/60">
                       <td class="py-2.5 px-lg text-primary-fixed-dim flex items-center gap-2">
                         <span class="material-symbols-outlined text-base">{{ cat.icon }}</span>
-                        <span>{{ cat.name }} <span class="text-xs font-normal opacity-80">({{ cat.items.length }})</span></span>
+                        <span>{{ getCategoryName(cat) }} <span class="text-xs font-normal opacity-80">({{ cat.items.length }})</span></span>
                       </td>
                       <td class="py-2.5 px-lg text-center text-[10px] text-on-surface-variant font-body-mono uppercase">{{ t('common.all') }}</td>
                       <td class="py-2.5 px-lg text-center">
@@ -907,10 +924,10 @@ function clearFilters() {
                     >
                       <td class="py-3 px-lg pl-10">
                         <div class="font-bold text-on-surface">
-                          {{ item.name }}
+                          {{ getItemName(item) }}
                           <span class="font-body-mono text-[11px] text-on-surface-variant font-normal">({{ item.code }})</span>
                         </div>
-                        <div class="text-[10px] text-on-surface-variant">{{ item.description }}</div>
+                        <div class="text-[10px] text-on-surface-variant">{{ getItemDescription(item) }}</div>
                       </td>
                       <!-- Superuser (always checked & disabled) -->
                       <td class="py-3 px-lg text-center">

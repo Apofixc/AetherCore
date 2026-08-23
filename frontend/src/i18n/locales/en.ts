@@ -597,5 +597,47 @@ export const en = {
     action: 'Action',
     user: 'User',
     details: 'Details',
-  }
+  },
+  permissions: {
+    categories: {
+      modules: 'Modules',
+      users: 'Users',
+      access: 'Access & Security',
+      system: 'System & Settings',
+    },
+    items: {
+      modules_view: {
+        name: 'View Modules',
+        desc: 'View installed plugins, telemetry and module runtime state',
+      },
+      modules_manage: {
+        name: 'Manage Modules',
+        desc: 'Install, update, configure and enable/disable dynamic WASM modules',
+      },
+      users_view: {
+        name: 'View Users',
+        desc: 'View users directory and account details',
+      },
+      users_manage: {
+        name: 'Manage Users',
+        desc: 'Create, edit, block, unlock, and delete user accounts',
+      },
+      access_view: {
+        name: 'View Access & Audit',
+        desc: 'View security policies, MFA config, IP whitelist, roles matrix and audit logs',
+      },
+      access_manage: {
+        name: 'Manage Access & Audit',
+        desc: 'Configure security policies, 2FA, IP restrictions, roles matrix and rotate audit logs',
+      },
+      system_view: {
+        name: 'View System',
+        desc: 'View system status, health, logs, storage stats and settings',
+      },
+      system_manage: {
+        name: 'Manage System',
+        desc: 'Modify system parameters, create backups, restore, rotate logs and maintenance',
+      },
+    },
+  },
 }
