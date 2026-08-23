@@ -281,16 +281,24 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
+  async function logout() {
     stopInactivityTracker()
-    token.value = null
-    tempToken.value = null
-    requires2fa.value = false
-    user.value = null
-    avatar.value = null
-    localStorage.removeItem('aether_token')
-    sessionStorage.removeItem('aether_token')
-    api.setToken(null)
+    try {
+      if (token.value) {
+        await authApi.logout()
+      }
+    } catch (e) {
+      console.debug('Backend logout notify skipped:', e)
+    } finally {
+      token.value = null
+      tempToken.value = null
+      requires2fa.value = false
+      user.value = null
+      avatar.value = null
+      localStorage.removeItem('aether_token')
+      sessionStorage.removeItem('aether_token')
+      api.setToken(null)
+    }
   }
 
   return {

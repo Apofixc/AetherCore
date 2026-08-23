@@ -42,8 +42,16 @@ impl SessionService {
         user_agent: &str,
         ttl_seconds: i64,
     ) -> Result<SessionRecord> {
-        let session_id = Uuid::new_v4();
         let now = Utc::now();
+        let now_rfc = now.to_rfc3339();
+
+        // 1. Очищаем истекшие сессии
+        let _ = sqlx::query("DELETE FROM active_sessions WHERE expires_at <= ?")
+            .bind(&now_rfc)
+            .execute(self.db.writer())
+            .await;
+
+        let session_id = Uuid::new_v4();
         let expires_at = now + Duration::seconds(ttl_seconds.max(60));
         let roles_json = serde_json::to_string(roles).unwrap_or_else(|_| "[]".to_string());
 

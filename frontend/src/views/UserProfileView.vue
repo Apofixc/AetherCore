@@ -1817,7 +1817,7 @@ function handleSessionConfirm() {
             variant="ghost"
             size="sm"
             icon="logout"
-            @click="authStore.logout(); router.push('/login')"
+            @click="async () => { await authStore.logout(); router.push('/login') }"
           >
             {{ t('auth.logout') }}
           </AppButton>

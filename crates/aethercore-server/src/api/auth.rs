@@ -26,6 +26,7 @@ use uuid::Uuid;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", post(login_handler))
+        .route("/logout", post(logout_handler))
         .route("/me", get(me_handler))
         .route("/config", get(auth_config_handler))
         .route("/2fa/verify-login", post(verify_login_2fa_handler))
@@ -942,5 +943,43 @@ async fn terminate_my_all_sessions_handler(
     Ok(Json(serde_json::json!({
         "success": true,
         "terminated_count": terminated_count
+    })))
+}
+
+/// POST /api/v1/auth/logout
+///
+/// Завершить текущий сеанс оператора и отозвать активную глобальную сессию.
+async fn logout_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
+    if let Some(session_id) = claims.session_id {
+        state
+            .session_service
+            .revoke_session(session_id)
+            .await
+            .map_err(|e| {
+                let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                (status, Json(e.to_api_response(locale)))
+            })?;
+    }
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "auth.logout",
+            "auth",
+            "success",
+            claims.session_id.map(|s| format!("session_id: {}", s)).as_deref(),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Logged out successfully"
     })))
 }
