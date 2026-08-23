@@ -121,39 +121,6 @@ async function fetchRolesAndUsers() {
   }
 }
 
-async function fetchAuditLogs() {
-  try {
-    const rawLogs = await systemApi.getAuditLogs({ limit: 50 })
-    if (Array.isArray(rawLogs)) {
-      auditLogs.value = rawLogs.map((l: any) => {
-        const isFailed = l.status === 'failed' || l.status === 'forbidden'
-        let actionType: 'role' | 'login' | 'policy' | 'failed' | 'backup' = 'policy'
-        if (isFailed) {
-          actionType = 'failed'
-        } else if (l.action && (l.action.includes('login') || l.action.includes('2fa'))) {
-          actionType = 'login'
-        } else if (l.action && l.action.includes('backup')) {
-          actionType = 'backup'
-        } else if (l.action && (l.action.includes('role') || l.action.includes('user'))) {
-          actionType = 'role'
-        }
-
-        return {
-          id: `#LOG-${l.id != null ? String(l.id).padStart(4, '0') : Math.floor(Math.random() * 10000)}`,
-          timestamp: l.created_at ? new Date(l.created_at).toLocaleString() : new Date().toLocaleString(),
-          user: l.username || 'system',
-          action: l.action || 'Action',
-          actionType,
-          resource: l.resource || 'system',
-          details: l.details || (l.status === 'success' ? `${l.action} on ${l.resource}` : `Status: ${l.status}`),
-          ip: l.ip_address || '127.0.0.1'
-        }
-      })
-    }
-  } catch (err) {
-    console.debug('Failed to fetch audit logs:', err)
-  }
-}
 
 onMounted(async () => {
   await Promise.all([
@@ -287,8 +254,59 @@ interface AuditLogEntry {
 
 const auditSearch = ref('')
 const auditLogs = ref<AuditLogEntry[]>([])
-
+const selectedAuditCategory = ref<'all' | 'auth' | 'role' | 'policy' | 'module' | 'failed'>('all')
+const showFilterDropdown = ref(false)
+const pageSize = ref(25)
+const currentPage = ref(1)
+const totalLogsCount = ref(0)
 const isRefreshingLogs = ref(false)
+
+const auditCategories = computed(() => [
+  { id: 'all', label: t('accessIdentity.filterAll'), icon: 'list_alt' },
+  { id: 'auth', label: t('accessIdentity.filterAuth'), icon: 'login' },
+  { id: 'role', label: t('accessIdentity.filterRoles'), icon: 'badge' },
+  { id: 'policy', label: t('accessIdentity.filterPolicies'), icon: 'security' },
+  { id: 'module', label: t('accessIdentity.filterModules'), icon: 'extension' },
+  { id: 'failed', label: t('accessIdentity.filterFailed'), icon: 'warning' }
+])
+
+async function fetchAuditLogs() {
+  try {
+    const [rawLogs, count] = await Promise.all([
+      systemApi.getAuditLogs({ limit: 500 }),
+      systemApi.getAuditLogsCount()
+    ])
+    totalLogsCount.value = count
+    if (Array.isArray(rawLogs)) {
+      auditLogs.value = rawLogs.map((l: any) => {
+        const isFailed = l.status === 'failed' || l.status === 'forbidden'
+        let actionType: 'role' | 'login' | 'policy' | 'failed' | 'backup' = 'policy'
+        if (isFailed) {
+          actionType = 'failed'
+        } else if (l.action && (l.action.includes('login') || l.action.includes('2fa') || l.action.includes('auth'))) {
+          actionType = 'login'
+        } else if (l.action && l.action.includes('backup')) {
+          actionType = 'backup'
+        } else if (l.action && (l.action.includes('role') || l.action.includes('user'))) {
+          actionType = 'role'
+        }
+
+        return {
+          id: `#LOG-${l.id != null ? String(l.id).padStart(4, '0') : Math.floor(Math.random() * 10000)}`,
+          timestamp: l.created_at ? new Date(l.created_at).toLocaleString() : new Date().toLocaleString(),
+          user: l.username || 'system',
+          action: l.action || 'Action',
+          actionType,
+          resource: l.resource || 'system',
+          details: l.details || (l.status === 'success' ? `${l.action} on ${l.resource}` : `Status: ${l.status}`),
+          ip: l.ip_address || '127.0.0.1'
+        }
+      })
+    }
+  } catch (err) {
+    console.debug('Failed to fetch audit logs:', err)
+  }
+}
 
 async function handleRefreshLogs() {
   isRefreshingLogs.value = true
@@ -297,7 +315,8 @@ async function handleRefreshLogs() {
 }
 
 function handleExportLogs() {
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(auditLogs.value, null, 2))
+  const exportData = filteredAuditLogs.value.length > 0 ? filteredAuditLogs.value : auditLogs.value
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2))
   const downloadAnchor = document.createElement('a')
   downloadAnchor.setAttribute('href', dataStr)
   downloadAnchor.setAttribute('download', `security_audit_logs_${new Date().toISOString().slice(0, 10)}.json`)
@@ -307,17 +326,82 @@ function handleExportLogs() {
 }
 
 const filteredAuditLogs = computed(() => {
-  if (!auditSearch.value.trim()) return auditLogs.value
-  const query = auditSearch.value.toLowerCase()
-  return auditLogs.value.filter((log: AuditLogEntry) =>
-    log.id.toLowerCase().includes(query) ||
-    log.user.toLowerCase().includes(query) ||
-    log.action.toLowerCase().includes(query) ||
-    log.resource.toLowerCase().includes(query) ||
-    log.details.toLowerCase().includes(query) ||
-    log.ip.toLowerCase().includes(query)
-  )
+  let logs = auditLogs.value
+
+  // Category filter
+  if (selectedAuditCategory.value !== 'all') {
+    if (selectedAuditCategory.value === 'failed') {
+      logs = logs.filter(l => l.actionType === 'failed')
+    } else if (selectedAuditCategory.value === 'auth') {
+      logs = logs.filter(l => l.actionType === 'login' || l.action.includes('auth') || l.action.includes('login') || l.action.includes('2fa'))
+    } else if (selectedAuditCategory.value === 'role') {
+      logs = logs.filter(l => l.actionType === 'role' || l.action.includes('role') || l.action.includes('user'))
+    } else if (selectedAuditCategory.value === 'policy') {
+      logs = logs.filter(l => l.actionType === 'policy' || l.action.includes('policy') || l.action.includes('settings'))
+    } else if (selectedAuditCategory.value === 'module') {
+      logs = logs.filter(l => l.action.includes('module') || l.resource.includes('module'))
+    }
+  }
+
+  // Search query filter
+  if (auditSearch.value.trim()) {
+    const query = auditSearch.value.toLowerCase().trim()
+    logs = logs.filter((log: AuditLogEntry) =>
+      log.id.toLowerCase().includes(query) ||
+      log.user.toLowerCase().includes(query) ||
+      log.action.toLowerCase().includes(query) ||
+      log.resource.toLowerCase().includes(query) ||
+      log.details.toLowerCase().includes(query) ||
+      log.ip.toLowerCase().includes(query)
+    )
+  }
+
+  return logs
 })
+
+const totalPages = computed(() => {
+  if (pageSize.value === -1) return 1
+  return Math.max(1, Math.ceil(filteredAuditLogs.value.length / pageSize.value))
+})
+
+const paginatedAuditLogs = computed(() => {
+  if (pageSize.value === -1) return filteredAuditLogs.value
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredAuditLogs.value.slice(start, start + pageSize.value)
+})
+
+const displayedRange = computed(() => {
+  const total = filteredAuditLogs.value.length
+  if (total === 0) return { from: 0, to: 0, total: 0 }
+  if (pageSize.value === -1) return { from: 1, to: total, total }
+  const from = (currentPage.value - 1) * pageSize.value + 1
+  const to = Math.min(currentPage.value * pageSize.value, total)
+  return { from, to, total }
+})
+
+function prevPage() {
+  if (currentPage.value > 1) {
+    currentPage.value--
+  }
+}
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+  }
+}
+
+function selectCategory(catId: string) {
+  selectedAuditCategory.value = catId as any
+  currentPage.value = 1
+  showFilterDropdown.value = false
+}
+
+function clearFilters() {
+  auditSearch.value = ''
+  selectedAuditCategory.value = 'all'
+  currentPage.value = 1
+}
 </script>
 
 <template>
@@ -776,7 +860,12 @@ const filteredAuditLogs = computed(() => {
                 <span class="material-symbols-outlined text-xl">verified_user</span>
               </div>
               <div>
-                <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.securityAuditLog') }}</h2>
+                <div class="flex items-center gap-2">
+                  <h2 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.securityAuditLog') }}</h2>
+                  <span v-if="totalLogsCount > 0" class="px-2 py-0.5 rounded-full text-[10px] font-body-mono font-bold bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
+                    {{ totalLogsCount }}
+                  </span>
+                </div>
                 <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>
               </div>
             </div>
@@ -787,16 +876,50 @@ const filteredAuditLogs = computed(() => {
                 v-model="auditSearch"
                 :placeholder="t('accessIdentity.searchAuditPlaceholder')"
                 width-class="w-64"
+                @input="currentPage = 1"
               />
 
-              <!-- Filter Button -->
-              <button
-                type="button"
-                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
-                :title="t('common.filter')"
-              >
-                <span class="material-symbols-outlined text-[18px]">filter_list</span>
-              </button>
+              <!-- Filter Dropdown Container -->
+              <div class="relative">
+                <button
+                  type="button"
+                  class="h-8 px-2.5 bg-surface-container-highest border border-outline-variant rounded-lg text-xs font-medium hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
+                  :class="selectedAuditCategory !== 'all' ? 'text-primary-fixed-dim border-primary-fixed-dim/50 bg-primary-fixed-dim/10' : 'text-on-surface-variant'"
+                  :title="t('common.filter')"
+                  @click="showFilterDropdown = !showFilterDropdown"
+                >
+                  <span class="material-symbols-outlined text-[18px]">filter_list</span>
+                  <span v-if="selectedAuditCategory !== 'all'" class="text-[11px] font-bold">
+                    {{ auditCategories.find(c => c.id === selectedAuditCategory)?.label }}
+                  </span>
+                </button>
+
+                <!-- Filter Popover -->
+                <div
+                  v-if="showFilterDropdown"
+                  class="absolute right-0 top-10 w-52 bg-surface-container-high border border-outline-variant rounded-lg shadow-xl z-20 py-1 divide-y divide-outline-variant/30 animate-fade-in"
+                >
+                  <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    {{ t('accessIdentity.filterCategory') }}
+                  </div>
+                  <div class="py-1">
+                    <button
+                      v-for="cat in auditCategories"
+                      :key="cat.id"
+                      type="button"
+                      class="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface-variant/40 transition-colors cursor-pointer text-left"
+                      :class="selectedAuditCategory === cat.id ? 'text-primary-fixed-dim font-bold bg-primary-fixed-dim/10' : 'text-on-surface'"
+                      @click="selectCategory(cat.id)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[16px]">{{ cat.icon }}</span>
+                        <span>{{ cat.label }}</span>
+                      </div>
+                      <span v-if="selectedAuditCategory === cat.id" class="material-symbols-outlined text-[16px]">check</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <!-- Refresh Button -->
               <button
@@ -820,7 +943,29 @@ const filteredAuditLogs = computed(() => {
             </div>
           </div>
 
-          <!-- Table -->
+          <!-- Active Filters Bar (when filter is applied) -->
+          <div v-if="selectedAuditCategory !== 'all' || auditSearch.trim()" class="px-lg py-2 bg-surface-container-highest/30 border-b border-outline-variant flex items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-on-surface-variant text-[11px]">{{ t('common.filter') }}:</span>
+              <span v-if="selectedAuditCategory !== 'all'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-primary-fixed-dim/15 text-primary-fixed-dim text-[11px] font-bold">
+                {{ auditCategories.find(c => c.id === selectedAuditCategory)?.label }}
+                <button type="button" class="hover:opacity-75 cursor-pointer ml-0.5" @click="selectedAuditCategory = 'all'">✕</button>
+              </span>
+              <span v-if="auditSearch.trim()" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-variant text-on-surface text-[11px]">
+                "{{ auditSearch }}"
+                <button type="button" class="hover:opacity-75 cursor-pointer ml-0.5" @click="auditSearch = ''">✕</button>
+              </span>
+            </div>
+            <button
+              type="button"
+              class="text-[11px] text-primary-fixed-dim hover:underline font-medium cursor-pointer shrink-0"
+              @click="clearFilters"
+            >
+              {{ t('common.clear') }}
+            </button>
+          </div>
+
+          <!-- Table Content -->
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead class="bg-surface-container-highest/60 text-[10px] text-on-surface-variant uppercase font-bold tracking-wider border-b border-outline-variant">
@@ -834,9 +979,9 @@ const filteredAuditLogs = computed(() => {
                   <th class="py-3 px-lg text-right">{{ t('accessIdentity.ipAddress') }}</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-outline-variant/30 text-xs">
+              <tbody v-if="paginatedAuditLogs.length > 0" class="divide-y divide-outline-variant/30 text-xs">
                 <tr
-                  v-for="log in filteredAuditLogs"
+                  v-for="log in paginatedAuditLogs"
                   :key="log.id"
                   class="hover:bg-surface-variant/20 transition-colors"
                 >
@@ -845,8 +990,14 @@ const filteredAuditLogs = computed(() => {
                   <td class="py-3 px-lg font-bold text-on-surface font-body-mono">{{ log.user }}</td>
                   <td class="py-3 px-lg">
                     <span
-                      v-if="log.actionType === 'role' || log.actionType === 'policy'"
+                      v-if="log.actionType === 'role'"
                       class="bg-primary-fixed-dim/10 text-primary-fixed-dim border border-primary-fixed-dim/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                    >
+                      {{ log.action }}
+                    </span>
+                    <span
+                      v-else-if="log.actionType === 'policy'"
+                      class="bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase"
                     >
                       {{ log.action }}
                     </span>
@@ -877,35 +1028,86 @@ const filteredAuditLogs = computed(() => {
                     {{ log.ip }}
                   </td>
                 </tr>
-                <tr v-if="filteredAuditLogs.length === 0">
-                  <td colspan="7" class="py-8 text-center text-on-surface-variant font-medium">
-                    {{ auditSearch ? t('users.noUsersFound') : t('accessIdentity.securityAuditLogDesc') }}
-                  </td>
-                </tr>
               </tbody>
             </table>
+
+            <!-- Empty State -->
+            <div v-if="filteredAuditLogs.length === 0" class="py-12 px-lg flex flex-col items-center justify-center text-center">
+              <div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant mb-3 border border-outline-variant">
+                <span class="material-symbols-outlined text-2xl">verified_user</span>
+              </div>
+              <h3 class="font-title-sm font-bold text-on-surface">{{ t('accessIdentity.noAuditLogs') }}</h3>
+              <p class="text-xs text-on-surface-variant mt-1 max-w-md">
+                {{ t('accessIdentity.noAuditLogsDesc') }}
+              </p>
+              <div class="mt-4 flex items-center gap-2">
+                <button
+                  v-if="selectedAuditCategory !== 'all' || auditSearch.trim()"
+                  type="button"
+                  class="px-3 py-1.5 bg-surface-container-highest hover:bg-surface-variant text-xs text-on-surface font-medium rounded-lg border border-outline-variant transition-colors cursor-pointer"
+                  @click="clearFilters"
+                >
+                  {{ t('common.clear') }}
+                </button>
+                <button
+                  type="button"
+                  class="px-3 py-1.5 bg-primary-fixed-dim/15 hover:bg-primary-fixed-dim/25 text-xs text-primary-fixed-dim font-bold rounded-lg border border-primary-fixed-dim/30 transition-colors cursor-pointer flex items-center gap-1.5"
+                  @click="handleRefreshLogs"
+                >
+                  <span class="material-symbols-outlined text-sm" :class="{ 'animate-spin': isRefreshingLogs }">refresh</span>
+                  {{ t('common.refresh') }}
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- Pagination Footer -->
           <div class="p-md border-t border-outline-variant bg-surface-container flex items-center justify-between flex-wrap gap-md">
+            <!-- Showing info -->
             <div class="text-xs text-on-surface-variant font-body-mono">
-              {{ t('common.totalEvents', { total: filteredAuditLogs.length, count: Math.min(filteredAuditLogs.length, 5) }) }}
+              {{ t('accessIdentity.showingOf', { from: displayedRange.from, to: displayedRange.to, total: displayedRange.total }) }}
             </div>
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="px-3 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40 cursor-pointer"
-                disabled
-              >
-                {{ t('common.previous') }}
-              </button>
-              <span class="text-xs text-on-surface-variant font-body-mono px-2">{{ t('common.pageOf', { page: 1, total: 1 }) }}</span>
-              <button
-                type="button"
-                class="px-3 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface hover:bg-surface-variant transition-colors cursor-pointer"
-              >
-                {{ t('common.next') }}
-              </button>
+
+            <!-- Controls: Rows per page + Page Navigation -->
+            <div class="flex items-center gap-4 flex-wrap">
+              <!-- Rows per page selector -->
+              <div class="flex items-center gap-2 text-xs text-on-surface-variant">
+                <span>{{ t('accessIdentity.rowsPerPage') }}</span>
+                <select
+                  v-model="pageSize"
+                  class="bg-surface-container-highest border border-outline-variant rounded-md px-2 py-1 text-xs text-on-surface focus:outline-none focus:border-primary-fixed-dim cursor-pointer font-body-mono"
+                  @change="currentPage = 1"
+                >
+                  <option :value="10">10</option>
+                  <option :value="25">25</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                  <option :value="-1">{{ t('common.all') }}</option>
+                </select>
+              </div>
+
+              <!-- Page Buttons -->
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  class="px-2.5 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-variant disabled:opacity-40 disabled:hover:bg-surface-container-highest disabled:hover:text-on-surface-variant cursor-pointer transition-colors"
+                  :disabled="currentPage <= 1"
+                  @click="prevPage"
+                >
+                  {{ t('common.previous') }}
+                </button>
+                <span class="text-xs text-on-surface-variant font-body-mono px-2">
+                  {{ t('common.pageOf', { page: currentPage, total: totalPages }) }}
+                </span>
+                <button
+                  type="button"
+                  class="px-2.5 py-1 bg-surface-container-highest border border-outline-variant rounded-lg text-xs text-on-surface hover:bg-surface-variant disabled:opacity-40 disabled:hover:bg-surface-container-highest disabled:hover:text-on-surface-variant cursor-pointer transition-colors"
+                  :disabled="currentPage >= totalPages"
+                  @click="nextPage"
+                >
+                  {{ t('common.next') }}
+                </button>
+              </div>
             </div>
           </div>
         </div>

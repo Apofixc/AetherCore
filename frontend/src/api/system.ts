@@ -44,6 +44,8 @@ export interface LogQueryParams {
 
 export interface AuditQueryParams {
   limit?: number
+  offset?: number
+  search?: string
   after_id?: number
 }
 
@@ -54,9 +56,18 @@ export const systemApi = {
   getAuditLogs: async (params?: AuditQueryParams): Promise<AuditLogEntry[]> => {
     const query = new URLSearchParams()
     if (params?.limit) query.set('limit', params.limit.toString())
+    if (params?.offset !== undefined) query.set('offset', params.offset.toString())
+    if (params?.search) query.set('search', params.search)
     if (params?.after_id) query.set('after_id', params.after_id.toString())
     const qStr = query.toString()
     return api.get<AuditLogEntry[]>(`/api/v1/system/audit${qStr ? `?${qStr}` : ''}`)
+  },
+  getAuditLogsCount: async (search?: string): Promise<number> => {
+    const query = new URLSearchParams()
+    if (search) query.set('search', search)
+    const qStr = query.toString()
+    const res = await api.get<{ total: number }>(`/api/v1/system/audit/count${qStr ? `?${qStr}` : ''}`)
+    return res.total ?? 0
   },
   getProviders: async (): Promise<LogProvider[]> => {
     return api.get<LogProvider[]>('/api/v1/system/logs/providers')

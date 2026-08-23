@@ -95,20 +95,61 @@ impl AuditService {
         Ok(res.last_insert_rowid())
     }
 
-    /// Получить список записей журнала аудита с пагинацией
+    /// Получить общее количество записей журнала аудита с учетом опционального поиска
+    ///
+    /// # Аргументы
+    /// * `search` — Опциональная поисковая подстрока.
+    ///
+    /// # Возвращаемое значение
+    /// Общее количество соответствующих записей.
+    pub async fn count_logs(&self, search: Option<&str>) -> Result<i64> {
+        if let Some(q) = search.filter(|s| !s.trim().is_empty()) {
+            let pattern = format!("%{}%", q.trim());
+            let count: (i64,) = sqlx::query_as(
+                r#"
+                SELECT COUNT(*)
+                FROM audit_logs
+                WHERE username LIKE ? OR action LIKE ? OR resource LIKE ? OR details LIKE ? OR ip_address LIKE ?
+                "#,
+            )
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .fetch_one(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+            Ok(count.0)
+        } else {
+            let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM audit_logs")
+                .fetch_one(self.db.reader())
+                .await
+                .map_err(|e| AppError::database(e.to_string()))?;
+            Ok(count.0)
+        }
+    }
+
+    /// Получить список записей журнала аудита с пагинацией и поиском
     ///
     /// # Аргументы
     /// * `limit` — Максимальное количество возвращаемых записей (ограничивается диапазоном `1..=500`).
-    /// * `after_id` — ID последней прочитанной записи для постраничной пагинации.
+    /// * `offset` — Смещение для постраничной пагинации.
+    /// * `search` — Опциональная строка поиска по пользователю, действию, ресурсу, деталям или IP.
     ///
     /// # Возвращаемое значение
     /// Вектор записей журнала аудита [`AuditLogRecord`].
     ///
     /// # Ошибки
     /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое запроса к SQLite.
-    pub async fn list_logs(&self, limit: u32, after_id: Option<i64>) -> Result<Vec<AuditLogRecord>> {
+    pub async fn list_logs(
+        &self,
+        limit: u32,
+        offset: Option<u64>,
+        search: Option<&str>,
+    ) -> Result<Vec<AuditLogRecord>> {
         let limit = limit.min(500).max(1) as i64;
-        let after_id = after_id.unwrap_or(0);
+        let offset = offset.unwrap_or(0) as i64;
 
         let rows: Vec<(
             i64,
@@ -120,20 +161,42 @@ impl AuditService {
             Option<String>,
             Option<String>,
             String,
-        )> = sqlx::query_as(
-            r#"
-            SELECT id, user_id, username, action, resource, status, details, ip_address, created_at
-            FROM audit_logs
-            WHERE id > ?
-            ORDER BY id DESC
-            LIMIT ?
-            "#,
-        )
-        .bind(after_id)
-        .bind(limit)
-        .fetch_all(self.db.reader())
-        .await
-        .map_err(|e| AppError::database(e.to_string()))?;
+        )> = if let Some(q) = search.filter(|s| !s.trim().is_empty()) {
+            let pattern = format!("%{}%", q.trim());
+            sqlx::query_as(
+                r#"
+                SELECT id, user_id, username, action, resource, status, details, ip_address, created_at
+                FROM audit_logs
+                WHERE username LIKE ? OR action LIKE ? OR resource LIKE ? OR details LIKE ? OR ip_address LIKE ?
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                "#,
+            )
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(&pattern)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?
+        } else {
+            sqlx::query_as(
+                r#"
+                SELECT id, user_id, username, action, resource, status, details, ip_address, created_at
+                FROM audit_logs
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                "#,
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?
+        };
 
         let mut records = Vec::with_capacity(rows.len());
         for (id, u_id, u_name, action, res, status, details, ip, created_str) in rows {

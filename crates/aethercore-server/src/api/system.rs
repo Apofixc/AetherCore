@@ -28,6 +28,7 @@ pub fn router() -> Router<AppState> {
         .route("/info", get(system_info_handler))
         .route("/i18n/{locale}", get(i18n_export_handler))
         .route("/audit", get(audit_logs_handler))
+        .route("/audit/count", get(audit_count_handler))
         .route("/logs/providers", get(log_providers_handler))
         .route("/logs", get(logs_query_handler))
         .route("/logs/download", get(logs_download_handler))
@@ -83,13 +84,47 @@ async fn i18n_export_handler(Path(locale_str): Path<String>) -> Json<HashMap<Str
     Json(dict)
 }
 
-/// Параметры постраничной пагинации журнала аудита
+/// Параметры постраничной пагинации и поиска журнала аудита
 #[derive(Debug, Deserialize)]
 pub struct AuditQuery {
     /// Максимальное число возвращаемых записей (по умолчанию 50, макс 500)
     pub limit: Option<u32>,
-    /// Идентификатор последнего прочитанного события (курсор пагинации)
+    /// Смещение для постраничной пагинации
+    pub offset: Option<u64>,
+    /// Поисковый запрос
+    pub search: Option<String>,
+    /// Идентификатор последнего прочитанного события (для обратной совместимости)
     pub after_id: Option<i64>,
+}
+
+/// Ответ REST API с общим количеством записей журнала аудита
+#[derive(Debug, Serialize)]
+pub struct AuditCountResponse {
+    /// Общее количество записей
+    pub total: i64,
+}
+
+/// GET /api/v1/system/audit/count
+///
+/// Получить общее количество записей журнала аудита безопасности с учетом фильтра.
+async fn audit_count_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    _auth: AuthUser,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<AuditCountResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let total = state
+        .audit_service
+        .count_logs(query.search.as_deref())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    Ok(Json(AuditCountResponse { total }))
 }
 
 /// GET /api/v1/system/audit
@@ -103,17 +138,17 @@ pub struct AuditQuery {
 /// * `query` — Параметры пагинации [`AuditQuery`].
 ///
 /// # Возвращаемое значение
-/// Список записей аудита [`AuditLogRecord`].
+/// Список записей аудита [`AuditLogRecord`] и заголовок `X-Total-Count`.
 async fn audit_logs_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
     _auth: AuthUser,
     Query(query): Query<AuditQuery>,
-) -> Result<Json<Vec<AuditLogRecord>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(HeaderMap, Json<Vec<AuditLogRecord>>), (StatusCode, Json<ErrorResponse>)> {
     let limit = query.limit.unwrap_or(50);
-    let logs = state
+    let total = state
         .audit_service
-        .list_logs(limit, query.after_id)
+        .count_logs(query.search.as_deref())
         .await
         .map_err(|e| {
             (
@@ -122,7 +157,24 @@ async fn audit_logs_handler(
             )
         })?;
 
-    Ok(Json(logs))
+    let logs = state
+        .audit_service
+        .list_logs(limit, query.offset, query.search.as_deref())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-total-count",
+        total.to_string().parse().unwrap_or(axum::http::HeaderValue::from_static("0")),
+    );
+
+    Ok((headers, Json(logs)))
 }
 
 /// GET /api/v1/system/logs/providers
