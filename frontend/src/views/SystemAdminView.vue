@@ -14,13 +14,32 @@ import {
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
-import { systemApi, type SystemInfo, type LogProvider } from '@/api/system'
+import {
+  systemApi,
+  type SystemInfo,
+  type LogProvider,
+  type DbStatsResponse,
+  type BackupFileInfo
+} from '@/api/system'
 import { settingsApi } from '@/api/settings'
 import SchedulerManager from '@/components/system/SchedulerManager.vue'
 
 const { t } = useI18n()
 const router = useRouter()
 const authStore = useAuthStore()
+
+// DB Stats & Backup state
+const dbStats = ref<DbStatsResponse | null>(null)
+const backupsList = ref<BackupFileInfo[]>([])
+const showBackupsModal = ref(false)
+const isCreatingBackup = ref(false)
+const isRestoringBackup = ref(false)
+const maintenanceSettings = ref<{
+  auto_backup?: boolean
+  backup_interval_hours?: number
+  backup_retention_days?: number
+  audit_retention_days?: number
+} | null>(null)
 
 // Retention & Rotation state
 const auditRetentionDays = ref(90)
@@ -139,24 +158,112 @@ function scrollToBottom(smooth = true) {
   })
 }
 
-function handleDownloadBackup() {
-  const backupData = JSON.stringify({
-    schema_version: '1.0.4',
-    timestamp: new Date().toISOString(),
-    system: 'AetherCore Platform',
-    tables: ['users', 'roles', 'permissions', 'modules', 'audit_logs', 'security_settings']
-  }, null, 2)
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
 
-  const blob = new Blob([backupData], { type: 'application/octet-stream' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `aethercore_backup_${new Date().toISOString().slice(0, 10)}.db`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-  notify(t('system.downloadBackup') + ' - OK')
+async function loadDbStats() {
+  try {
+    const res = await systemApi.getDbStats()
+    if (res) {
+      dbStats.value = res
+    }
+  } catch (err) {
+    console.debug('Failed to load DB stats:', err)
+  }
+}
+
+async function loadBackupsList() {
+  try {
+    const list = await systemApi.getBackups()
+    backupsList.value = list || []
+  } catch (err) {
+    console.error('Failed to load backups list:', err)
+  }
+}
+
+function openBackupsModal() {
+  showBackupsModal.value = true
+  loadBackupsList()
+}
+
+async function handleCreateBackup(tag = 'manual') {
+  isCreatingBackup.value = true
+  try {
+    const info = await systemApi.createBackup(tag)
+    notify(t('system.createBackupSuccess') + ` (${info.filename})`)
+    await Promise.all([loadDbStats(), loadBackupsList()])
+  } catch (err: any) {
+    console.error('Failed to create backup:', err)
+    notify(err?.message || 'Error creating backup')
+  } finally {
+    isCreatingBackup.value = false
+  }
+}
+
+async function handleDownloadServerBackup(filename: string) {
+  try {
+    const blob = await systemApi.downloadBackup(filename)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    notify(t('system.downloadBackup') + ' - OK')
+  } catch (err) {
+    console.error('Failed to download backup:', err)
+  }
+}
+
+function requestRestoreServerBackup(b: BackupFileInfo) {
+  confirmModalConfig.value = {
+    title: t('system.confirmRestoreTitle'),
+    message: t('system.confirmRestoreMsg', { file: b.filename }),
+    variant: 'danger',
+    icon: 'restore',
+    confirmText: t('system.restoreFromFile'),
+    action: async () => {
+      isRestoringBackup.value = true
+      try {
+        await systemApi.restoreBackup(b.filename)
+        notify(t('system.restoreSuccess'))
+        await Promise.all([loadDbStats(), loadBackupsList()])
+      } catch (err: any) {
+        console.error('Failed to restore database:', err)
+        notify(err?.message || 'Restore error')
+      } finally {
+        isRestoringBackup.value = false
+      }
+    }
+  }
+  showConfirmModal.value = true
+}
+
+function requestDeleteBackup(b: BackupFileInfo) {
+  confirmModalConfig.value = {
+    title: t('system.confirmDeleteBackupTitle'),
+    message: t('system.confirmDeleteBackupMsg', { file: b.filename }),
+    variant: 'danger',
+    icon: 'delete',
+    confirmText: t('common.delete'),
+    action: async () => {
+      try {
+        await systemApi.deleteBackup(b.filename)
+        notify(t('system.deleteBackupSuccess'))
+        await Promise.all([loadDbStats(), loadBackupsList()])
+      } catch (err: any) {
+        console.error('Failed to delete backup:', err)
+      }
+    }
+  }
+  showConfirmModal.value = true
 }
 
 function triggerRestoreFile() {
@@ -173,8 +280,18 @@ function handleFileSelected(e: Event) {
       variant: 'danger',
       icon: 'upload_file',
       confirmText: t('system.restoreFromFile'),
-      action: () => {
-        notify(t('system.restoreFromFile') + ` (${file.name}) - OK`)
+      action: async () => {
+        isRestoringBackup.value = true
+        try {
+          await systemApi.uploadAndRestoreBackup(file)
+          notify(t('system.restoreSuccess'))
+          await Promise.all([loadDbStats(), loadBackupsList()])
+        } catch (err: any) {
+          console.error('Failed to upload and restore backup:', err)
+          notify(err?.message || 'Restore error')
+        } finally {
+          isRestoringBackup.value = false
+        }
       }
     }
     showConfirmModal.value = true
@@ -190,9 +307,12 @@ function requestRotateAudit() {
 async function loadMaintenanceSettings() {
   try {
     const maint = await settingsApi.getMaintenanceSettings()
-    if (maint && maint.audit_retention_days) {
-      auditRetentionDays.value = maint.audit_retention_days
-      rotateDays.value = maint.audit_retention_days
+    if (maint) {
+      maintenanceSettings.value = maint
+      if (maint.audit_retention_days) {
+        auditRetentionDays.value = maint.audit_retention_days
+        rotateDays.value = maint.audit_retention_days
+      }
     }
   } catch (err) {
     console.debug('Failed to load maintenance settings:', err)
@@ -343,9 +463,10 @@ async function fetchRealLogs() {
 
 async function loadSystemData() {
   try {
-    const [info, providers] = await Promise.all([
+    const [info, providers, _] = await Promise.all([
       systemApi.getInfo().catch(() => null),
-      systemApi.getProviders().catch(() => [])
+      systemApi.getProviders().catch(() => []),
+      loadDbStats().catch(() => null)
     ])
     if (info) {
       systemInfo.value = info
@@ -524,15 +645,25 @@ onUnmounted(() => {
               <AppButton
                 variant="primary"
                 size="sm"
-                icon="download"
-                @click="handleDownloadBackup"
+                icon="cloud_download"
+                :loading="isCreatingBackup"
+                @click="handleCreateBackup('manual')"
               >
-                {{ t('system.downloadBackup') }}
+                {{ t('system.createBackupNow') }}
+              </AppButton>
+              <AppButton
+                variant="outline"
+                size="sm"
+                icon="storage"
+                @click="openBackupsModal"
+              >
+                {{ t('system.manageBackups') }}
               </AppButton>
               <AppButton
                 variant="outline"
                 size="sm"
                 icon="upload_file"
+                :loading="isRestoringBackup"
                 @click="triggerRestoreFile"
               >
                 {{ t('system.restoreFromFile') }}
@@ -551,19 +682,37 @@ onUnmounted(() => {
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div class="bg-surface-container-highest/40 p-2.5 rounded-xl border border-outline-variant/30 flex flex-col">
                 <span class="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">{{ t('system.dbSize') }}</span>
-                <span class="text-xs font-mono font-bold text-on-surface mt-0.5">24.8 MB (WAL)</span>
-                <span class="text-[10px] text-on-surface-variant/70 font-mono">6 {{ t('system.tablesCount').toLowerCase() }}</span>
+                <span class="text-xs font-mono font-bold text-on-surface mt-0.5">
+                  {{ formatBytes(dbStats?.storage?.total_size_bytes || 0) }}
+                  <span v-if="dbStats?.storage?.wal_size_bytes" class="text-[10px] text-on-surface-variant font-normal">
+                    (WAL: {{ formatBytes(dbStats?.storage?.wal_size_bytes || 0) }})
+                  </span>
+                </span>
+                <span class="text-[10px] text-on-surface-variant/70 font-mono">
+                  {{ dbStats?.storage?.tables_count ?? 6 }} {{ t('system.tablesCount').toLowerCase() }}
+                </span>
               </div>
               <div class="bg-surface-container-highest/40 p-2.5 rounded-xl border border-outline-variant/30 flex flex-col">
                 <span class="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">{{ t('system.lastBackup') }}</span>
-                <span class="text-xs font-mono font-bold text-on-surface mt-0.5">2026-08-20 03:00</span>
-                <span class="text-[10px] text-primary-fixed-dim font-mono">Auto Snapshot</span>
+                <span class="text-xs font-mono font-bold text-on-surface mt-0.5">
+                  {{ dbStats?.latest_backup?.created_at ? dbStats.latest_backup.created_at.slice(0, 19).replace('T', ' ') : '—' }}
+                </span>
+                <span class="text-[10px] text-primary-fixed-dim font-mono">
+                  {{ dbStats?.latest_backup?.tag ? `[${dbStats.latest_backup.tag}]` : 'Snapshot' }} • {{ dbStats?.total_backups_count ?? 0 }}
+                </span>
               </div>
               <div class="col-span-2 sm:col-span-1 bg-surface-container-highest/40 p-2.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between">
                 <span class="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">{{ t('system.autoBackup') }}</span>
                 <div class="mt-1">
-                  <StatusBadge variant="success" size="xs" :dot="true">
-                    {{ t('system.autoBackupEnabled') }}
+                  <StatusBadge
+                    :variant="maintenanceSettings?.auto_backup !== false ? 'success' : 'neutral'"
+                    size="xs"
+                    :dot="true"
+                  >
+                    {{ maintenanceSettings?.auto_backup !== false
+                        ? t('system.autoBackupEnabled', { hours: maintenanceSettings?.backup_interval_hours || 24 })
+                        : t('system.autoBackupDisabled')
+                    }}
                   </StatusBadge>
                 </div>
               </div>
@@ -991,6 +1140,104 @@ onUnmounted(() => {
             @click="executeRotateAudit"
           >
             {{ t('system.rotateAudit') }}
+          </AppButton>
+        </div>
+      </template>
+    </BaseModal>
+
+    <!-- Modal: Manage Database Backups -->
+    <BaseModal
+      v-model="showBackupsModal"
+      :title="t('system.manageBackups')"
+      icon="storage"
+      max-width="max-w-2xl"
+    >
+      <div class="space-y-4">
+        <!-- Top Toolbar inside modal -->
+        <div class="flex items-center justify-between p-3 bg-surface-container-highest/40 rounded-xl border border-outline-variant/40">
+          <div>
+            <h4 class="text-xs font-bold text-on-surface">{{ t('system.backupsListTitle') }}</h4>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">
+              {{ t('system.restoreWarning') }}
+            </p>
+          </div>
+          <AppButton
+            variant="primary"
+            size="xs"
+            icon="add"
+            :loading="isCreatingBackup"
+            @click="handleCreateBackup('manual')"
+          >
+            {{ t('system.createBackupNow') }}
+          </AppButton>
+        </div>
+
+        <!-- Backups List Table / Cards -->
+        <div v-if="backupsList.length > 0" class="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+          <div
+            v-for="b in backupsList"
+            :key="b.filename"
+            class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors"
+          >
+            <div class="flex flex-col gap-0.5 min-w-0 pr-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-xs font-bold text-on-surface truncate">{{ b.filename }}</span>
+                <StatusBadge
+                  :variant="b.tag === 'auto' ? 'info' : b.tag === 'pre_restore' ? 'warning' : 'primary'"
+                  size="xs"
+                >
+                  {{ b.tag === 'auto' ? t('system.backupTagAuto') : b.tag === 'pre_restore' ? t('system.backupTagPreRestore') : b.tag === 'upload' ? t('system.backupTagUpload') : t('system.backupTagManual') }}
+                </StatusBadge>
+              </div>
+              <div class="flex items-center gap-2 text-[11px] text-on-surface-variant font-mono">
+                <span>{{ b.created_at.slice(0, 19).replace('T', ' ') }}</span>
+                <span>•</span>
+                <span class="font-bold text-on-surface">{{ formatBytes(b.size_bytes) }}</span>
+              </div>
+            </div>
+
+            <!-- Actions per backup -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="download"
+                :title="t('system.downloadBackup')"
+                @click="handleDownloadServerBackup(b.filename)"
+              />
+              <AppButton
+                variant="outline"
+                size="xs"
+                icon="restore"
+                :title="t('system.restoreFromFile')"
+                :loading="isRestoringBackup"
+                @click="requestRestoreServerBackup(b)"
+              />
+              <AppButton
+                variant="danger"
+                size="xs"
+                icon="delete"
+                :title="t('common.delete')"
+                @click="requestDeleteBackup(b)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="text-center py-10 text-on-surface-variant text-xs">
+          <span class="material-symbols-outlined text-3xl opacity-40 mb-1">cloud_off</span>
+          <p>{{ t('system.noBackupsFound') }}</p>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center justify-end w-full">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            @click="showBackupsModal = false"
+          >
+            {{ t('common.close') }}
           </AppButton>
         </div>
       </template>

@@ -13,11 +13,35 @@
 pub mod kv;
 
 use aethercore_common::error::{AppError, Result};
+use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Pool, Sqlite};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tracing::info;
+
+/// Статистика хранилища и физического состояния базы данных SQLite
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbStorageStats {
+    /// Размер основного файла базы данных в байтах
+    pub db_size_bytes: u64,
+    /// Размер файла журнала упреждающей записи WAL в байтах
+    pub wal_size_bytes: u64,
+    /// Размер файла разделяемой памяти SHM в байтах
+    pub shm_size_bytes: u64,
+    /// Общий размер хранилища на диске в байтах
+    pub total_size_bytes: u64,
+    /// Размер одной страницы SQLite в байтах
+    pub page_size: u32,
+    /// Общее количество страниц в базе данных
+    pub page_count: u32,
+    /// Количество свободных страниц (freelist)
+    pub freelist_count: u32,
+    /// Количество пользовательских таблиц
+    pub tables_count: u32,
+    /// Активен ли режим WAL
+    pub wal_mode: bool,
+}
 
 /// Менеджер базы данных платформы SQLite (Single-Writer / Multi-Reader)
 ///
@@ -30,6 +54,8 @@ pub struct Db {
     writer_pool: Pool<Sqlite>,
     /// Масштабируемый пул для параллельного чтения
     reader_pool: Pool<Sqlite>,
+    /// Путь к файлу базы данных на диске (если не in-memory)
+    db_path: Option<PathBuf>,
 }
 
 impl Db {
@@ -83,6 +109,7 @@ impl Db {
         let db = Self {
             writer_pool,
             reader_pool,
+            db_path: Some(db_path.to_path_buf()),
         };
 
         // Запуск миграций схемы
@@ -111,6 +138,7 @@ impl Db {
         let db = Self {
             writer_pool: pool.clone(),
             reader_pool: pool,
+            db_path: None,
         };
 
         db.run_migrations().await?;
@@ -125,6 +153,70 @@ impl Db {
     /// Получить ссылку на пул соединений для параллельных операций чтения (SELECT)
     pub fn reader(&self) -> &Pool<Sqlite> {
         &self.reader_pool
+    }
+
+    /// Получить путь к файлу базы данных на диске
+    pub fn db_path(&self) -> Option<&Path> {
+        self.db_path.as_deref()
+    }
+
+    /// Получить подробную статистику физического хранилища базы данных
+    pub async fn get_storage_stats(&self) -> Result<DbStorageStats> {
+        let page_size: i64 = sqlx::query_scalar("PRAGMA page_size;")
+            .fetch_one(&self.reader_pool)
+            .await
+            .unwrap_or(4096);
+
+        let page_count: i64 = sqlx::query_scalar("PRAGMA page_count;")
+            .fetch_one(&self.reader_pool)
+            .await
+            .unwrap_or(0);
+
+        let freelist_count: i64 = sqlx::query_scalar("PRAGMA freelist_count;")
+            .fetch_one(&self.reader_pool)
+            .await
+            .unwrap_or(0);
+
+        let tables_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';",
+        )
+        .fetch_one(&self.reader_pool)
+        .await
+        .unwrap_or(0);
+
+        let mut db_size = (page_size * page_count) as u64;
+        let mut wal_size = 0u64;
+        let mut shm_size = 0u64;
+
+        if let Some(path) = &self.db_path {
+            if let Ok(meta) = tokio::fs::metadata(path).await {
+                db_size = meta.len();
+            }
+
+            let wal_path = PathBuf::from(format!("{}-wal", path.display()));
+            if let Ok(meta) = tokio::fs::metadata(&wal_path).await {
+                wal_size = meta.len();
+            }
+
+            let shm_path = PathBuf::from(format!("{}-shm", path.display()));
+            if let Ok(meta) = tokio::fs::metadata(&shm_path).await {
+                shm_size = meta.len();
+            }
+        }
+
+        let total_size = db_size + wal_size + shm_size;
+
+        Ok(DbStorageStats {
+            db_size_bytes: db_size,
+            wal_size_bytes: wal_size,
+            shm_size_bytes: shm_size,
+            total_size_bytes: total_size,
+            page_size: page_size as u32,
+            page_count: page_count as u32,
+            freelist_count: freelist_count as u32,
+            tables_count: tables_count as u32,
+            wal_mode: true,
+        })
     }
 
     /// Выполнить создание и миграции схемы реляционных таблиц SQLite
@@ -503,6 +595,39 @@ impl Db {
                 'skip',
                 'skip_to_next',
                 300,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // 3. Системная задача автоматического бэкапа SQLite раз в сутки (в 04:00)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-auto-backup',
+                'Автоматическое резервное копирование БД',
+                'Создание ежедневного снимка SQLite и ротация устаревших копий',
+                'cron',
+                '0 4 * * *',
+                'system_db_backup',
+                NULL,
+                'skip',
+                'skip_to_next',
+                600,
                 1,
                 1,
                 ?,

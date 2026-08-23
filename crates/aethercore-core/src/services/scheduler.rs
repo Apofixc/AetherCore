@@ -46,10 +46,16 @@ pub struct SchedulerService {
 struct RetentionConfig {
     #[serde(default = "default_audit_retention_days")]
     audit_retention_days: u32,
+    #[serde(default = "default_backup_retention_days")]
+    backup_retention_days: u32,
 }
 
 fn default_audit_retention_days() -> u32 {
     90
+}
+
+fn default_backup_retention_days() -> u32 {
+    30
 }
 
 #[derive(sqlx::FromRow)]
@@ -823,19 +829,20 @@ impl SchedulerService {
                 Ok(Some(msg))
             }
             TaskAction::SystemDbBackup => {
-                // Создание бэкапа SQLite через VACUUM INTO
+                let kv = KvStore::system(self.db.clone());
+                let retention_days = match kv.get::<RetentionConfig>("maintenance_settings").await {
+                    Ok(Some(cfg)) => cfg.backup_retention_days,
+                    _ => 30,
+                };
                 let backup_dir = PathBuf::from("data/backups");
-                let _ = tokio::fs::create_dir_all(&backup_dir).await;
-                let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-                let backup_file = backup_dir.join(format!("aethercore_backup_{}.db", timestamp));
-                let backup_path_str = backup_file.to_string_lossy().to_string();
+                let backup_svc = super::backup::BackupService::new(self.db.clone(), backup_dir);
+                let backup_info = backup_svc.create_backup("auto").await?;
+                let pruned = backup_svc.prune_backups(retention_days).await.unwrap_or(0);
 
-                sqlx::query(&format!("VACUUM INTO '{}'", backup_path_str))
-                    .execute(self.db.writer())
-                    .await
-                    .map_err(|e| AppError::database(format!("Backup failed: {}", e)))?;
-
-                let msg = format!("Database backup created at {}", backup_path_str);
+                let msg = format!(
+                    "Database auto backup created ({}, {} bytes), pruned {} outdated backups",
+                    backup_info.filename, backup_info.size_bytes, pruned
+                );
                 info!("{}", msg);
                 Ok(Some(msg))
             }

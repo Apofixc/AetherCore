@@ -41,6 +41,11 @@ async fn setup_test_app() -> (axum::Router, AppState, String) {
         plugin_manager.clone(),
     ));
 
+    let backup_service = aethercore_core::services::BackupService::new(
+        db.clone(),
+        std::path::PathBuf::from("target/test_backups_chaos"),
+    );
+
     user_service.ensure_default_admin().await.unwrap();
 
     let state = AppState {
@@ -54,6 +59,7 @@ async fn setup_test_app() -> (axum::Router, AppState, String) {
         notify_service,
         plugin_manager,
         scheduler_service,
+        backup_service,
         start_time: Instant::now(),
     };
 

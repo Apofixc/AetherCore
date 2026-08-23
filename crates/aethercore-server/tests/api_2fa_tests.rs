@@ -32,6 +32,11 @@ async fn setup_test_app() -> (axum::Router, AppState) {
         plugin_manager.clone(),
     ));
 
+    let backup_service = aethercore_core::services::BackupService::new(
+        db.clone(),
+        std::path::PathBuf::from("target/test_backups_2fa"),
+    );
+
     user_service.ensure_default_admin().await.unwrap();
 
     let state = AppState {
@@ -45,6 +50,7 @@ async fn setup_test_app() -> (axum::Router, AppState) {
         notify_service,
         plugin_manager,
         scheduler_service,
+        backup_service,
         start_time: std::time::Instant::now(),
     };
 

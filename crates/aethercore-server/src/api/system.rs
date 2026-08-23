@@ -19,7 +19,12 @@ use axum::{Json, Router};
 use aethercore_common::error::{AppError, ErrorResponse};
 use aethercore_common::i18n::{global, Locale};
 use aethercore_core::auth::check_permission;
-use aethercore_core::services::{AuditArchiveInfo, AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
+use aethercore_core::db::DbStorageStats;
+use aethercore_core::services::{
+    AuditArchiveInfo, AuditLogRecord, BackupInfo, LogLevel, LogProvider, LogQueryResult,
+    RestoreResult,
+};
+use axum::extract::Multipart;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -38,6 +43,13 @@ pub fn router() -> Router<AppState> {
         .route("/logs/providers", get(log_providers_handler))
         .route("/logs", get(logs_query_handler))
         .route("/logs/download", get(logs_download_handler))
+        .route("/db/stats", get(db_stats_handler))
+        .route("/backup/list", get(list_backups_handler))
+        .route("/backup/create", post(create_backup_handler))
+        .route("/backup/download/{filename}", get(download_backup_handler))
+        .route("/backup/restore", post(restore_backup_handler))
+        .route("/backup/upload-restore", post(upload_restore_backup_handler))
+        .route("/backup/{filename}", axum::routing::delete(delete_backup_handler))
 }
 
 /// Ответ REST API с метаинформацией о запущенном экземпляре ядра платформы
@@ -606,4 +618,354 @@ async fn logs_download_handler(
     );
 
     Ok((headers, bytes))
+}
+
+// ---------------------------------------------------------------------------
+// Эндпоинты телеметрии БД и резервного копирования
+// ---------------------------------------------------------------------------
+
+/// Ответ на запрос статистики базы данных и резервных копий
+#[derive(Debug, Serialize)]
+pub struct DbStatsResponse {
+    /// Статистика физического хранилища SQLite
+    pub storage: DbStorageStats,
+    /// Метаинформация о последней созданной резервной копии
+    pub latest_backup: Option<BackupInfo>,
+    /// Общее количество доступных бэкапов на сервере
+    pub total_backups_count: usize,
+}
+
+/// GET /api/v1/system/db/stats
+async fn db_stats_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<DbStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let storage = state.db.get_storage_stats().await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let backups = state.backup_service.list_backups().await.unwrap_or_default();
+    let total_backups_count = backups.len();
+    let latest_backup = backups.into_iter().next();
+
+    Ok(Json(DbStatsResponse {
+        storage,
+        latest_backup,
+        total_backups_count,
+    }))
+}
+
+/// GET /api/v1/system/backup/list
+async fn list_backups_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Vec<BackupInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let backups = state.backup_service.list_backups().await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(backups))
+}
+
+/// Запрос на создание резервной копии
+#[derive(Debug, Deserialize)]
+pub struct CreateBackupRequest {
+    /// Опциональный пользовательский тег (по умолчанию "manual")
+    pub tag: Option<String>,
+}
+
+/// POST /api/v1/system/backup/create
+async fn create_backup_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(payload): Json<Option<CreateBackupRequest>>,
+) -> Result<Json<BackupInfo>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let tag = payload.and_then(|p| p.tag).unwrap_or_else(|| "manual".to_string());
+    let info = state.backup_service.create_backup(&tag).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.create",
+            &info.filename,
+            "SUCCESS",
+            Some(&format!(
+                "Created SQLite backup: {} ({} bytes, tag: {})",
+                info.filename, info.size_bytes, info.tag
+            )),
+            None,
+        )
+        .await;
+
+    Ok(Json(info))
+}
+
+/// GET /api/v1/system/backup/download/{filename}
+async fn download_backup_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Path(filename): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let path = state.backup_service.get_backup_path(&filename).map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let bytes = tokio::fs::read(&path).await.map_err(|e| {
+        let app_err = AppError::internal(format!("Failed to read backup file: {}", e));
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(app_err.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.download",
+            &filename,
+            "SUCCESS",
+            Some(&format!("Downloaded backup file: {}", filename)),
+            None,
+        )
+        .await;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, "application/octet-stream".parse().unwrap());
+    headers.insert(
+        CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", filename)
+            .parse()
+            .unwrap(),
+    );
+
+    Ok((headers, bytes))
+}
+
+/// Запрос на восстановление базы данных из существующего бэкапа
+#[derive(Debug, Deserialize)]
+pub struct RestoreBackupRequest {
+    /// Имя файла резервной копии на сервере
+    pub filename: String,
+}
+
+/// POST /api/v1/system/backup/restore
+async fn restore_backup_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Json(payload): Json<RestoreBackupRequest>,
+) -> Result<Json<RestoreResult>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let path = state.backup_service.get_backup_path(&payload.filename).map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_REQUEST),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let result = state.backup_service.restore_from_backup_file(&path).await.map_err(|e| {
+        let _ = state.audit_service.log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.restore",
+            &payload.filename,
+            "FAILURE",
+            Some(&format!("Restore failed: {}", e)),
+            None,
+        );
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.restore",
+            &payload.filename,
+            "SUCCESS",
+            Some(&format!(
+                "Restored database from {}. Pre-restore safety backup: {:?}",
+                payload.filename, result.pre_restore_backup
+            )),
+            None,
+        )
+        .await;
+
+    Ok(Json(result))
+}
+
+/// POST /api/v1/system/backup/upload-restore
+async fn upload_restore_backup_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    mut multipart: Multipart,
+) -> Result<Json<RestoreResult>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let mut file_bytes: Option<(String, Vec<u8>)> = None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "file" || name == "backup" {
+            let fname = field.file_name().unwrap_or("uploaded_backup.db").to_string();
+            let data = field.bytes().await.map_err(|e| {
+                let app_err = AppError::validation("file", format!("Failed to read uploaded file: {}", e));
+                (StatusCode::BAD_REQUEST, Json(app_err.to_api_response(locale)))
+            })?;
+            file_bytes = Some((fname, data.to_vec()));
+            break;
+        }
+    }
+
+    let (orig_filename, bytes) = file_bytes.ok_or_else(|| {
+        let app_err = AppError::validation("file", "No file uploaded in 'file' multipart field");
+        (StatusCode::BAD_REQUEST, Json(app_err.to_api_response(locale)))
+    })?;
+
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let temp_filename = format!("aethercore_backup_{}_upload.db", timestamp);
+    let temp_path = state.backup_service.backup_dir().join(&temp_filename);
+
+    let _ = tokio::fs::create_dir_all(state.backup_service.backup_dir()).await;
+    tokio::fs::write(&temp_path, &bytes).await.map_err(|e| {
+        let app_err = AppError::internal(format!("Failed to save uploaded backup file: {}", e));
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(app_err.to_api_response(locale)))
+    })?;
+
+    let restore_result = state
+        .backup_service
+        .restore_from_backup_file(&temp_path)
+        .await
+        .map_err(|e| {
+            let _ = state.audit_service.log(
+                Some(&claims.sub.to_string()),
+                Some(&claims.username),
+                "backup.upload_restore",
+                &orig_filename,
+                "FAILURE",
+                Some(&format!("Upload restore failed: {}", e)),
+                None,
+            );
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.upload_restore",
+            &orig_filename,
+            "SUCCESS",
+            Some(&format!(
+                "Restored database from uploaded file {} (saved as {}). Pre-restore backup: {:?}",
+                orig_filename, temp_filename, restore_result.pre_restore_backup
+            )),
+            None,
+        )
+        .await;
+
+    Ok(Json(restore_result))
+}
+
+/// DELETE /api/v1/system/backup/{filename}
+async fn delete_backup_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Path(filename): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    state.backup_service.delete_backup(&filename).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "backup.delete",
+            &filename,
+            "SUCCESS",
+            Some(&format!("Deleted backup file: {}", filename)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "deleted": filename
+    })))
 }

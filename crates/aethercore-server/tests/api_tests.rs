@@ -64,6 +64,11 @@ description: "Test module for API"
         plugin_manager.clone(),
     ));
 
+    let backup_service = aethercore_core::services::BackupService::new(
+        db.clone(),
+        std::path::PathBuf::from("target/test_backups_api"),
+    );
+
     let state = AppState {
         config: AppConfig::default(),
         db,
@@ -75,6 +80,7 @@ description: "Test module for API"
         notify_service,
         plugin_manager,
         scheduler_service,
+        backup_service,
         start_time: Instant::now(),
     };
 

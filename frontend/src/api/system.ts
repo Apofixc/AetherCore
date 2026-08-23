@@ -67,6 +67,38 @@ export interface ImportAuditResponse {
   imported_count: number
 }
 
+export interface DbStorageStats {
+  db_size_bytes: number
+  wal_size_bytes: number
+  shm_size_bytes: number
+  total_size_bytes: number
+  page_size: number
+  page_count: number
+  freelist_count: number
+  tables_count: number
+  wal_mode: boolean
+}
+
+export interface BackupFileInfo {
+  filename: string
+  size_bytes: number
+  created_at: string
+  tag: string
+  is_valid: boolean
+}
+
+export interface DbStatsResponse {
+  storage: DbStorageStats
+  latest_backup: BackupFileInfo | null
+  total_backups_count: number
+}
+
+export interface RestoreResult {
+  success: boolean
+  pre_restore_backup?: string
+  message: string
+}
+
 export const systemApi = {
   getInfo: async (): Promise<SystemInfo> => {
     return api.get<SystemInfo>('/api/v1/system/info')
@@ -127,5 +159,53 @@ export const systemApi = {
       throw new Error(`Failed to download logs: HTTP ${res.status}`)
     }
     return res.blob()
+  },
+  getDbStats: async (): Promise<DbStatsResponse> => {
+    return api.get<DbStatsResponse>('/api/v1/system/db/stats')
+  },
+  getBackups: async (): Promise<BackupFileInfo[]> => {
+    return api.get<BackupFileInfo[]>('/api/v1/system/backup/list')
+  },
+  createBackup: async (tag?: string): Promise<BackupFileInfo> => {
+    return api.post<BackupFileInfo>('/api/v1/system/backup/create', { tag })
+  },
+  downloadBackup: async (filename: string): Promise<Blob> => {
+    const token = localStorage.getItem('aether_token')
+    const headers: HeadersInit = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    const res = await fetch(`/api/v1/system/backup/download/${encodeURIComponent(filename)}`, {
+      headers
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to download backup: HTTP ${res.status}`)
+    }
+    return res.blob()
+  },
+  restoreBackup: async (filename: string): Promise<RestoreResult> => {
+    return api.post<RestoreResult>('/api/v1/system/backup/restore', { filename })
+  },
+  uploadAndRestoreBackup: async (file: File): Promise<RestoreResult> => {
+    const token = localStorage.getItem('aether_token')
+    const formData = new FormData()
+    formData.append('file', file)
+    const headers: HeadersInit = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    const res = await fetch('/api/v1/system/backup/upload-restore', {
+      method: 'POST',
+      headers,
+      body: formData
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }))
+      throw new Error(err.message || err.error || `HTTP ${res.status}`)
+    }
+    return res.json()
+  },
+  deleteBackup: async (filename: string): Promise<{ success: boolean; deleted: string }> => {
+    return api.delete<{ success: boolean; deleted: string }>(`/api/v1/system/backup/${encodeURIComponent(filename)}`)
   }
 }

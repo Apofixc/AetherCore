@@ -138,6 +138,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         audit_service.clone(),
         plugin_manager.clone(),
     ));
+    let backup_dir = config
+        .database
+        .path
+        .parent()
+        .map(|p| p.join("backups"))
+        .unwrap_or_else(|| PathBuf::from("data/backups"));
+    let backup_service = aethercore_core::services::BackupService::new(db.clone(), backup_dir);
 
     // 4. Проверяем наличие дефолтного администратора
     user_service.ensure_default_admin().await?;
@@ -162,6 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         notify_service,
         plugin_manager,
         scheduler_service,
+        backup_service,
         start_time: Instant::now(),
     };
 
