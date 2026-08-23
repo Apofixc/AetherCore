@@ -294,6 +294,11 @@ export const en = {
     ipAddress: 'IP Address',
     rowsPerPage: 'Rows:',
     showingOf: 'Showing {from}-{to} of {total}',
+    clearLogs: 'Clear Logs',
+    clearLogsConfirmTitle: 'Clear Security Audit Log?',
+    clearLogsConfirmMessage: 'All recorded security events will be permanently deleted. Only a new clearing record will be preserved in the log.',
+    logsClearedSuccess: 'Audit log cleared successfully ({count} records)',
+    clearingLogs: 'Clearing audit logs...',
   },
   profile: {
     title: 'Operator Profile',

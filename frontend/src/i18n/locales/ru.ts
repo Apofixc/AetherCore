@@ -294,6 +294,11 @@ export const ru = {
     ipAddress: 'IP-Адрес',
     rowsPerPage: 'Строк:',
     showingOf: 'Показано {from}-{to} из {total}',
+    clearLogs: 'Очистить журнал',
+    clearLogsConfirmTitle: 'Очистить журнал аудита безопасности?',
+    clearLogsConfirmMessage: 'Все существующие записи событий безопасности будут безвозвратно удалены. В журнале останется только новая отметка о факте очистки.',
+    logsClearedSuccess: 'Журнал аудита успешно очищен ({count} записей)',
+    clearingLogs: 'Очистка журнала...',
   },
   profile: {
     title: 'Профиль оператора',

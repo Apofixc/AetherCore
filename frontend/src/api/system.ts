@@ -69,6 +69,9 @@ export const systemApi = {
     const res = await api.get<{ total: number }>(`/api/v1/system/audit/count${qStr ? `?${qStr}` : ''}`)
     return res.total ?? 0
   },
+  clearAuditLogs: async (): Promise<{ success: boolean; deleted_count: number }> => {
+    return api.delete<{ success: boolean; deleted_count: number }>('/api/v1/system/audit')
+  },
   getProviders: async (): Promise<LogProvider[]> => {
     return api.get<LogProvider[]>('/api/v1/system/logs/providers')
   },

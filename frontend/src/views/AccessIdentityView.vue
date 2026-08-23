@@ -8,7 +8,8 @@ import {
   AppButton,
   NumberInput,
   SearchInput,
-  StatusBadge
+  StatusBadge,
+  ConfirmModal
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -260,6 +261,9 @@ const pageSize = ref(25)
 const currentPage = ref(1)
 const totalLogsCount = ref(0)
 const isRefreshingLogs = ref(false)
+const showClearConfirmModal = ref(false)
+const isClearingLogs = ref(false)
+const clearNotification = ref('')
 
 const auditCategories = computed(() => [
   { id: 'all', label: t('accessIdentity.filterAll'), icon: 'list_alt' },
@@ -272,12 +276,9 @@ const auditCategories = computed(() => [
 
 async function fetchAuditLogs() {
   try {
-    const [rawLogs, count] = await Promise.all([
-      systemApi.getAuditLogs({ limit: 500 }),
-      systemApi.getAuditLogsCount()
-    ])
-    totalLogsCount.value = count
+    const rawLogs = await systemApi.getAuditLogs({ limit: 500 })
     if (Array.isArray(rawLogs)) {
+      totalLogsCount.value = rawLogs.length
       auditLogs.value = rawLogs.map((l: any) => {
         const isFailed = l.status === 'failed' || l.status === 'forbidden'
         let actionType: 'role' | 'login' | 'policy' | 'failed' | 'backup' = 'policy'
@@ -312,6 +313,23 @@ async function handleRefreshLogs() {
   isRefreshingLogs.value = true
   await fetchAuditLogs()
   isRefreshingLogs.value = false
+}
+
+async function handleClearLogs() {
+  isClearingLogs.value = true
+  try {
+    const res = await systemApi.clearAuditLogs()
+    showClearConfirmModal.value = false
+    clearNotification.value = t('accessIdentity.logsClearedSuccess', { count: res.deleted_count })
+    await fetchAuditLogs()
+    setTimeout(() => {
+      clearNotification.value = ''
+    }, 4000)
+  } catch (err) {
+    console.error('Failed to clear audit logs:', err)
+  } finally {
+    isClearingLogs.value = false
+  }
 }
 
 function handleExportLogs() {
@@ -865,6 +883,10 @@ function clearFilters() {
                   <span v-if="totalLogsCount > 0" class="px-2 py-0.5 rounded-full text-[10px] font-body-mono font-bold bg-primary-fixed-dim/15 text-primary-fixed-dim border border-primary-fixed-dim/30">
                     {{ totalLogsCount }}
                   </span>
+                  <span v-if="clearNotification" class="text-xs text-primary-fixed-dim font-bold flex items-center gap-1 animate-fade-in">
+                    <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                    {{ clearNotification }}
+                  </span>
                 </div>
                 <p class="text-xs text-on-surface-variant mt-0.5">{{ t('accessIdentity.securityAuditLogDesc') }}</p>
               </div>
@@ -939,6 +961,17 @@ function clearFilters() {
                 @click="handleExportLogs"
               >
                 <span class="material-symbols-outlined text-[18px]">download</span>
+              </button>
+
+              <!-- Clear Logs Button -->
+              <button
+                v-if="authStore.isSuperuser || authStore.canManageSecurity"
+                type="button"
+                class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-error hover:bg-error/10 hover:border-error/30 transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                :title="t('accessIdentity.clearLogs')"
+                @click="showClearConfirmModal = true"
+              >
+                <span class="material-symbols-outlined text-[18px]">delete_sweep</span>
               </button>
             </div>
           </div>
@@ -1114,5 +1147,17 @@ function clearFilters() {
 
       </div>
     </main>
+
+    <!-- Confirm Clear Modal -->
+    <ConfirmModal
+      v-model="showClearConfirmModal"
+      :title="t('accessIdentity.clearLogsConfirmTitle')"
+      :message="t('accessIdentity.clearLogsConfirmMessage')"
+      variant="danger"
+      icon="delete_sweep"
+      :confirm-text="t('accessIdentity.clearLogs')"
+      :loading="isClearingLogs"
+      @confirm="handleClearLogs"
+    />
   </div>
 </template>

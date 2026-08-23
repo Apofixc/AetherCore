@@ -84,6 +84,52 @@ async fn module_assets_handler(
     }
 }
 
+use aethercore_core::db::kv::KvStore;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct RetentionConfig {
+    #[serde(default = "default_audit_retention_days")]
+    audit_retention_days: u32,
+}
+
+fn default_audit_retention_days() -> u32 {
+    90
+}
+
+fn spawn_audit_retention_worker(state: &AppState) {
+    let db = state.db.clone();
+    let audit_service = state.audit_service.clone();
+
+    tokio::spawn(async move {
+        // Запуск раз в 24 часа для удаления записей аудита старше audit_retention_days
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 3600));
+        loop {
+            interval.tick().await;
+            let kv = KvStore::system(db.clone());
+            let retention_days = match kv.get::<RetentionConfig>("maintenance_settings").await {
+                Ok(Some(cfg)) => cfg.audit_retention_days,
+                _ => 90,
+            };
+
+            if retention_days > 0 {
+                match audit_service.prune_old_logs(retention_days).await {
+                    Ok(pruned) if pruned > 0 => {
+                        info!(
+                            "Audit retention worker: pruned {} log records older than {} days",
+                            pruned, retention_days
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("Audit retention worker error: {}", e);
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Запустить асинхронный HTTP/WebSocket веб-сервер Tokio/Axum
 ///
 /// # Аргументы
@@ -95,6 +141,8 @@ pub async fn run_server(state: AppState) -> Result<(), Box<dyn std::error::Error
     let host = &state.config.server.host;
     let port = state.config.server.port;
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
+
+    spawn_audit_retention_worker(&state);
 
     let app = create_app_router(state);
     let listener = tokio::net::TcpListener::bind(addr).await?;

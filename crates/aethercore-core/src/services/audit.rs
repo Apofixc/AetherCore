@@ -219,4 +219,39 @@ impl AuditService {
 
         Ok(records)
     }
+
+    /// Полностью очистить журнал аудита
+    ///
+    /// # Возвращаемое значение
+    /// Количество удаленных записей.
+    pub async fn clear_logs(&self) -> Result<u64> {
+        let res = sqlx::query("DELETE FROM audit_logs")
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        Ok(res.rows_affected())
+    }
+
+    /// Удалить записи журнала аудита старше указанного количества дней
+    ///
+    /// # Аргументы
+    /// * `retention_days` — Срок хранения в днях.
+    ///
+    /// # Возвращаемое значение
+    /// Количество удаленных устаревших записей.
+    pub async fn prune_old_logs(&self, retention_days: u32) -> Result<u64> {
+        if retention_days == 0 {
+            return Ok(0);
+        }
+        let threshold = Utc::now() - chrono::Duration::days(retention_days as i64);
+        let threshold_str = threshold.to_rfc3339();
+
+        let res = sqlx::query("DELETE FROM audit_logs WHERE created_at < ?")
+            .bind(threshold_str)
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(res.rows_affected())
+    }
 }

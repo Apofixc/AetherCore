@@ -18,6 +18,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use aethercore_common::error::ErrorResponse;
 use aethercore_common::i18n::{global, Locale};
+use aethercore_core::auth::check_permission;
 use aethercore_core::services::{AuditLogRecord, LogLevel, LogProvider, LogQueryResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -27,7 +28,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/info", get(system_info_handler))
         .route("/i18n/{locale}", get(i18n_export_handler))
-        .route("/audit", get(audit_logs_handler))
+        .route("/audit", get(audit_logs_handler).delete(clear_audit_logs_handler))
         .route("/audit/count", get(audit_count_handler))
         .route("/logs/providers", get(log_providers_handler))
         .route("/logs", get(logs_query_handler))
@@ -175,6 +176,63 @@ async fn audit_logs_handler(
     );
 
     Ok((headers, Json(logs)))
+}
+
+/// Ответ REST API на очистку журнала аудита
+#[derive(Debug, Serialize)]
+pub struct ClearAuditResponse {
+    /// Флаг успешного выполнения
+    pub success: bool,
+    /// Количество удаленных записей
+    pub deleted_count: u64,
+}
+
+/// DELETE /api/v1/system/audit
+///
+/// Очистить журнал аудита безопасности (доступно только суперпользователю или администратору).
+async fn clear_audit_logs_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    headers: HeaderMap,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<ClearAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.admin").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
+    let client_ip = crate::middleware::extract_client_ip(&headers);
+
+    let deleted_count = state
+        .audit_service
+        .clear_logs()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    // Фиксируем факт очистки журнала аудита
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "audit.clear",
+            "system/audit",
+            "success",
+            Some(&format!("Cleared {} audit records", deleted_count)),
+            Some(&client_ip),
+        )
+        .await;
+
+    Ok(Json(ClearAuditResponse {
+        success: true,
+        deleted_count,
+    }))
 }
 
 /// GET /api/v1/system/logs/providers
