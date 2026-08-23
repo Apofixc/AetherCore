@@ -27,6 +27,7 @@ use std::collections::HashMap;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/info", get(system_info_handler))
+        .nest("/scheduler", super::scheduler::router())
         .route("/i18n/{locale}", get(i18n_export_handler))
         .route("/audit", get(audit_logs_handler).delete(clear_audit_logs_handler))
         .route("/audit/count", get(audit_count_handler))

@@ -296,8 +296,54 @@ impl Db {
         .await
         .map_err(|e| AppError::database(format!("Failed to create audit_logs table: {}", e)))?;
 
+        // 6. Таблицы планировщика задач (Task Scheduler & Execution History)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                schedule_type TEXT NOT NULL,
+                schedule_value TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                action_params TEXT,
+                concurrency_policy TEXT NOT NULL DEFAULT 'skip',
+                misfire_policy TEXT NOT NULL DEFAULT 'skip_to_next',
+                timeout_secs INTEGER NOT NULL DEFAULT 300,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                is_system INTEGER NOT NULL DEFAULT 0,
+                next_run_at TEXT,
+                last_run_at TEXT,
+                last_status TEXT,
+                last_error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_next_run ON scheduled_tasks(next_run_at, is_enabled);
+
+            CREATE TABLE IF NOT EXISTS task_execution_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                error_message TEXT,
+                triggered_by TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_history_task_id ON task_execution_history(task_id);
+            CREATE INDEX IF NOT EXISTS idx_task_history_started_at ON task_execution_history(started_at);
+            "#,
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(format!("Failed to create scheduler tables: {}", e)))?;
+
         // Сидирование стандартных ролей и прав
         self.seed_default_rbac().await?;
+        self.seed_default_tasks().await?;
 
         Ok(())
     }
@@ -322,6 +368,8 @@ impl Db {
             ("access.manage", "Управление безопасностью и доступом", "Access", "Настройка политик 2FA, IP, матрицы прав и ротация аудита"),
             ("system.view", "Просмотр системы", "System", "Просмотр системного статуса, логов, метрик и базы данных"),
             ("system.manage", "Управление системой", "System", "Резервное копирование, обслуживание, ротация логов и перезапуск"),
+            ("scheduler.view", "Просмотр планировщика задач", "System", "Просмотр запланированных задач и истории их выполнения"),
+            ("scheduler.manage", "Управление планировщиком задач", "System", "Создание, редактирование, удаление и запуск задач планировщика"),
         ];
 
         for (id, name, cat, desc) in default_permissions {
@@ -363,6 +411,7 @@ impl Db {
             "users.view", "users.manage",
             "access.view", "access.manage",
             "system.view", "system.manage",
+            "scheduler.view", "scheduler.manage",
         ];
         for perm in admin_perms {
             sqlx::query(
@@ -375,7 +424,7 @@ impl Db {
         }
 
         let operator_perms = [
-            "modules.view", "users.view", "access.view", "system.view",
+            "modules.view", "users.view", "access.view", "system.view", "scheduler.view",
         ];
         for perm in operator_perms {
             sqlx::query(
@@ -387,7 +436,7 @@ impl Db {
             .map_err(|e| AppError::database(e.to_string()))?;
         }
 
-        let viewer_perms = ["modules.view", "system.view"];
+        let viewer_perms = ["modules.view", "system.view", "scheduler.view"];
         for perm in viewer_perms {
             sqlx::query(
                 "INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES ('viewer', ?)",
@@ -397,6 +446,80 @@ impl Db {
             .await
             .map_err(|e| AppError::database(e.to_string()))?;
         }
+
+        Ok(())
+    }
+
+    /// Сидировать стандартные системные задачи планировщика по умолчанию
+    async fn seed_default_tasks(&self) -> Result<()> {
+        let pool = &self.writer_pool;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // 1. Системная задача ротации аудита раз в сутки (в полночь: 0 0 * * *)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-audit-retention',
+                'Ротация и архивация журнала аудита',
+                'Автоматическое архивирование и очистка записей аудита старше установленного срока',
+                'cron',
+                '0 0 * * *',
+                'system_audit_rotation',
+                NULL,
+                'skip',
+                'skip_to_next',
+                600,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // 2. Системная задача очистки старой истории планировщика раз в сутки (в 03:00)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-history-cleanup',
+                'Очистка журнала выполнения планировщика',
+                'Автоматическое удаление записей истории выполнения задач старше 30 дней',
+                'cron',
+                '0 3 * * *',
+                'system_history_cleanup',
+                NULL,
+                'skip',
+                'skip_to_next',
+                300,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(())
     }

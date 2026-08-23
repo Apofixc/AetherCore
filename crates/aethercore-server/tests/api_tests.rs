@@ -57,6 +57,13 @@ description: "Test module for API"
     };
     plugin_manager.register_plugin(package).await.unwrap();
 
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
+        db.clone(),
+        bus.clone(),
+        audit_service.clone(),
+        plugin_manager.clone(),
+    ));
+
     let state = AppState {
         config: AppConfig::default(),
         db,
@@ -67,6 +74,7 @@ description: "Test module for API"
         logger_service,
         notify_service,
         plugin_manager,
+        scheduler_service,
         start_time: Instant::now(),
     };
 

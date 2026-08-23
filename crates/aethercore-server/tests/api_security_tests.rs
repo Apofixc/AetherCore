@@ -26,6 +26,12 @@ async fn setup_test_app() -> (axum::Router, AppState) {
     let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
+        db.clone(),
+        bus.clone(),
+        audit_service.clone(),
+        plugin_manager.clone(),
+    ));
 
     user_service.ensure_default_admin().await.unwrap();
 
@@ -39,6 +45,7 @@ async fn setup_test_app() -> (axum::Router, AppState) {
         logger_service,
         notify_service,
         plugin_manager,
+        scheduler_service,
         start_time: Instant::now(),
     };
 

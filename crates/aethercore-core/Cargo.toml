@@ -28,6 +28,7 @@ zip = { workspace = true }
 reqwest = { workspace = true }
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
+cron = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

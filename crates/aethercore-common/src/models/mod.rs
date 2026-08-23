@@ -5,7 +5,9 @@
 //! - [`user`]: модели учетных записей, RBAC ролей, прав доступа и JWT claims ([`User`], [`Role`], [`Permission`], [`JwtClaims`]).
 
 pub mod events;
+pub mod scheduler;
 pub mod user;
 
 pub use events::*;
+pub use scheduler::*;
 pub use user::*;

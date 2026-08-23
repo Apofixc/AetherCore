@@ -11,6 +11,7 @@
 pub mod auth;
 pub mod events;
 pub mod modules;
+pub mod scheduler;
 pub mod settings;
 pub mod system;
 pub mod users;

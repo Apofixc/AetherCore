@@ -132,6 +132,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let logger_service = LoggerService::with_log_file("data/aethercore.log");
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
+        db.clone(),
+        bus.clone(),
+        audit_service.clone(),
+        plugin_manager.clone(),
+    ));
 
     // 4. Проверяем наличие дефолтного администратора
     user_service.ensure_default_admin().await?;
@@ -155,6 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         logger_service,
         notify_service,
         plugin_manager,
+        scheduler_service,
         start_time: Instant::now(),
     };
 

@@ -9,8 +9,9 @@ use aethercore_core::auth::JwtManager;
 use aethercore_core::bus::EventBus;
 use aethercore_core::db::Db;
 use aethercore_core::plugins::PluginManager;
-use aethercore_core::services::{AuditService, LoggerService, NotifyService};
+use aethercore_core::services::{AuditService, LoggerService, NotifyService, SchedulerService};
 use aethercore_core::users::UserService;
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Общее разделяемое состояние HTTP-сервера и обработчиков Axum
@@ -36,6 +37,8 @@ pub struct AppState {
     pub notify_service: NotifyService,
     /// Менеджер Wasm-плагинов ([`PluginManager`])
     pub plugin_manager: PluginManager,
+    /// Центральный сервис планировщика задач ([`SchedulerService`])
+    pub scheduler_service: Arc<SchedulerService>,
     /// Точный момент времени запуска ядра для расчета `uptime`
     pub start_time: Instant,
 }

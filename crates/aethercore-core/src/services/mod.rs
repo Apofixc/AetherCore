@@ -8,8 +8,10 @@
 pub mod audit;
 pub mod logger;
 pub mod notify;
+pub mod scheduler;
 
 pub use audit::{AuditArchiveInfo, AuditLogRecord, AuditService};
 pub use logger::{LogEntry, LogLevel, LogProvider, LogQueryResult, LoggerConfig, LoggerService};
 pub use notify::{AlertMessage, AlertSeverity, NotifyService};
+pub use scheduler::SchedulerService;
 
