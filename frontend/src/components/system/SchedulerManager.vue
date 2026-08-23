@@ -248,18 +248,15 @@ async function handleDeleteTask() {
 function formatSchedule(sched: any): string {
   if (!sched) return '-'
   if (sched.type === 'cron') {
-    if (sched.value === '0 0 * * *') return `${sched.value} (${t('scheduler.cronDailyMidnight')})`
-    if (sched.value === '0 */1 * * *' || sched.value === '0 * * * *') return `${sched.value} (${t('scheduler.cronHourly')})`
-    if (sched.value === '* * * * *') return `${sched.value} (${t('scheduler.cronEveryMinute')})`
     return sched.value
   }
   if (sched.type === 'interval_sec') {
-    return `${sched.value}s (${Math.round(sched.value / 60)} min)`
+    return `${sched.value}s`
   }
   if (sched.type === 'one_off') {
     return new Date(sched.value).toLocaleString()
   }
-  return JSON.stringify(sched)
+  return String(sched.value || '')
 }
 
 function formatDateTime(val?: string): string {
@@ -413,7 +410,11 @@ onUnmounted(() => {
 
             <!-- Next Run -->
             <td class="py-3 px-3 font-mono text-[11px]">
-              <span v-if="task.is_enabled && task.next_run_at" class="text-on-surface">
+              <span
+                v-if="task.is_enabled && task.next_run_at"
+                class="text-on-surface cursor-help"
+                :title="'UTC: ' + task.next_run_at"
+              >
                 {{ formatDateTime(task.next_run_at) }}
               </span>
               <span v-else class="text-on-surface-variant/50 italic">

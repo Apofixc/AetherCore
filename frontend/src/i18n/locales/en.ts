@@ -687,8 +687,5 @@ export const en = {
     intervalPlaceholder: 'Seconds, e.g.: 300',
     systemTaskBadge: 'System',
     userTaskBadge: 'Custom',
-    cronEveryMinute: 'Every minute',
-    cronDailyMidnight: 'Daily at 00:00',
-    cronHourly: 'Every hour',
   },
 }

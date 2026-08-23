@@ -687,8 +687,5 @@ export const ru = {
     intervalPlaceholder: 'Секунды, например: 300',
     systemTaskBadge: 'Системная',
     userTaskBadge: 'Пользовательская',
-    cronEveryMinute: 'Каждую минуту',
-    cronDailyMidnight: 'Ежедневно в 00:00',
-    cronHourly: 'Каждый час',
   },
 }
