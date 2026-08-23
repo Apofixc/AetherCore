@@ -737,6 +737,138 @@ sequenceDiagram
 * **When**: Любой пользователь запускает настройку 2FA или перевыпуск резервных кодов в профиле.
 * **Then**: Сервер генерирует ровно 12 одноразовых кодов восстановления, и в интерфейсе модального окна и скачиваемом `.txt` файле отображаются все 12 кодов.
 
+---
+
+## 11. Блок-схема: Журнал аудита безопасности (Security Audit Log Lifecycle)
+
+Данная блок-схема иллюстрирует сквозной цикл работы с журналом аудита в разделе «Доступ и безопасность» ([AccessIdentityView.vue](file:///opt/aethercore/frontend/src/views/AccessIdentityView.vue)): динамическую пагинацию, многокритериальную фильтрацию, экспорт, импорт архива и безопасную очистку.
+
+```mermaid
+graph TD
+    subgraph UI_AUDIT["Клиентский интерфейс (AccessIdentityView.vue)"]
+        OPEN["Открытие раздела /settings/access-identity"]
+        FETCH["fetchAuditLogs() -> systemApi.getAuditLogs({ limit: 500 })"]
+        FILTER{"Применение фильтров<br/>(Категория / Поисковая строка)"}
+        PAGINATE["Постраничная пагинация<br/>(10 / 25 / 50 / 100 / Все)"]
+        RENDER["Отображение таблицы логов"]
+        EMPTY["Отображение Empty State<br/>(Сброс фильтров / Кнопка 'Обновить')"]
+    end
+
+    subgraph ACTIONS["Операции с журналом безопасности"]
+        REFRESH_BTN["Кнопка 'Обновить' (🔄)"]
+        EXPORT_BTN["Кнопка 'Экспорт логов' (📥)"]
+        IMPORT_BTN["Кнопка 'Импорт архива' (📤)"]
+        CLEAR_BTN["Кнопка 'Очистить журнал' (🗑️)"]
+    end
+
+    subgraph MODALS["Модальные окна и подтверждения"]
+        MODAL_IMPORT["BaseModal: Предпросмотр архива<br/>(Валидация JSON, счетчик записей)"]
+        MODAL_CLEAR["ConfirmModal: Подтверждение очистки<br/>(Предупреждение о необратимости)"]
+    end
+
+    subgraph BACKEND["Бэкенд AetherCore (REST API & SQLite)"]
+        API_GET["GET /api/v1/system/audit"]
+        API_IMPORT["POST /api/v1/system/audit/import"]
+        API_CLEAR["DELETE /api/v1/system/audit"]
+        AUDIT_LOG_SVC["AuditService (SQLite INSERT / DELETE)"]
+        LOG_EVENT["Фиксация audit.clear / audit.import"]
+    end
+
+    OPEN --> FETCH
+    FETCH --> API_GET --> AUDIT_LOG_SVC
+    AUDIT_LOG_SVC --> FETCH
+    FETCH --> FILTER
+    FILTER -->|Найдено > 0 записей| PAGINATE --> RENDER
+    FILTER -->|Найдено 0 записей| EMPTY
+
+    REFRESH_BTN --> FETCH
+    EXPORT_BTN -->|JSON выгрузка| BROWSER_DL["Скачивание security_audit_logs_*.json"]
+
+    IMPORT_BTN --> MODAL_IMPORT
+    MODAL_IMPORT -->|Подтвердить импорт| API_IMPORT --> AUDIT_LOG_SVC
+    API_IMPORT --> LOG_EVENT
+    LOG_EVENT --> FETCH
+
+    CLEAR_BTN --> MODAL_CLEAR
+    MODAL_CLEAR -->|Подтвердить очистку| API_CLEAR --> AUDIT_LOG_SVC
+    API_CLEAR --> LOG_EVENT
+```
+
+---
+
+## 12. Блок-схема и Sequence Diagram: Системное администрирование, ротация и автоархивация
+
+Схема взаимодействия пользовательского интерфейса [SystemAdminView.vue](file:///opt/aethercore/frontend/src/views/SystemAdminView.vue), сервиса настроек и фонового воркера ротации аудита.
+
+```mermaid
+graph TD
+    subgraph ADMIN_UI["Панель 'Системное администрирование'"]
+        OPEN_ADMIN["Открытие /settings/system"]
+        LOAD_MAINT["GET /api/v1/settings/maintenance<br/>Загрузка audit_retention_days"]
+        SELECT_RETENTION["Выбор срока хранения:<br/>30d / 60d / 90d / 180d / 365d"]
+        SAVE_RETENTION["PUT /api/v1/settings/maintenance<br/>Мгновенное сохранение в kv_store"]
+        CLICK_ROTATE["Клик 'Ротация аудита'"]
+        MODAL_ROTATE["Диалог ротации:<br/>- Выбор порога (30, 60, 90, 180 дн)<br/>- Чекбокс архивации в JSON"]
+    end
+
+    subgraph WORKER["Фоновый воркер (spawn_audit_retention_worker)"]
+        TICK["Интервал: каждые 24 часа"]
+        READ_KV["Чтение audit_retention_days из kv_store"]
+        AUTO_PRUNE["archive_and_prune(retention_days, true, 'data/archives')"]
+    end
+
+    subgraph CORE_AUDIT["AuditService & Файловая система"]
+        FIND_OLD["Поиск записей старше threshold (created_at < ?)"]
+        SAVE_ARCHIVE["Запись в data/archives/audit_archive_*.json"]
+        DELETE_OLD["DELETE FROM audit_logs WHERE created_at < ?"]
+        LOG_ROTATE["Фиксация события audit.rotate"]
+    end
+
+    OPEN_ADMIN --> LOAD_MAINT
+    LOAD_MAINT --> SELECT_RETENTION
+    SELECT_RETENTION --> SAVE_RETENTION
+
+    CLICK_ROTATE --> MODAL_ROTATE
+    MODAL_ROTATE -->|Выполнить ротацию| POST_ROTATE["POST /api/v1/system/audit/rotate"]
+    POST_ROTATE --> FIND_OLD
+
+    TICK --> READ_KV --> AUTO_PRUNE --> FIND_OLD
+    FIND_OLD -->|Если включена архивация| SAVE_ARCHIVE --> DELETE_OLD
+    FIND_OLD -->|Без архивации| DELETE_OLD
+    DELETE_OLD --> LOG_ROTATE
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Администратор
+    participant View as SystemAdminView.vue
+    participant API as ApiClient (/api/v1/system)
+    participant Core as Backend Axum (System API)
+    participant AuditSvc as AuditService
+    participant FS as Файловая система (data/archives/)
+    participant DB as SQLite (audit_logs)
+
+    Note over Admin, DB: Ручной запуск ротации с архивацией
+    Admin->>View: Нажатие кнопки "Ротация аудита"
+    View-->>Admin: Открытие BaseModal (выбор 90 дн, флаг архивации = true)
+    Admin->>View: Подтверждение "Выполнить ротацию"
+    View->>API: POST /api/v1/system/audit/rotate { days: 90, archive: true }
+    API->>Core: rotate_audit_logs_handler(days=90, archive=true)
+    Core->>AuditSvc: archive_and_prune(90, true, "data/archives")
+    AuditSvc->>DB: SELECT * FROM audit_logs WHERE created_at < threshold
+    DB-->>AuditSvc: 142 устаревшие записи
+    AuditSvc->>FS: Запись data/archives/audit_archive_20260823_120000.json
+    AuditSvc->>DB: DELETE FROM audit_logs WHERE created_at < threshold
+    DB-->>AuditSvc: 142 rows deleted
+    AuditSvc->>DB: INSERT INTO audit_logs (action="audit.rotate", details="...")
+    AuditSvc-->>Core: (142, Some("audit_archive_20260823_120000.json"))
+    Core-->>API: 200 OK { success: true, deleted_count: 142, archive_filename: "..." }
+    API-->>View: Закрытие модального окна
+    View-->>Admin: Всплывающее уведомление "Ротация успешно выполнена: удалено 142 записей (архив: audit_archive_*.json)"
+```
+
+
 
 
 
