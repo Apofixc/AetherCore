@@ -567,29 +567,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-
-            <!-- Audit Retention Policy Bar -->
-            <div class="mt-4 pt-4 border-t border-outline-variant/30 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <span class="text-xs font-bold text-on-surface block">{{ t('system.auditRetentionTitle') }}</span>
-                <span class="text-[11px] text-on-surface-variant block">{{ t('system.auditRetentionDesc') }}</span>
-              </div>
-              <div class="flex items-center gap-1.5 bg-surface-container-highest/60 p-1 rounded-lg border border-outline-variant/40">
-                <button
-                  v-for="d in [30, 60, 90, 180, 365]"
-                  :key="d"
-                  type="button"
-                  class="px-2.5 py-1 rounded text-xs font-mono font-medium transition-all cursor-pointer"
-                  :class="auditRetentionDays === d
-                    ? 'bg-primary text-on-primary font-bold shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/50'"
-                  :disabled="isSavingRetention"
-                  @click="updateRetentionDays(d)"
-                >
-                  {{ d }}d
-                </button>
-              </div>
-            </div>
           </BaseCard>
 
           <!-- Card 2: Active Sessions -->
@@ -917,40 +894,75 @@ onUnmounted(() => {
       max-width="max-w-md"
     >
       <div class="space-y-4">
-        <p class="text-xs text-on-surface-variant">
-          {{ t('system.confirmRotateMsg') }}
-        </p>
-
-        <div>
-          <label class="block text-xs font-bold text-on-surface mb-2">
-            {{ t('system.rotateAuditDaysLabel') }}
-          </label>
-          <div class="grid grid-cols-4 gap-2">
+        <!-- Блок 1: Автоматический срок хранения (политика) -->
+        <div class="p-3 bg-surface-container-highest/40 rounded-xl border border-outline-variant/40 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">schedule</span>
+              {{ t('system.auditRetentionTitle') }}
+            </label>
+            <span v-if="isSavingRetention" class="text-[10px] text-primary-fixed-dim animate-pulse font-mono">
+              {{ t('common.saving') }}
+            </span>
+          </div>
+          <p class="text-[11px] text-on-surface-variant leading-tight">
+            {{ t('system.auditRetentionDesc') }}
+          </p>
+          <div class="grid grid-cols-5 gap-1.5 pt-1">
             <button
-              v-for="d in [30, 60, 90, 180]"
+              v-for="d in [30, 60, 90, 180, 365]"
               :key="d"
               type="button"
-              class="py-2 px-2 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer text-center"
-              :class="rotateDays === d
-                ? 'bg-primary/15 border-primary text-primary-fixed-dim'
-                : 'bg-surface-container-highest border-outline-variant/50 text-on-surface-variant hover:border-outline-variant'"
-              @click="rotateDays = d"
+              class="py-2 px-1 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer text-center"
+              :class="auditRetentionDays === d
+                ? 'bg-primary/20 border-primary text-primary-fixed-dim shadow-sm'
+                : 'bg-surface-container-highest/60 border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'"
+              :disabled="isSavingRetention"
+              @click="updateRetentionDays(d)"
             >
               {{ d }} {{ t('system.daysCount', { count: '' }).trim() }}
             </button>
           </div>
         </div>
 
-        <div class="flex items-center gap-2 pt-2 border-t border-outline-variant/30">
-          <input
-            id="saveArchiveCheck"
-            v-model="rotateSaveArchive"
-            type="checkbox"
-            class="rounded border-outline-variant bg-surface-container-highest text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-          />
-          <label for="saveArchiveCheck" class="text-xs text-on-surface cursor-pointer select-none">
-            {{ t('system.saveArchiveCheckbox') }}
-          </label>
+        <!-- Блок 2: Разовая ручная ротация -->
+        <div class="p-3 bg-surface-container-highest/40 rounded-xl border border-outline-variant/40 space-y-3">
+          <div>
+            <label class="text-xs font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">delete_sweep</span>
+              {{ t('system.rotateAuditDaysLabel') }}
+            </label>
+            <p class="text-[11px] text-on-surface-variant leading-tight mt-0.5">
+              {{ t('system.confirmRotateMsg') }}
+            </p>
+          </div>
+
+          <div class="grid grid-cols-5 gap-1.5">
+            <button
+              v-for="d in [30, 60, 90, 180, 365]"
+              :key="d"
+              type="button"
+              class="py-2 px-1 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer text-center"
+              :class="rotateDays === d
+                ? 'bg-primary/20 border-primary text-primary-fixed-dim shadow-sm'
+                : 'bg-surface-container-highest/60 border-outline-variant/40 text-on-surface-variant hover:text-on-surface hover:border-outline-variant'"
+              @click="rotateDays = d"
+            >
+              {{ d }} {{ t('system.daysCount', { count: '' }).trim() }}
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 pt-2 border-t border-outline-variant/30">
+            <input
+              id="saveArchiveCheck"
+              v-model="rotateSaveArchive"
+              type="checkbox"
+              class="rounded border-outline-variant bg-surface-container-highest text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+            />
+            <label for="saveArchiveCheck" class="text-xs text-on-surface cursor-pointer select-none">
+              {{ t('system.saveArchiveCheckbox') }}
+            </label>
+          </div>
         </div>
       </div>
 
