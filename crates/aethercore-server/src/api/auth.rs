@@ -8,18 +8,19 @@
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use aethercore_common::error::AppError;
-use aethercore_common::models::user::{SecurityPoliciesDto, UserResponseDto};
+use aethercore_common::models::user::{SecurityPoliciesDto, SessionDto, UserResponseDto};
 use aethercore_core::auth::totp::{
     generate_backup_codes, generate_otpauth_url, generate_qr_code_data_url, generate_totp_secret,
     verify_totp_code,
 };
 use aethercore_core::db::kv::KvStore;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Создать вложенный роутер аутентификации `/auth`
 pub fn router() -> Router<AppState> {
@@ -32,6 +33,10 @@ pub fn router() -> Router<AppState> {
         .route("/2fa/enable", post(enable_2fa_handler))
         .route("/2fa/disable", post(disable_2fa_handler))
         .route("/2fa/backup-codes/regenerate", post(regenerate_backup_codes_handler))
+        .route("/sessions", get(list_my_sessions_handler))
+        .route("/sessions/{id}", axum::routing::delete(revoke_my_session_handler))
+        .route("/sessions/terminate-others", post(terminate_my_other_sessions_handler))
+        .route("/sessions/terminate-all", post(terminate_my_all_sessions_handler))
 }
 
 /// Публичная конфигурация авторизации для фронтенда
@@ -779,4 +784,152 @@ async fn me_handler(
         })?;
 
     Ok(Json(user.into()))
+}
+
+/// GET /api/v1/auth/sessions
+///
+/// Получить список всех активных устройств/сессий текущего пользователя.
+async fn list_my_sessions_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<Vec<SessionDto>>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
+    let raw_sessions = state
+        .session_service
+        .list_user_sessions(claims.sub)
+        .await
+        .map_err(|e| {
+            let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(e.to_api_response(locale)))
+        })?;
+
+    let dtos: Vec<SessionDto> = raw_sessions
+        .into_iter()
+        .map(|s| s.into_dto(claims.session_id))
+        .collect();
+
+    Ok(Json(dtos))
+}
+
+/// DELETE /api/v1/auth/sessions/{id}
+///
+/// Завершить конкретный сеанс текущего пользователя.
+async fn revoke_my_session_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
+    // Проверяем, что сессия принадлежит текущему пользователю
+    if let Ok(Some(sess)) = state.session_service.get_session(session_id).await {
+        if sess.user_id != claims.sub {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(AppError::forbidden("Cannot terminate another user's session").to_api_response(locale)),
+            ));
+        }
+    }
+
+    state
+        .session_service
+        .revoke_session(session_id)
+        .await
+        .map_err(|e| {
+            let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(e.to_api_response(locale)))
+        })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "auth.session_revoked",
+            "auth.sessions",
+            "success",
+            Some(&format!("User revoked own session {}", session_id)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "session_id": session_id
+    })))
+}
+
+/// POST /api/v1/auth/sessions/terminate-others
+///
+/// Завершить сеансы на всех других устройствах текущего пользователя.
+async fn terminate_my_other_sessions_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
+    let terminated_count = if let Some(current_sid) = claims.session_id {
+        state
+            .session_service
+            .revoke_user_sessions_except(claims.sub, current_sid)
+            .await
+            .map_err(|e| {
+                let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                (status, Json(e.to_api_response(locale)))
+            })?
+    } else {
+        0
+    };
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "auth.other_sessions_terminated",
+            "auth.sessions",
+            "success",
+            Some(&format!("Terminated {} other sessions for user", terminated_count)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "terminated_count": terminated_count
+    })))
+}
+
+/// POST /api/v1/auth/sessions/terminate-all
+///
+/// Завершить абсолютно все сеансы текущего пользователя (включая текущий).
+async fn terminate_my_all_sessions_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    AuthUser(claims): AuthUser,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<aethercore_common::error::ErrorResponse>)> {
+    let terminated_count = state
+        .session_service
+        .revoke_user_sessions(claims.sub)
+        .await
+        .map_err(|e| {
+            let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(e.to_api_response(locale)))
+        })?;
+
+    let _ = state
+        .audit_service
+        .log(
+            Some(&claims.sub.to_string()),
+            Some(&claims.username),
+            "auth.all_sessions_terminated",
+            "auth.sessions",
+            "success",
+            Some(&format!("Terminated all {} sessions for user", terminated_count)),
+            None,
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "terminated_count": terminated_count
+    })))
 }

@@ -768,9 +768,9 @@ onUnmounted(() => {
         <!-- Toast Notification Banner -->
         <div
           v-if="notificationMessage"
-          class="fixed bottom-12 right-6 z-50 bg-surface-container-high border border-primary-fixed-dim/50 text-primary-fixed-dim px-4 py-2 rounded-xl shadow-glow-primary-md flex items-center gap-2 text-xs font-bold font-mono animate-fade-in"
+          class="fixed bottom-12 right-6 z-[70] bg-surface-container-high/95 backdrop-blur-md border border-primary-fixed-dim/50 text-primary-fixed-dim px-4 py-2.5 rounded-xl shadow-glow-primary-md flex items-center gap-2 text-xs font-bold font-mono animate-fade-in"
         >
-          <span class="material-symbols-outlined text-sm">check_circle</span>
+          <span class="material-symbols-outlined text-base">check_circle</span>
           <span>{{ notificationMessage }}</span>
         </div>
 

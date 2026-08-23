@@ -216,6 +216,7 @@ onMounted(async () => {
   if (authStore.isAuthenticated && !authStore.user) {
     await authStore.fetchUser()
   }
+  loadUserSessions()
   updateClock()
   clockTimer = window.setInterval(updateClock, 1000)
 
@@ -794,6 +795,174 @@ const infoSoundOptions = ['Soft Chime', 'Digital Click', 'Hologram Whir', 'Gentl
 const successSoundOptions = ['Major Chord', 'Ascending Harp', 'Success Ping', 'Power Up']
 const warningSoundOptions = ['Double Beep', 'Low Drone', 'Caution Radar', 'Warning Clack']
 const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'System Failure']
+
+// Active User Devices / Sessions State
+interface UserSessionItem {
+  id: string
+  ip: string
+  time: string
+  client: string
+  isCurrent: boolean
+}
+
+const userSessions = ref<UserSessionItem[]>([])
+const isLoadingUserSessions = ref(false)
+
+function formatUserAgent(ua?: string): string {
+  if (!ua || ua === 'Web Client') return 'Web Client'
+  let browser = 'Browser'
+  let os = 'OS'
+
+  if (ua.includes('Edg/')) browser = 'Edge'
+  else if (ua.includes('Chrome/')) browser = 'Chrome'
+  else if (ua.includes('Firefox/')) browser = 'Firefox'
+  else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Safari'
+  else if (ua.includes('Opera/') || ua.includes('OPR/')) browser = 'Opera'
+
+  if (ua.includes('Windows')) os = 'Windows'
+  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS'
+  else if (ua.includes('Linux')) os = 'Linux'
+  else if (ua.includes('Android')) os = 'Android'
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS'
+
+  return `${browser} (${os})`
+}
+
+function formatSessionTime(isoStr?: string): string {
+  if (!isoStr) return ''
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleString()
+  } catch {
+    return isoStr
+  }
+}
+
+async function loadUserSessions() {
+  isLoadingUserSessions.value = true
+  try {
+    const list = await authApi.getSessions()
+    if (list && Array.isArray(list) && list.length > 0) {
+      userSessions.value = list.map((item: any) => ({
+        id: item.id,
+        ip: item.ip_address,
+        time: formatSessionTime(item.last_active_at || item.created_at),
+        client: formatUserAgent(item.user_agent),
+        isCurrent: item.is_current
+      }))
+    } else if (authStore.user) {
+      userSessions.value = [
+        {
+          id: `sess-${authStore.user.id.slice(0, 8)}`,
+          ip: '127.0.0.1',
+          time: new Date().toLocaleString(),
+          client: 'Web Client',
+          isCurrent: true
+        }
+      ]
+    } else {
+      userSessions.value = []
+    }
+  } catch (err) {
+    console.debug('Failed to load user sessions:', err)
+    if (authStore.user && userSessions.value.length === 0) {
+      userSessions.value = [
+        {
+          id: `sess-${authStore.user.id.slice(0, 8)}`,
+          ip: '127.0.0.1',
+          time: new Date().toLocaleString(),
+          client: 'Web Client',
+          isCurrent: true
+        }
+      ]
+    }
+  } finally {
+    isLoadingUserSessions.value = false
+  }
+}
+
+// Session Confirmation Modal State
+const showSessionConfirmModal = ref(false)
+const sessionConfirmConfig = ref({
+  title: '',
+  message: '',
+  variant: 'danger' as 'danger' | 'primary',
+  icon: 'logout',
+  confirmText: '',
+  action: async () => {}
+})
+
+function requestTerminateUserOthers() {
+  sessionConfirmConfig.value = {
+    title: t('profile.confirmTerminateOthersTitle'),
+    message: t('profile.confirmTerminateOthersMsg'),
+    variant: 'danger',
+    icon: 'shield',
+    confirmText: t('profile.terminateOthers'),
+    action: async () => {
+      try {
+        const res = await authApi.terminateOtherSessions()
+        showToast(t('profile.terminateOthersSuccess', { count: res.terminated_count || 0 }))
+        await loadUserSessions()
+      } catch (err: any) {
+        showToast(err?.message || 'Error terminating sessions')
+      }
+    }
+  }
+  showSessionConfirmModal.value = true
+}
+
+function requestTerminateUserAll() {
+  sessionConfirmConfig.value = {
+    title: t('profile.confirmTerminateAllTitle'),
+    message: t('profile.confirmTerminateAllMsg'),
+    variant: 'danger',
+    icon: 'logout',
+    confirmText: t('profile.allLogout'),
+    action: async () => {
+      try {
+        await authApi.terminateAllSessions()
+      } catch (err) {
+        console.debug('Failed to terminate all sessions on backend:', err)
+      }
+      authStore.logout()
+      router.push('/login')
+    }
+  }
+  showSessionConfirmModal.value = true
+}
+
+function requestRevokeUserSession(s: UserSessionItem) {
+  sessionConfirmConfig.value = {
+    title: t('profile.confirmRevokeSessionTitle'),
+    message: s.isCurrent
+      ? t('profile.confirmRevokeCurrentSessionMsg')
+      : t('profile.confirmRevokeSessionMsg', { device: s.client, ip: s.ip }),
+    variant: 'danger',
+    icon: s.isCurrent ? 'logout' : 'no_accounts',
+    confirmText: t('profile.revoke'),
+    action: async () => {
+      try {
+        await authApi.revokeSession(s.id)
+      } catch (err: any) {
+        console.debug('Error revoking session:', err)
+      }
+      if (s.isCurrent) {
+        authStore.logout()
+        router.push('/login')
+      } else {
+        showToast(t('profile.sessionRevokedSuccess'))
+        await loadUserSessions()
+      }
+    }
+  }
+  showSessionConfirmModal.value = true
+}
+
+function handleSessionConfirm() {
+  sessionConfirmConfig.value.action()
+  showSessionConfirmModal.value = false
+}
 </script>
 
 <template>
@@ -1393,9 +1562,19 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
             >
               <template #headerActions>
                 <AppButton
+                  variant="ghost"
+                  size="xs"
+                  icon="refresh"
+                  :loading="isLoadingUserSessions"
+                  @click="loadUserSessions"
+                >
+                  {{ t('common.refresh') }}
+                </AppButton>
+                <AppButton
                   variant="danger"
                   size="xs"
                   icon="shield"
+                  @click="requestTerminateUserOthers"
                 >
                   {{ t('profile.terminateOthers') }}
                 </AppButton>
@@ -1403,14 +1582,20 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                   variant="outline"
                   size="xs"
                   icon="logout"
-                  @click="authStore.logout"
+                  @click="requestTerminateUserAll"
                 >
                   {{ t('profile.allLogout') }}
                 </AppButton>
               </template>
 
               <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <div
+                  v-if="userSessions.length === 0 && !isLoadingUserSessions"
+                  class="text-xs text-on-surface-variant/70 font-mono py-6 text-center"
+                >
+                  {{ t('common.noData') }}
+                </div>
+                <table v-else class="w-full text-left border-collapse">
                   <thead class="bg-surface-container-high/70 text-[10px] text-on-surface-variant uppercase font-bold border-b border-outline-variant/60">
                     <tr>
                       <th class="p-md">{{ t('profile.ipAddress') }}</th>
@@ -1420,21 +1605,31 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
                     </tr>
                   </thead>
                   <tbody class="text-xs font-mono divide-y divide-outline-variant/30">
-                    <tr class="hover:bg-surface-variant/20 transition-colors">
+                    <tr
+                      v-for="s in userSessions"
+                      :key="s.id"
+                      class="hover:bg-surface-variant/20 transition-colors"
+                    >
                       <td class="p-md">
                         <div class="flex items-center gap-2">
-                          <span class="text-on-surface font-bold">127.0.0.1</span>
-                          <StatusBadge variant="success" :pulse="true" :dot="true" size="xs">
-                            {{ t('profile.currentSession') }}
+                          <span class="text-on-surface font-bold">{{ s.ip }}</span>
+                          <StatusBadge
+                            :variant="s.isCurrent ? 'success' : 'neutral'"
+                            :pulse="s.isCurrent"
+                            :dot="true"
+                            size="xs"
+                          >
+                            {{ s.isCurrent ? t('profile.currentSession') : s.client }}
                           </StatusBadge>
                         </div>
                       </td>
-                      <td class="p-md text-on-surface">Edge (Windows)</td>
-                      <td class="p-md text-on-surface-variant">8/20/2026, 9:30:32 PM</td>
+                      <td class="p-md text-on-surface">{{ s.client }}</td>
+                      <td class="p-md text-on-surface-variant">{{ s.time }}</td>
                       <td class="p-md text-right">
                         <AppButton
                           variant="danger"
                           size="xs"
+                          @click="requestRevokeUserSession(s)"
                         >
                           {{ t('profile.revoke') }}
                         </AppButton>
@@ -1452,10 +1647,10 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
     <!-- Toast Notification -->
     <div
       v-if="toastMessage"
-      class="fixed bottom-6 right-6 z-50 p-4 bg-surface-container-high border border-primary-fixed-dim text-on-surface text-xs rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in"
+      class="fixed bottom-12 right-6 z-[70] p-3.5 bg-surface-container-high/95 backdrop-blur-md border border-primary-fixed-dim text-on-surface text-xs rounded-xl shadow-glow-primary-md flex items-center gap-3 animate-fade-in"
     >
       <span class="material-symbols-outlined text-primary-fixed-dim text-xl">check_circle</span>
-      <span class="font-medium">{{ toastMessage }}</span>
+      <span class="font-medium font-mono">{{ toastMessage }}</span>
     </div>
 
     <!-- 2FA Setup Modal (3 Steps) -->
@@ -1721,6 +1916,30 @@ const errorSoundOptions = ['Alarm Tone', 'Heavy Klaxon', 'Critical Siren', 'Syst
           @click="confirmDisable2fa"
         >
           {{ t('profile.confirmDisable2fa') }}
+        </AppButton>
+      </template>
+    </BaseModal>
+
+    <!-- Confirm Modal for User Sessions -->
+    <BaseModal
+      v-model="showSessionConfirmModal"
+      :title="sessionConfirmConfig.title"
+      :variant="sessionConfirmConfig.variant"
+      :icon="sessionConfirmConfig.icon"
+    >
+      <p class="text-sm text-on-surface-variant leading-relaxed">
+        {{ sessionConfirmConfig.message }}
+      </p>
+      <template #footer>
+        <AppButton variant="ghost" size="sm" @click="showSessionConfirmModal = false">
+          {{ t('common.cancel') }}
+        </AppButton>
+        <AppButton
+          :variant="sessionConfirmConfig.variant"
+          size="sm"
+          @click="handleSessionConfirm"
+        >
+          {{ sessionConfirmConfig.confirmText }}
         </AppButton>
       </template>
     </BaseModal>

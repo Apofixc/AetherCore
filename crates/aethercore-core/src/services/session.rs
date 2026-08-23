@@ -247,6 +247,68 @@ impl SessionService {
         Ok(res.rows_affected() as usize)
     }
 
+    /// Получить список активных сессий конкретного пользователя
+    pub async fn list_user_sessions(&self, user_id: Uuid) -> Result<Vec<SessionRecord>> {
+        type SessionRow = (String, String, String, String, String, String, String, String, String);
+        let now_rfc = Utc::now().to_rfc3339();
+
+        let rows: Vec<SessionRow> = sqlx::query_as(
+            r#"
+            SELECT id, user_id, username, roles, ip_address, user_agent, created_at, last_active_at, expires_at
+            FROM active_sessions
+            WHERE user_id = ? AND expires_at > ?
+            ORDER BY last_active_at DESC
+            "#,
+        )
+        .bind(user_id.to_string())
+        .bind(&now_rfc)
+        .fetch_all(self.db.reader())
+        .await
+        .map_err(|e| AppError::database(format!("Failed to list user active sessions: {}", e)))?;
+
+        let mut list = Vec::with_capacity(rows.len());
+        for (id_str, user_id_str, username, roles_raw, ip_address, user_agent, created_str, last_active_str, expires_str) in rows {
+            let id = Uuid::parse_str(&id_str).unwrap_or_default();
+            let user_id = Uuid::parse_str(&user_id_str).unwrap_or_default();
+            let roles: Vec<String> = serde_json::from_str(&roles_raw).unwrap_or_default();
+            let created_at = DateTime::parse_from_rfc3339(&created_str)
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            let last_active_at = DateTime::parse_from_rfc3339(&last_active_str)
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            let expires_at = DateTime::parse_from_rfc3339(&expires_str)
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            list.push(SessionRecord {
+                id,
+                user_id,
+                username,
+                roles,
+                ip_address,
+                user_agent,
+                created_at,
+                last_active_at,
+                expires_at,
+            });
+        }
+
+        Ok(list)
+    }
+
+    /// Отозвать все сессии конкретного пользователя, кроме указанной
+    pub async fn revoke_user_sessions_except(&self, user_id: Uuid, except_session_id: Uuid) -> Result<usize> {
+        let res = sqlx::query("DELETE FROM active_sessions WHERE user_id = ? AND id != ?")
+            .bind(user_id.to_string())
+            .bind(except_session_id.to_string())
+            .execute(self.db.writer())
+            .await
+            .map_err(|e| AppError::database(format!("Failed to revoke user other sessions: {}", e)))?;
+
+        Ok(res.rows_affected() as usize)
+    }
+
     /// Отозвать все сессии конкретного пользователя
     pub async fn revoke_user_sessions(&self, user_id: Uuid) -> Result<usize> {
         let res = sqlx::query("DELETE FROM active_sessions WHERE user_id = ?")

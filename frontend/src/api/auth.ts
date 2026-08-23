@@ -113,5 +113,18 @@ export const authApi = {
   },
   getConfig: async (): Promise<AuthConfig> => {
     return api.get<AuthConfig>('/api/v1/auth/config')
+  },
+  getSessions: async (): Promise<any[]> => {
+    return api.get<any[]>('/api/v1/auth/sessions')
+  },
+  revokeSession: async (id: string): Promise<{ success: boolean; session_id: string }> => {
+    return api.delete<{ success: boolean; session_id: string }>(`/api/v1/auth/sessions/${encodeURIComponent(id)}`)
+  },
+  terminateOtherSessions: async (): Promise<{ success: boolean; terminated_count: number }> => {
+    return api.post<{ success: boolean; terminated_count: number }>('/api/v1/auth/sessions/terminate-others', {})
+  },
+  terminateAllSessions: async (): Promise<{ success: boolean; terminated_count: number }> => {
+    return api.post<{ success: boolean; terminated_count: number }>('/api/v1/auth/sessions/terminate-all', {})
   }
 }
+
