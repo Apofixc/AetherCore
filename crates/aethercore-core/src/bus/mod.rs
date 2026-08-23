@@ -11,6 +11,7 @@
 //! - **In-Process Request-Reply & Scatter-Gather RPC**: синхронизированный вызов команд точка-точка (`request`) и параллельный опрос группы сервисов (`request_many`).
 
 pub mod dedup;
+pub mod dlq;
 pub mod interceptor;
 pub mod queue;
 pub mod retained;
@@ -18,8 +19,10 @@ pub mod ring;
 pub mod router;
 pub mod stats;
 pub mod storage;
+pub mod topology;
 
 pub use dedup::EventDeduplicator;
+pub use dlq::{DeadLetter, DeadLetterQueue, DeadLetterReason, DEFAULT_DLQ_CAPACITY};
 pub use interceptor::{EventInterceptor, InterceptorAction, InterceptorPipeline, MaskingInterceptor};
 pub use queue::{create_priority_queue, PriorityQueueReceiver, PriorityQueueSender};
 pub use retained::{RetainedStore, DEFAULT_RETAINED_CAPACITY};
@@ -27,11 +30,13 @@ pub use ring::EventRingBuffer;
 pub use router::{EventFilter, SubscriptionHandle, SubscriptionId, TopicRouter};
 pub use stats::{BusMetrics, BusStats};
 pub use storage::EventStorage;
+pub use topology::{BusTopologySnapshot, BusTopologyTracker, TopologyEdge, TopologyNode, TopologyNodeType};
 
 use crate::db::Db;
 use aethercore_common::error::{AppError, Result};
 use aethercore_common::models::events::{EventMessage, EventType, ReliableEventRecord};
 use chrono::Duration;
+use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tracing::{debug, error, trace};
@@ -41,7 +46,7 @@ use uuid::Uuid;
 ///
 /// Объединяет оперативную память L1 (RingBuffer) для горячей телеметрии, персистентную базу данных L2 (SQLite)
 /// для надежных событий, LRU-кэш Retained-сообщений, взвешенные очереди приоритетов (WFQ),
-/// префиксный маршрутизатор топиков и средства двунаправленного RPC.
+/// префиксный маршрутизатор топиков, трекер топологии взаимодействия модулей, очередь DLQ и средства двунаправленного RPC.
 #[derive(Clone, Debug)]
 pub struct EventBus {
     router: TopicRouter,
@@ -52,6 +57,8 @@ pub struct EventBus {
     interceptors: InterceptorPipeline,
     storage: Option<EventStorage>,
     metrics: BusMetrics,
+    topology: BusTopologyTracker,
+    dlq: DeadLetterQueue,
 }
 
 impl EventBus {
@@ -98,7 +105,9 @@ impl EventBus {
     /// * `db` — Опциональный пул базы данных для L2 хранилища.
     /// * `ring_capacity` — Емкость горячего L1 кольцевого буфера в оперативной памяти (в количестве сообщений).
     pub fn with_options(db: Option<Db>, ring_capacity: usize) -> Self {
-        let router = TopicRouter::new();
+        let topology = BusTopologyTracker::new();
+        let dlq = DeadLetterQueue::default();
+        let router = TopicRouter::new().with_topology(topology.clone());
         let (queue_tx, mut queue_rx) = create_priority_queue();
         let ring = EventRingBuffer::new(ring_capacity);
         let dedup = EventDeduplicator::default();
@@ -117,6 +126,8 @@ impl EventBus {
             interceptors: interceptors.clone(),
             storage: storage.clone(),
             metrics: metrics.clone(),
+            topology: topology.clone(),
+            dlq: dlq.clone(),
         };
 
         // Запуск фонового диспетчера взвешенных очередей
@@ -124,11 +135,15 @@ impl EventBus {
         let dispatch_ring = ring.clone();
         let dispatch_storage = storage.clone();
         let dispatch_metrics = metrics.clone();
+        let dispatch_topology = topology.clone();
 
         tokio::spawn(async move {
             debug!("EventBus weighted fair queuing dispatcher started");
             while let Some(event) = queue_rx.dequeue().await {
                 let start = std::time::Instant::now();
+
+                // 0. Фиксируем активность в топологии
+                dispatch_topology.record_publish(&event.source, &event.topic);
 
                 // 1. Сохраняем в горячий L1 кольцевой буфер
                 let evicted = dispatch_ring.push(event.clone());
@@ -215,6 +230,46 @@ impl EventBus {
         Ok(())
     }
 
+    /// Опубликовать типизированное эфемеренное событие телеметрии
+    ///
+    /// # Аргументы
+    /// * `topic` — Тема события.
+    /// * `source` — Идентификатор источника (например, `"plugin:zigbee"`).
+    /// * `payload` — Сериализуемая ссылка на данные.
+    pub async fn publish_typed<T: Serialize>(
+        &self,
+        topic: impl Into<String>,
+        source: impl Into<String>,
+        payload: &T,
+    ) -> Result<Uuid> {
+        let val = serde_json::to_value(payload)
+            .map_err(|e| AppError::validation("payload", format!("Serialization error: {}", e)))?;
+        let event = EventMessage::telemetry(topic, source, val);
+        let id = event.id;
+        self.publish(event).await?;
+        Ok(id)
+    }
+
+    /// Опубликовать типизированное гарантированное персистентное событие
+    ///
+    /// # Аргументы
+    /// * `topic` — Тема события.
+    /// * `source` — Идентификатор источника.
+    /// * `payload` — Сериализуемая ссылка на данные.
+    pub async fn publish_reliable_typed<T: Serialize>(
+        &self,
+        topic: impl Into<String>,
+        source: impl Into<String>,
+        payload: &T,
+    ) -> Result<Uuid> {
+        let val = serde_json::to_value(payload)
+            .map_err(|e| AppError::validation("payload", format!("Serialization error: {}", e)))?;
+        let event = EventMessage::reliable(topic, source, val);
+        let id = event.id;
+        self.publish(event).await?;
+        Ok(id)
+    }
+
     /// Массовая публикация пакета событий
     ///
     /// Последовательно публикует список событий в шину с оптимизированным контролем ошибок.
@@ -231,35 +286,28 @@ impl EventBus {
     /// Подписаться на все события платформы (маска `#`)
     ///
     /// Возвращает RAII-дескриптор [`SubscriptionHandle`], автоматически отписывающийся при `Drop`.
-    ///
-    /// # Примеры
-    /// ```rust
-    /// use aethercore_core::bus::EventBus;
-    ///
-    /// # async fn run() {
-    /// let bus = EventBus::in_memory();
-    /// let mut sub = bus.subscribe();
-    /// // sub.recv().await ...
-    /// # }
-    /// ```
     pub fn subscribe(&self) -> SubscriptionHandle {
         self.router.subscribe(&["#"])
+    }
+
+    /// Создать именованную подписку (удобно для регистрации имени плагина в топологии)
+    ///
+    /// # Аргументы
+    /// * `name` — Отображаемое имя плагина/сервиса (например, `"plugin:notifications"`).
+    /// * `patterns` — Срез шаблонов топиков.
+    pub fn subscribe_named(
+        &self,
+        name: impl Into<String>,
+        patterns: &[&str],
+    ) -> SubscriptionHandle {
+        let sub = self.subscribe_topics(patterns);
+        sub.with_name(name)
     }
 
     /// Подписаться на конкретный топик или маску (`*`, `#`)
     ///
     /// # Аргументы
     /// * `pattern` — Шаблон топика (например, `"devices.*.status"` или `"alarms.#"`).
-    ///
-    /// # Примеры
-    /// ```rust
-    /// use aethercore_core::bus::EventBus;
-    ///
-    /// # async fn run() {
-    /// let bus = EventBus::in_memory();
-    /// let mut sub = bus.subscribe_topic("devices.*.metrics");
-    /// # }
-    /// ```
     pub fn subscribe_topic(&self, pattern: impl AsRef<str>) -> SubscriptionHandle {
         self.router.subscribe(&[pattern.as_ref()])
     }
@@ -339,6 +387,7 @@ impl EventBus {
     /// Синхронный запрос-ответ (In-Process Request-Reply RPC)
     ///
     /// Отправляет запрос на топик и асинхронно ожидает ответное сообщение с совпадающим `correlation_id`.
+    /// При таймауте фиксирует запрос в очереди DLQ для отладки сбоев сервисов.
     ///
     /// # Аргументы
     /// * `topic` — Тема целевого сервиса-обработчика.
@@ -364,7 +413,7 @@ impl EventBus {
         let mut req_msg = EventMessage::telemetry(topic, "core.rpc", payload);
         req_msg = req_msg.with_correlation(correlation_id, Some(reply_topic));
 
-        self.publish(req_msg).await?;
+        self.publish(req_msg.clone()).await?;
 
         let timeout_fut = tokio::time::sleep(timeout);
         tokio::pin!(timeout_fut);
@@ -377,6 +426,7 @@ impl EventBus {
                     }
                 }
                 _ = &mut timeout_fut => {
+                    self.dlq.push(req_msg.clone(), DeadLetterReason::RpcTimeout);
                     return Err(AppError::timeout(format!("Request to topic '{}' timed out after {:?}", topic, timeout)));
                 }
             }
@@ -418,7 +468,7 @@ impl EventBus {
         let mut req_msg = EventMessage::telemetry(topic, "core.rpc", payload);
         req_msg = req_msg.with_correlation(correlation_id, Some(reply_topic));
 
-        self.publish(req_msg).await?;
+        self.publish(req_msg.clone()).await?;
 
         let mut responses = Vec::with_capacity(expected_count);
         let timeout_fut = tokio::time::sleep(timeout);
@@ -441,6 +491,7 @@ impl EventBus {
         }
 
         if responses.is_empty() {
+            self.dlq.push(req_msg, DeadLetterReason::RpcTimeout);
             Err(AppError::timeout(format!(
                 "Scatter-gather request to topic '{}' timed out with 0 responses after {:?}",
                 topic, timeout
@@ -566,13 +617,56 @@ impl EventBus {
         }
     }
 
+    /// Получить моментальный снимок графа топологии шины для визуализатора
+    pub fn topology(&self) -> BusTopologySnapshot {
+        self.topology.snapshot()
+    }
+
+    /// Получить ссылку на трекер топологии
+    pub fn topology_tracker(&self) -> BusTopologyTracker {
+        self.topology.clone()
+    }
+
+    /// Получить список сбойных сообщений из очереди Dead Letter Queue
+    pub fn dead_letters(&self, limit: usize) -> Vec<DeadLetter> {
+        self.dlq.list(limit)
+    }
+
+    /// Получить конкретную запись из DLQ по ее уникальному идентификатору
+    pub fn get_dead_letter(&self, id: Uuid) -> Option<DeadLetter> {
+        self.dlq.get(id)
+    }
+
+    /// Повторно отправить (re-drive) сбойное сообщение из DLQ обратно в шину
+    pub async fn redrive_dead_letter(&self, id: Uuid) -> Result<()> {
+        if let Some(mut dead_letter) = self.dlq.remove(id) {
+            // Обновляем идентификатор и временную метку для успешного прохождения дедупликатора
+            dead_letter.event.id = Uuid::new_v4();
+            dead_letter.event.timestamp = chrono::Utc::now();
+            self.publish(dead_letter.event).await
+        } else {
+            Err(AppError::not_found("Dead letter entry not found"))
+        }
+    }
+
+    /// Очистить очередь недоставленных сообщений
+    pub fn clear_dead_letters(&self) {
+        self.dlq.clear();
+    }
+
     /// Получить снимок метрик и текущего состояния шины событий
     ///
     /// Возвращает счетчики опубликованных событий по приоритетам, число активных подписчиков,
-    /// размер буфера памяти, количество retained-сообщений и показатели задержки.
+    /// размер буфера памяти, количество retained-сообщений, размер DLQ и показатели задержки.
     pub fn stats(&self) -> BusStats {
-        self.metrics
-            .0
-            .snapshot(self.router.subscriber_count(), self.ring.len(), self.retained.len())
+        let top_snap = self.topology.snapshot();
+        self.metrics.0.snapshot(
+            self.router.subscriber_count(),
+            self.ring.len(),
+            self.retained.len(),
+            self.dlq.len(),
+            top_snap.publishers_count,
+            top_snap.topics_count,
+        )
     }
 }

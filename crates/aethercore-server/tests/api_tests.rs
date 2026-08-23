@@ -759,4 +759,127 @@ async fn test_audit_clear_rotate_and_import() {
     assert_eq!(logs_after[0].action, "audit.clear");
 }
 
+#[tokio::test]
+async fn test_events_topology_and_dlq_endpoints() {
+    let (app, state) = setup_test_app().await;
+
+    // Логин для получения токена
+    let login_payload = serde_json::json!({
+        "username": "root",
+        "password": "root"
+    });
+
+    let login_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&login_payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body_bytes = login_res.into_body().collect().await.unwrap().to_bytes();
+    let login_data: LoginResponse = serde_json::from_slice(&body_bytes).unwrap();
+    let token = login_data.token;
+
+    // 1. Публикуем событие через шину и регистрируем подписку
+    let mut _sub = state.bus.subscribe_named("plugin:test", &["sensor.*"]);
+    state
+        .bus
+        .publish(aethercore_common::models::events::EventMessage::telemetry(
+            "sensor.temp",
+            "plugin:sensor_source",
+            serde_json::json!({"val": 25.0}),
+        ))
+        .await
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // 2. Тест GET /api/v1/events/topology
+    let topo_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/events/topology")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(topo_res.status(), StatusCode::OK);
+    let topo_bytes = topo_res.into_body().collect().await.unwrap().to_bytes();
+    let topo_data: aethercore_core::bus::BusTopologySnapshot =
+        serde_json::from_slice(&topo_bytes).unwrap();
+    assert!(topo_data.publishers_count >= 1);
+    assert!(topo_data.subscribers_count >= 1);
+
+    // 3. Симулируем таймаут RPC для попадания в DLQ
+    let _ = state
+        .bus
+        .request("unresponsive.endpoint", serde_json::json!({}), std::time::Duration::from_millis(20))
+        .await;
+
+    // 4. Тест GET /api/v1/events/dlq
+    let dlq_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/events/dlq")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(dlq_res.status(), StatusCode::OK);
+    let dlq_bytes = dlq_res.into_body().collect().await.unwrap().to_bytes();
+    let dlq_list: Vec<aethercore_core::bus::DeadLetter> =
+        serde_json::from_slice(&dlq_bytes).unwrap();
+    assert_eq!(dlq_list.len(), 1);
+    let dlq_id = dlq_list[0].id;
+
+    // 5. Тест POST /api/v1/events/dlq/{id}/redrive
+    let redrive_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/events/dlq/{}/redrive", dlq_id))
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(redrive_res.status(), StatusCode::OK);
+
+    // 6. Тест DELETE /api/v1/events/dlq
+    let delete_dlq_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/events/dlq")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(delete_dlq_res.status(), StatusCode::OK);
+}
+
+
 

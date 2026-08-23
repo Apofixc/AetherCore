@@ -25,6 +25,12 @@ pub struct BusStats {
     pub ring_buffer_len: usize,
     /// Количество удерживаемых Retained-сообщений в памяти
     pub retained_messages_len: usize,
+    /// Количество сообщений в очереди недоставленных (DLQ)
+    pub dlq_len: usize,
+    /// Количество уникальных зарегистрированных издателей в топологии
+    pub topology_publishers_count: usize,
+    /// Количество уникальных топиков в топологии
+    pub topology_topics_count: usize,
     /// Количество сброшенных/пропущенных сообщений из-за переполнения очередей
     pub dropped_total: u64,
     /// Средняя задержка обработки диспетчера в микросекундах
@@ -74,6 +80,9 @@ impl MetricsCollector {
         active_subscribers: usize,
         ring_len: usize,
         retained_len: usize,
+        dlq_len: usize,
+        topology_publishers_count: usize,
+        topology_topics_count: usize,
     ) -> BusStats {
         let total_us = self.total_dispatch_latency_us.load(Ordering::Relaxed);
         let count = self.dispatch_count.load(Ordering::Relaxed);
@@ -92,6 +101,9 @@ impl MetricsCollector {
             active_subscribers,
             ring_buffer_len: ring_len,
             retained_messages_len: retained_len,
+            dlq_len,
+            topology_publishers_count,
+            topology_topics_count,
             dropped_total: self.dropped_total.load(Ordering::Relaxed),
             avg_dispatch_latency_us: avg_latency,
         }

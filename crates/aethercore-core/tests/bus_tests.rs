@@ -367,3 +367,165 @@ async fn test_scatter_gather_rpc() {
 
     assert_eq!(responses.len(), 3);
 }
+
+#[tokio::test]
+async fn test_bus_topology_tracking() {
+    let bus = EventBus::in_memory();
+
+    // 1. Создаем именованную подписку
+    let mut _sub = bus.subscribe_named("plugin:notifications", &["scheduler.#", "alarms.#"]);
+
+    // 2. Публикуем события из разных источников
+    let ev1 = EventMessage::telemetry("scheduler.task.started", "core:scheduler", serde_json::json!({"task": "backup"}));
+    let ev2 = EventMessage::telemetry("sensors.temp", "plugin:zigbee", serde_json::json!({"val": 21.5}));
+    let ev3 = EventMessage::telemetry("sensors.temp", "plugin:zigbee", serde_json::json!({"val": 22.0}));
+
+    bus.publish(ev1).await.unwrap();
+    bus.publish(ev2).await.unwrap();
+    bus.publish(ev3).await.unwrap();
+
+    // Даем микропаузу воркеру на диспетчеризацию
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // 3. Получаем снимок топологии
+    let topology = bus.topology();
+    assert_eq!(topology.publishers_count, 2); // core:scheduler и plugin:zigbee
+    assert_eq!(topology.subscribers_count, 1); // plugin:notifications
+    assert!(topology.topics_count >= 2); // scheduler.task.started и sensors.temp
+
+    // Проверяем наличие узлов
+    let pub_nodes: Vec<_> = topology.nodes.iter().filter(|n| n.node_type == aethercore_core::bus::TopologyNodeType::Publisher).collect();
+    assert_eq!(pub_nodes.len(), 2);
+
+    let sub_nodes: Vec<_> = topology.nodes.iter().filter(|n| n.node_type == aethercore_core::bus::TopologyNodeType::Subscriber).collect();
+    assert_eq!(sub_nodes.len(), 1);
+    assert_eq!(sub_nodes[0].label, "plugin:notifications");
+
+    // Проверяем ребра публикации
+    let zigbee_edge = topology.edges.iter().find(|e| e.source_id == "pub:plugin:zigbee" && e.target_id == "topic:sensors.temp").unwrap();
+    assert_eq!(zigbee_edge.message_count, 2);
+}
+
+#[tokio::test]
+async fn test_subscription_throttle() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("sensors.high_freq");
+
+    // Отправляем 5 сообщений без задержки
+    for i in 0..5 {
+        let msg = EventMessage::telemetry(
+            "sensors.high_freq",
+            "plugin:sensor",
+            serde_json::json!({"seq": i}),
+        );
+        bus.publish(msg).await.unwrap();
+    }
+
+    // Первое сообщение читается сразу
+    let first = sub.recv_throttled(Duration::from_millis(100)).await.unwrap();
+    assert_eq!(first.payload.get("seq").unwrap(), 0);
+
+    // Поскольку остальные сообщения пришли с интервалом < 100мс, они должны быть отброшены
+    tokio::select! {
+        _ = sub.recv_throttled(Duration::from_millis(100)) => panic!("Should be throttled"),
+        _ = tokio::time::sleep(Duration::from_millis(30)) => {}
+    }
+
+    // Через 110мс отправляем еще одно — оно должно успешно пройти
+    tokio::time::sleep(Duration::from_millis(110)).await;
+    let next_msg = EventMessage::telemetry(
+        "sensors.high_freq",
+        "plugin:sensor",
+        serde_json::json!({"seq": 99}),
+    );
+    bus.publish(next_msg).await.unwrap();
+
+    let passed = sub.recv_throttled(Duration::from_millis(100)).await.unwrap();
+    assert_eq!(passed.payload.get("seq").unwrap(), 99);
+}
+
+#[tokio::test]
+async fn test_subscription_debounce() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("controls.dimmer");
+
+    // Эмулируем быстрое вращение диммера (серия быстрых обновлений каждые 5 мс)
+    let bus_clone = bus.clone();
+    tokio::spawn(async move {
+        for val in 1..=5 {
+            let msg = EventMessage::telemetry(
+                "controls.dimmer",
+                "ui:slider",
+                serde_json::json!({"brightness": val * 20}),
+            );
+            let _ = bus_clone.publish(msg).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    });
+
+    // Дебаунс 50 мс должен выдать только финальное стабилизировавшееся значение (100)
+    let debounced_msg = sub.recv_debounced(Duration::from_millis(50)).await.unwrap();
+    assert_eq!(debounced_msg.payload.get("brightness").unwrap(), 100);
+}
+
+#[tokio::test]
+async fn test_dead_letter_queue_and_redrive() {
+    let bus = EventBus::in_memory();
+
+    // 1. RPC запрос к несуществующему обработчику завершается таймаутом и попадает в DLQ
+    let err = bus
+        .request("unresponsive.service", serde_json::json!({"action": "ping"}), Duration::from_millis(30))
+        .await;
+    assert!(err.is_err());
+
+    // 2. Проверяем наличие записи в DLQ
+    let dead_letters = bus.dead_letters(10);
+    assert_eq!(dead_letters.len(), 1);
+    assert_eq!(dead_letters[0].event.topic, "unresponsive.service");
+    assert_eq!(
+        dead_letters[0].reason,
+        aethercore_core::bus::DeadLetterReason::RpcTimeout
+    );
+
+    let dlq_id = dead_letters[0].id;
+
+    // 3. Запускаем обработчик топика
+    let mut service_sub = bus.subscribe_topic("unresponsive.service");
+
+    // 4. Выполняем повторный запуск (re-drive) из DLQ
+    bus.redrive_dead_letter(dlq_id).await.unwrap();
+
+    let redriven = service_sub.recv().await.unwrap();
+    assert_eq!(redriven.topic, "unresponsive.service");
+    assert_eq!(redriven.payload.get("action").unwrap(), "ping");
+
+    // 5. После redrive запись удалена из DLQ
+    assert_eq!(bus.dead_letters(10).len(), 0);
+}
+
+#[tokio::test]
+async fn test_typed_pub_sub() {
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+    struct ClimateTelemetry {
+        temperature: f64,
+        humidity: f64,
+        room: String,
+    }
+
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("climate.living_room");
+
+    let payload = ClimateTelemetry {
+        temperature: 23.4,
+        humidity: 45.0,
+        room: "Living Room".to_string(),
+    };
+
+    bus.publish_typed("climate.living_room", "plugin:climate", &payload)
+        .await
+        .unwrap();
+
+    let received: ClimateTelemetry = sub.recv_typed::<ClimateTelemetry>().await.unwrap().unwrap();
+    assert_eq!(received, payload);
+}
+

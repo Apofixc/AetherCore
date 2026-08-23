@@ -21,7 +21,7 @@ use std::path::PathBuf;
 /// assert_eq!(config.server.port, 8080);
 /// assert_eq!(config.server.host, "127.0.0.1");
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// Сетевые настройки HTTP/WebSocket сервера ([`ServerConfig`])
     #[serde(default)]
@@ -38,18 +38,6 @@ pub struct AppConfig {
     /// Настройки интернационализации и языка по умолчанию ([`I18nConfig`])
     #[serde(default)]
     pub i18n: I18nConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            database: DatabaseConfig::default(),
-            security: SecurityConfig::default(),
-            plugins: PluginsConfig::default(),
-            i18n: I18nConfig::default(),
-        }
-    }
 }
 
 /// Конфигурация HTTP/WS сервера платформы

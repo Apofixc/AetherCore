@@ -7,6 +7,7 @@
 //! Предоставляет потокобезопасный [`TopicRouter`] и RAII-дескриптор [`SubscriptionHandle`],
 //! который автоматически отписывается при выходе из области видимости (`Drop`).
 
+use super::topology::BusTopologyTracker;
 use aethercore_common::models::events::EventMessage;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -146,6 +147,7 @@ impl std::fmt::Debug for SubscriberEntry {
 struct TopicRouterInner {
     trie: TopicTrieNode,
     subscribers: HashMap<SubscriptionId, SubscriberEntry>,
+    topology: Option<BusTopologyTracker>,
 }
 
 /// Маршрутизатор топиков событий платформы
@@ -159,6 +161,25 @@ impl TopicRouter {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(TopicRouterInner::default())),
+        }
+    }
+
+    /// Привязать трекер топологии к роутеру
+    pub fn with_topology(self, topology: BusTopologyTracker) -> Self {
+        self.inner.write().unwrap().topology = Some(topology);
+        self
+    }
+
+    /// Установить трекер топологии
+    pub fn set_topology(&self, topology: BusTopologyTracker) {
+        self.inner.write().unwrap().topology = Some(topology);
+    }
+
+    /// Установить отображаемое имя подписчика в топологии
+    pub fn set_subscriber_name(&self, sub_id: SubscriptionId, name: String) {
+        let guard = self.inner.read().unwrap();
+        if let Some(ref top) = guard.topology {
+            top.set_subscriber_name(sub_id, name);
         }
     }
 
@@ -182,16 +203,23 @@ impl TopicRouter {
         let sub_id = SUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(SUBSCRIBER_QUEUE_CAPACITY);
 
-        let mut patterns_set = HashSet::new();
+        let mut patterns_vec = Vec::new();
         {
             let mut guard = self.inner.write().unwrap();
-            for pattern in patterns {
-                let pat_str = pattern.trim();
+            let mut patterns_set = HashSet::new();
+
+            for pat in patterns {
+                let pat_str = pat.trim();
                 if !pat_str.is_empty() {
                     patterns_set.insert(pat_str.to_string());
+                    patterns_vec.push(pat_str.to_string());
                     let segments: Vec<&str> = pat_str.split('.').collect();
                     guard.trie.insert(&segments, sub_id);
                 }
+            }
+
+            if let Some(ref top) = guard.topology {
+                top.register_subscriber(sub_id, None, &patterns_vec);
             }
 
             guard.subscribers.insert(
@@ -206,9 +234,11 @@ impl TopicRouter {
 
         SubscriptionHandle {
             id: sub_id,
+            name: None,
             rx,
             router: self.clone(),
             filter,
+            throttle_state: HashMap::new(),
         }
     }
 
@@ -236,6 +266,9 @@ impl TopicRouter {
             if entry.patterns.insert(pat_str.to_string()) {
                 let segments: Vec<&str> = pat_str.split('.').collect();
                 guard.trie.insert(&segments, sub_id);
+                if let Some(ref top) = guard.topology {
+                    top.add_subscriber_pattern(sub_id, pat_str.to_string());
+                }
             }
         }
     }
@@ -256,6 +289,9 @@ impl TopicRouter {
             if entry.patterns.remove(pat_str) {
                 let segments: Vec<&str> = pat_str.split('.').collect();
                 guard.trie.remove(&segments, sub_id);
+                if let Some(ref top) = guard.topology {
+                    top.remove_subscriber_pattern(sub_id, pat_str);
+                }
             }
         }
     }
@@ -270,6 +306,9 @@ impl TopicRouter {
             for pattern in &entry.patterns {
                 let segments: Vec<&str> = pattern.split('.').collect();
                 guard.trie.remove(&segments, sub_id);
+            }
+            if let Some(ref top) = guard.topology {
+                top.unregister_subscriber(sub_id);
             }
         }
     }
@@ -308,7 +347,12 @@ impl TopicRouter {
                 // Пытаемся отправить без блокировки (non-blocking try_send)
                 // Если буфер подписчика переполнен, защищаем сервер от блокировки
                 match entry.tx.try_send(event.clone()) {
-                    Ok(_) => delivered += 1,
+                    Ok(_) => {
+                        delivered += 1;
+                        if let Some(ref top) = guard.topology {
+                            top.record_delivery(id);
+                        }
+                    }
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         trace!("Subscriber queue full for sub_id {}, dropped event {}", id, event.id);
                     }
@@ -333,9 +377,11 @@ impl TopicRouter {
 /// Автоматически удаляет регистрацию топиков из маршрутизатора при выходе из области видимости (`Drop`).
 pub struct SubscriptionHandle {
     id: SubscriptionId,
+    name: Option<String>,
     rx: mpsc::Receiver<EventMessage>,
     router: TopicRouter,
     filter: Option<EventFilter>,
+    throttle_state: HashMap<String, std::time::Instant>,
 }
 
 impl SubscriptionHandle {
@@ -344,11 +390,82 @@ impl SubscriptionHandle {
         self.id
     }
 
+    /// Получить опциональное имя подписки/плагина
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Привязать имя подписчика для идентификации в графе топологии
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        let name_str = name.into();
+        self.router.set_subscriber_name(self.id, name_str.clone());
+        self.name = Some(name_str);
+        self
+    }
+
     /// Асинхронно прочитать следующее событие из очереди
     ///
     /// Возвращает `None`, если шина событий была остановлена.
     pub async fn recv(&mut self) -> Option<EventMessage> {
         self.rx.recv().await
+    }
+
+    /// Прочитать следующее событие с ограничением частоты по топикам (Throttling)
+    ///
+    /// Пропускает события не чаще одного раза в `min_interval` для каждого уникального топика,
+    /// защищая подписчика от перегрузки при высокочастотных всплесках телеметрии.
+    pub async fn recv_throttled(&mut self, min_interval: std::time::Duration) -> Option<EventMessage> {
+        while let Some(msg) = self.rx.recv().await {
+            let now = std::time::Instant::now();
+            let should_emit = match self.throttle_state.get(&msg.topic) {
+                Some(&last_time) => now.duration_since(last_time) >= min_interval,
+                None => true,
+            };
+
+            if should_emit {
+                self.throttle_state.insert(msg.topic.clone(), now);
+                return Some(msg);
+            }
+        }
+        None
+    }
+
+    /// Прочитать событие со сглаживанием всплесков и дребезга (Debouncing)
+    ///
+    /// При поступлении серии частых обновлений накапливает их и возвращает финальное
+    /// установившееся значение только после периода затишья `quiet_period`.
+    pub async fn recv_debounced(&mut self, quiet_period: std::time::Duration) -> Option<EventMessage> {
+        let mut latest_msg = self.rx.recv().await?;
+
+        loop {
+            tokio::select! {
+                next_opt = self.rx.recv() => {
+                    match next_opt {
+                        Some(next_msg) => {
+                            latest_msg = next_msg;
+                        }
+                        None => {
+                            // Канал закрылся, отдаем последнее накопленное сообщение
+                            return Some(latest_msg);
+                        }
+                    }
+                }
+                _ = tokio::time::sleep(quiet_period) => {
+                    return Some(latest_msg);
+                }
+            }
+        }
+    }
+
+    /// Асинхронно прочитать следующее событие и автоматически десериализовать его payload
+    ///
+    /// # Типы
+    /// * `T` — Целевая структура данных, реализующая [`serde::de::DeserializeOwned`].
+    pub async fn recv_typed<T: serde::de::DeserializeOwned>(
+        &mut self,
+    ) -> Option<std::result::Result<T, serde_json::Error>> {
+        let msg = self.recv().await?;
+        Some(serde_json::from_value(msg.payload))
     }
 
     /// Попробовать прочитать следующее событие без блокировки
@@ -389,3 +506,4 @@ impl Drop for SubscriptionHandle {
         self.router.unsubscribe(self.id);
     }
 }
+

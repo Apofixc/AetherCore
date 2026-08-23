@@ -1,17 +1,17 @@
-//! # Эндпоинты надежного журнала событий (`/api/v1/events`)
+//! # Эндпоинты шины событий, журнала и топологии (`/api/v1/events`)
 //!
-//! Предоставляет HTTP эндпоинты для выборки исторических событий из журнала SQLite WAL
-//! с поддержкой фильтрации по топикам и постраничной пагинации по ID, а также метрик шины.
+//! Предоставляет HTTP эндпоинты для выборки исторических событий из журнала SQLite WAL,
+//! метрик шины, графа топологии потоков данных и инспекции очереди сбоев DLQ.
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use aethercore_common::error::ErrorResponse;
 use aethercore_common::models::events::{EventMessage, EventPriority, EventType, ReliableEventRecord};
-use aethercore_core::bus::BusStats;
+use aethercore_core::bus::{BusStats, BusTopologySnapshot, DeadLetter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -20,6 +20,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(query_events_handler))
         .route("/stats", get(get_bus_stats_handler))
+        .route("/topology", get(get_bus_topology_handler))
+        .route("/dlq", get(get_bus_dlq_handler).delete(clear_bus_dlq_handler))
+        .route("/dlq/{id}/redrive", post(redrive_bus_dlq_handler))
         .route("/publish", post(publish_event_handler))
 }
 
@@ -132,3 +135,66 @@ async fn get_bus_stats_handler(
 ) -> Json<BusStats> {
     Json(state.bus.stats())
 }
+
+/// GET /api/v1/events/topology
+///
+/// Возвращает моментальный снимок графа топологии шины (связи Publisher -> Topic -> Subscriber).
+async fn get_bus_topology_handler(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Json<BusTopologySnapshot> {
+    Json(state.bus.topology())
+}
+
+/// Параметры выборки очереди DLQ
+#[derive(Debug, Deserialize)]
+pub struct DlqQuery {
+    /// Максимальное количество возвращаемых сбойных сообщений (по умолчанию 50)
+    pub limit: Option<usize>,
+}
+
+/// GET /api/v1/events/dlq
+///
+/// Возвращает список последних сбойных сообщений из очереди Dead Letter Queue.
+async fn get_bus_dlq_handler(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Query(query): Query<DlqQuery>,
+) -> Json<Vec<DeadLetter>> {
+    let limit = query.limit.unwrap_or(50);
+    Json(state.bus.dead_letters(limit))
+}
+
+/// POST /api/v1/events/dlq/:id/redrive
+///
+/// Повторно отправляет сбойное сообщение из DLQ в шину событий.
+async fn redrive_bus_dlq_handler(
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+    _auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    state.bus.redrive_dead_letter(id).await.map_err(|e| {
+        (
+            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(e.to_api_response(locale)),
+        )
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "status": "redriven",
+        "dead_letter_id": id
+    })))
+}
+
+/// DELETE /api/v1/events/dlq
+///
+/// Очищает все записи в очереди Dead Letter Queue.
+async fn clear_bus_dlq_handler(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Json<serde_json::Value> {
+    state.bus.clear_dead_letters();
+    Json(serde_json::json!({"status": "cleared"}))
+}
+
