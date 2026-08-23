@@ -44,8 +44,6 @@ const requireDigits = ref(true)
 const requireSpecial = ref(true)
 const ipWhitelist = ref('')
 
-const saveSuccess = ref(false)
-
 async function loadSavedSettings() {
   if (authStore.authConfig) {
     const cfg = authStore.authConfig
@@ -171,19 +169,16 @@ async function applyChanges() {
     }
 
     initialWebUiAuth.value = webUiAuth.value
-  } catch (err) {
+    toast.success(t('common.changesApplied'))
+  } catch (err: any) {
     console.error('Could not save security policies to server:', err)
+    toast.error(err?.message || 'Failed to save policies')
     if (isEnablingAuth) {
       authStore.logout()
       window.location.href = '/login'
       return
     }
   }
-
-  saveSuccess.value = true
-  setTimeout(() => {
-    saveSuccess.value = false
-  }, 3000)
 }
 
 // Roles state
@@ -538,10 +533,6 @@ function getItemDescription(item: PermissionItem): string {
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <span v-if="saveSuccess" class="text-xs text-tertiary-fixed-dim font-bold flex items-center gap-1 animate-fade-in">
-              <span class="material-symbols-outlined text-[16px]">check_circle</span>
-              {{ t('common.changesApplied') }}
-            </span>
             <AppButton
               variant="primary"
               size="sm"

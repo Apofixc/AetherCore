@@ -13,10 +13,12 @@ import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useModulesStore } from '@/stores/modules'
 import type { ModuleDto } from '@/api/modules'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
 const modulesStore = useModulesStore()
+const toast = useToast()
 const viewMode = ref<'table' | 'graph'>('table')
 const isScanning = ref(false)
 const showInstallModal = ref(false)
@@ -32,11 +34,13 @@ async function copyModuleId(id: string) {
   try {
     await navigator.clipboard.writeText(id)
     copiedId.value = true
+    toast.info('ID скопирован в буфер')
     setTimeout(() => {
       copiedId.value = false
     }, 2000)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to copy ID:', err)
+    toast.error('Не удалось скопировать ID')
   }
 }
 
@@ -52,6 +56,9 @@ async function handleScan() {
   isScanning.value = true
   try {
     await modulesStore.fetchModules()
+    toast.success('Модули синхронизированы')
+  } catch (err: any) {
+    toast.error(err?.message || 'Ошибка синхронизации модулей')
   } finally {
     setTimeout(() => {
       isScanning.value = false
@@ -62,8 +69,10 @@ async function handleScan() {
 async function handleToggle(mod: ModuleDto) {
   try {
     await modulesStore.toggleModule(mod.id, !mod.is_active)
-  } catch (err) {
+    toast.success(mod.is_active ? t('common.disabled') : t('common.active'))
+  } catch (err: any) {
     console.error('Failed to toggle module:', err)
+    toast.error(err?.message || 'Failed to toggle module')
   }
 }
 
@@ -88,8 +97,11 @@ async function handleInstall() {
     // Имитация загрузки и установки WASM модуля
     await new Promise((resolve) => setTimeout(resolve, 1000))
     await modulesStore.fetchModules()
+    toast.success('Модуль успешно установлен')
     showInstallModal.value = false
     selectedFile.value = null
+  } catch (err: any) {
+    toast.error(err?.message || 'Ошибка установки модуля')
   } finally {
     isInstalling.value = false
   }
