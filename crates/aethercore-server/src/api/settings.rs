@@ -361,18 +361,37 @@ async fn get_permissions_matrix_handler(
         })?;
     }
 
-    let kv = KvStore::system(state.db.clone());
-    let matrix: Option<serde_json::Value> = kv.get("permissions_matrix").await.map_err(|e| {
-        (
-            StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            Json(e.to_api_response(locale)),
-        )
-    })?;
+    let rows = state
+        .user_service
+        .get_all_role_permissions()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AppError::database(e.to_string()).to_api_response(locale)),
+            )
+        })?;
 
-    match matrix {
-        Some(m) => Ok(Json(m)),
-        None => Ok(Json(default_permissions_matrix())),
+    let mut matrix = default_permissions_matrix();
+    if let Some(categories) = matrix.as_array_mut() {
+        for cat in categories {
+            if let Some(items) = cat.get_mut("items").and_then(|i| i.as_array_mut()) {
+                for item in items {
+                    if let Some(code) = item.get("code").and_then(|c| c.as_str()) {
+                        let is_admin = rows.iter().any(|(r, p)| r == "admin" && (p == code || p == "*"));
+                        let is_operator = rows.iter().any(|(r, p)| r == "operator" && (p == code || p == "*"));
+                        let is_viewer = rows.iter().any(|(r, p)| r == "viewer" && (p == code || p == "*"));
+
+                        item["admin"] = serde_json::Value::Bool(is_admin);
+                        item["operator"] = serde_json::Value::Bool(is_operator);
+                        item["viewer"] = serde_json::Value::Bool(is_viewer);
+                    }
+                }
+            }
+        }
     }
+
+    Ok(Json(matrix))
 }
 
 /// PUT /api/v1/settings/permissions

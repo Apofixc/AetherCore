@@ -322,14 +322,6 @@ impl Db {
             ("access.manage", "Управление безопасностью и доступом", "Access", "Настройка политик 2FA, IP, матрицы прав и ротация аудита"),
             ("system.view", "Просмотр системы", "System", "Просмотр системного статуса, логов, метрик и базы данных"),
             ("system.manage", "Управление системой", "System", "Резервное копирование, обслуживание, ротация логов и перезапуск"),
-            // Дополнительные алиасы для обратной совместимости
-            ("events.view", "Просмотр событий", "System", "Чтение системного журнала событий"),
-            ("audit.view", "Просмотр аудита", "Access", "Чтение журнала безопасности"),
-            ("audit.export", "Экспорт аудита", "Access", "Выгрузка журнала безопасности"),
-            ("access.roles.view", "Просмотр ролей", "Access", "Просмотр матрицы прав"),
-            ("access.roles.manage", "Управление ролями", "Access", "Изменение матрицы прав"),
-            ("settings.view", "Просмотр настроек", "System", "Просмотр параметров"),
-            ("settings.manage", "Управление настройками", "System", "Изменение параметров"),
         ];
 
         for (id, name, cat, desc) in default_permissions {
@@ -371,8 +363,6 @@ impl Db {
             "users.view", "users.manage",
             "access.view", "access.manage",
             "system.view", "system.manage",
-            "events.view", "audit.view", "audit.export",
-            "access.roles.view", "access.roles.manage", "settings.view", "settings.manage",
         ];
         for perm in admin_perms {
             sqlx::query(
@@ -386,7 +376,6 @@ impl Db {
 
         let operator_perms = [
             "modules.view", "users.view", "access.view", "system.view",
-            "events.view", "audit.view", "access.roles.view", "settings.view",
         ];
         for perm in operator_perms {
             sqlx::query(
@@ -398,7 +387,7 @@ impl Db {
             .map_err(|e| AppError::database(e.to_string()))?;
         }
 
-        let viewer_perms = ["modules.view", "system.view", "events.view"];
+        let viewer_perms = ["modules.view", "system.view"];
         for perm in viewer_perms {
             sqlx::query(
                 "INSERT OR IGNORE INTO role_permissions (role_name, permission_id) VALUES ('viewer', ?)",

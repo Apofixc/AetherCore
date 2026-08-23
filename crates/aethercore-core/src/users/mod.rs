@@ -948,4 +948,13 @@ impl UserService {
         tx.commit().await.map_err(|e| AppError::database(e.to_string()))?;
         Ok(())
     }
+
+    /// Получить все назначенные права для всех ролей из таблицы `role_permissions`
+    pub async fn get_all_role_permissions(&self) -> Result<Vec<(String, String)>> {
+        let rows: Vec<(String, String)> = sqlx::query_as("SELECT role_name, permission_id FROM role_permissions")
+            .fetch_all(self.db.reader())
+            .await
+            .map_err(|e| AppError::database(e.to_string()))?;
+        Ok(rows)
+    }
 }

@@ -118,14 +118,10 @@ async fn audit_count_handler(
     AuthUser(claims): AuthUser,
     Query(query): Query<AuditQuery>,
 ) -> Result<Json<AuditCountResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.view").is_err()
-        && check_permission(&claims, "system.view").is_err()
-    {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(AppError::forbidden("access.view or system.view").to_api_response(locale)),
-        ));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let total = state
@@ -160,12 +156,10 @@ async fn audit_logs_handler(
     AuthUser(claims): AuthUser,
     Query(query): Query<AuditQuery>,
 ) -> Result<(HeaderMap, Json<Vec<AuditLogRecord>>), (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.view").is_err()
-        && check_permission(&claims, "system.view").is_err()
-    {
-        let err = AppError::forbidden("access.view or system.view required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let limit = query.limit.unwrap_or(50);
@@ -211,19 +205,17 @@ pub struct ClearAuditResponse {
 
 /// DELETE /api/v1/system/audit
 ///
-/// Очистить журнал аудита безопасности (доступно суперпользователю или с правами access.manage / system.manage).
+/// Очистить журнал аудита безопасности (доступно суперпользователю или с правами access.manage).
 async fn clear_audit_logs_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
     headers: HeaderMap,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<ClearAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.manage").is_err()
-        && check_permission(&claims, "system.manage").is_err()
-    {
-        let err = AppError::forbidden("access.manage or system.manage required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -294,12 +286,10 @@ async fn rotate_audit_logs_handler(
     AuthUser(claims): AuthUser,
     Json(payload): Json<RotateAuditRequest>,
 ) -> Result<Json<RotateAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.manage").is_err()
-        && check_permission(&claims, "system.manage").is_err()
-    {
-        let err = AppError::forbidden("access.manage or system.manage required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -368,12 +358,10 @@ async fn import_audit_logs_handler(
     AuthUser(claims): AuthUser,
     Json(payload): Json<ImportAuditRequest>,
 ) -> Result<Json<ImportAuditResponse>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.manage").is_err()
-        && check_permission(&claims, "system.manage").is_err()
-    {
-        let err = AppError::forbidden("access.manage or system.manage required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.manage").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let client_ip = crate::middleware::extract_client_ip(&headers);
@@ -418,12 +406,10 @@ async fn list_audit_archives_handler(
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
 ) -> Result<Json<Vec<AuditArchiveInfo>>, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.view").is_err()
-        && check_permission(&claims, "system.view").is_err()
-    {
-        let err = AppError::forbidden("access.view or system.view required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     let archive_dir = std::path::PathBuf::from("data/archives");
@@ -449,27 +435,25 @@ async fn download_audit_archive_handler(
     RequestLocale(locale): RequestLocale,
     AuthUser(claims): AuthUser,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    if !claims.is_superuser
-        && check_permission(&claims, "access.view").is_err()
-        && check_permission(&claims, "system.view").is_err()
-    {
-        let err = AppError::forbidden("access.view or system.view required");
-        return Err((StatusCode::FORBIDDEN, Json(err.to_api_response(locale))));
+    if !claims.is_superuser {
+        check_permission(&claims, "access.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
     }
 
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-        let err = aethercore_common::error::AppError::bad_request("Invalid filename");
+        let err = AppError::bad_request("Invalid filename");
         return Err((StatusCode::BAD_REQUEST, Json(err.to_api_response(locale))));
     }
 
     let archive_path = std::path::PathBuf::from("data/archives").join(&filename);
     if !archive_path.exists() {
-        let err = aethercore_common::error::AppError::not_found(format!("Archive '{}' not found", filename));
+        let err = AppError::not_found(format!("Archive '{}' not found", filename));
         return Err((StatusCode::NOT_FOUND, Json(err.to_api_response(locale))));
     }
 
     let content = tokio::fs::read(&archive_path).await.map_err(|e| {
-        let err = aethercore_common::error::AppError::internal(e.to_string());
+        let err = AppError::internal(e.to_string());
         (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_api_response(locale)))
     })?;
 

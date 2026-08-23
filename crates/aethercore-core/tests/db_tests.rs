@@ -14,12 +14,12 @@ async fn test_database_init_in_memory() {
         .unwrap();
     assert_eq!(row.0, 4);
 
-    // Проверяем, что права созданы
+    // Проверяем, что права созданы (8 канонических прав)
     let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM permissions")
         .fetch_one(db.reader())
         .await
         .unwrap();
-    assert_eq!(row.0, 15);
+    assert_eq!(row.0, 8);
 }
 
 #[tokio::test]

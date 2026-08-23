@@ -93,7 +93,6 @@ sequenceDiagram
 ```mermaid
 graph TD
     Start(["Пользователь открывает страницу / отправляет запрос"]) --> CheckConfig{"web_ui_auth включена?"}
-    
     %% Режим без авторизации
     CheckConfig -- "Нет: web_ui_auth = false" --> CheckTokenNoAuth{"Есть JWT токен?"}
     CheckTokenNoAuth -- "Нет" --> AutoSuper["Автоматический вход с правами Superuser (Anonymous Admin)"]
@@ -123,11 +122,11 @@ graph TD
 graph TD
     MatrixReq(["Запрос: PUT /api/v1/settings/permissions"]) --> CheckMatrixAuth{"Авторизован?"}
     CheckMatrixAuth -- "Нет" --> Err401M["401 Unauthorized"]
-    CheckMatrixAuth -- "Да" --> CheckRolesPerm{"Есть право access.roles.manage или Superuser?"}
-    CheckRolesPerm -- "Нет" --> Err403PermM["403 Forbidden: Требуется access.roles.manage"]
+    CheckMatrixAuth -- "Да" --> CheckRolesPerm{"Есть право access.manage или Superuser?"}
+    CheckRolesPerm -- "Нет" --> Err403PermM["403 Forbidden: Требуется access.manage"]
     CheckRolesPerm -- "Да" --> CheckRoleRank{"Ранг вызывающего"}
 
-    CheckRoleRank -- "Superuser: Ранг 4" --> SaveMatrix["Сохранить матрицу прав в KvStore 'permissions_matrix' и Audit Log"]
+    CheckRoleRank -- "Superuser: Ранг 4" --> SaveMatrix["Сохранить матрицу прав в таблице 'role_permissions' и Audit Log"]
     CheckRoleRank -- "Admin: Ранг 3" --> CheckAdminModifies{"Модифицируются только права Operator и Viewer?"}
     CheckAdminModifies -- "Да" --> SaveMatrix
     CheckAdminModifies -- "Нет" --> Err403Admin["403 Forbidden: Администратор не может менять права Admin / Superuser"]
@@ -182,5 +181,5 @@ graph TD
 * **Then**:
   1. В интерфейсе создания/редактирования в выпадающих списках отображаются только роли с уровнем $\le$ текущего пользователя.
   2. В таблице кнопка «Добавить пользователя» и действия (редактирование, блокировка, удаление) отключены (`disabled`) при отсутствии права `users.manage`.
-  3. В матрице прав (`/settings/access-identity`) колонки высших ролей заблокированы для редактирования, а кнопка «Применить изменения» отключена для пользователей без прав `settings.security.manage`/`access.roles.manage`.
+  3. В матрице прав (`/settings/access-identity`) колонки высших ролей заблокированы для редактирования, а кнопка «Применить изменения» отключена для пользователей без права `access.manage`.
   4. На уровне API ядро возвращает `403 Forbidden` при любых попытках создания пользователя выше своего ранга (`target_level > caller_level`) или модификации матрицы прав не-администратором/не-суперпользователем.

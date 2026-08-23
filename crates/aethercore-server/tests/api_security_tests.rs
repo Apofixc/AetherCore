@@ -247,8 +247,8 @@ async fn test_role_hierarchy_escalation_and_permissions_matrix() {
             vec![
                 "users.manage".into(),
                 "users.view".into(),
-                "access.roles.manage".into(),
-                "access.roles.view".into(),
+                "access.manage".into(),
+                "access.view".into(),
             ],
         )
         .unwrap();
@@ -517,7 +517,7 @@ async fn test_e2e_rbac_positive_and_negative_matrix_flows() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "Operator должен иметь доступ к GET /system/logs");
 
-    // Позитивный: Operator может читать аудит (access.view или system.view)
+    // Позитивный: Operator может читать аудит (access.view)
     let req = Request::builder()
         .method("GET")
         .uri("/api/v1/system/audit")
@@ -527,7 +527,7 @@ async fn test_e2e_rbac_positive_and_negative_matrix_flows() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK, "Operator должен иметь доступ к GET /system/audit");
 
-    // Негативный: Operator НЕ может очистить журнал аудита (нет access.manage или system.manage)
+    // Негативный: Operator НЕ может очистить журнал аудита (нет access.manage)
     let req = Request::builder()
         .method("DELETE")
         .uri("/api/v1/system/audit")

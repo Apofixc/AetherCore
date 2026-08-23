@@ -34,17 +34,6 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
 
-    // Совместимость с составными кодами
-    if ((permission === 'access.roles.view' || permission === 'settings.view' || permission === 'audit.view') &&
-        (perms.includes('access.view') || perms.includes('access.manage') || perms.includes('system.view') || perms.includes('system.manage'))) {
-      return true
-    }
-
-    if ((permission === 'access.roles.manage' || permission === 'settings.manage' || permission === 'settings.security.manage' || permission === 'audit.export') &&
-        (perms.includes('access.manage') || perms.includes('system.manage'))) {
-      return true
-    }
-
     return false
   }
 

@@ -46,18 +46,5 @@ pub fn check_permission(claims: &JwtClaims, required_permission: &str) -> Result
         }
     }
 
-    // 3. Обратная совместимость для составных прав
-    if (required_permission == "access.roles.view" || required_permission == "settings.view" || required_permission == "audit.view")
-        && claims.permissions.iter().any(|p| p == "access.view" || p == "access.manage" || p == "system.view" || p == "system.manage")
-    {
-        return Ok(());
-    }
-
-    if (required_permission == "access.roles.manage" || required_permission == "settings.manage" || required_permission == "settings.security.manage" || required_permission == "audit.export")
-        && claims.permissions.iter().any(|p| p == "access.manage" || p == "system.manage")
-    {
-        return Ok(());
-    }
-
     Err(AppError::forbidden(required_permission))
 }

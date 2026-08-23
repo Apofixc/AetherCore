@@ -574,7 +574,7 @@ const filterOptions = computed(() => [
                   </div>
                 </div>
 
-                <template #footer>
+                <template #footer v-if="authStore.canManageModules">
                   <AppButton
                     :variant="modulesStore.selectedModule.is_active ? 'danger' : 'tertiary'"
                     size="md"
