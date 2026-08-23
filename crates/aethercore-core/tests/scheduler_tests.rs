@@ -86,25 +86,70 @@ async fn test_scheduler_service_lifecycle_and_crud() {
     assert_eq!(updated.concurrency_policy, ConcurrencyPolicy::Allow);
     assert!(!updated.is_enabled);
 
-    // 5. Попытка изменить системную задачу
-    let forbidden_update = scheduler.update_task("sys-audit-retention", UpdateTaskDto {
-        name: Some("Hacked".to_string()),
-        description: None,
-        schedule: None,
-        action: None,
-        concurrency_policy: None,
-        misfire_policy: None,
-        timeout_secs: None,
-        is_enabled: None,
-    }).await;
+    // 5. Переключение активности (Toggle)
+    let toggled_on = scheduler
+        .toggle_task("test-backup-task", true)
+        .await
+        .expect("Toggle on failed");
+    assert!(toggled_on.is_enabled);
+    assert!(toggled_on.next_run_at.is_some());
+
+    // 6. Регистрация обработчика и ручной запуск задачи
+    scheduler
+        .register_handler(
+            "system_db_backup",
+            std::sync::Arc::new(aethercore_core::services::handlers::HistoryCleanupTaskHandler::new(
+                db.clone(),
+            )),
+        )
+        .await;
+
+    let record = scheduler
+        .run_task_now("test-backup-task", "manual:admin")
+        .await
+        .expect("Run task now failed");
+    assert_eq!(record.status, ExecutionStatus::Success);
+    assert_eq!(record.triggered_by, "manual:admin");
+
+    // 7. Проверка истории выполнения
+    let history = scheduler
+        .get_history(HistoryQueryDto {
+            task_id: Some("test-backup-task".to_string()),
+            limit: Some(10),
+            offset: None,
+        })
+        .await
+        .expect("Get history failed");
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].status, ExecutionStatus::Success);
+
+    // 8. Попытка изменить системную задачу
+    let forbidden_update = scheduler
+        .update_task(
+            "sys-audit-retention",
+            UpdateTaskDto {
+                name: Some("Hacked".to_string()),
+                description: None,
+                schedule: None,
+                action: None,
+                concurrency_policy: None,
+                misfire_policy: None,
+                timeout_secs: None,
+                is_enabled: None,
+            },
+        )
+        .await;
     assert!(forbidden_update.is_err());
 
-    // 6. Удаление пользовательской задачи
-    scheduler.delete_task("test-backup-task").await.expect("Delete failed");
+    // 9. Удаление пользовательской задачи
+    scheduler
+        .delete_task("test-backup-task")
+        .await
+        .expect("Delete failed");
     let after_delete = scheduler.get_task("test-backup-task").await.expect("Get failed");
     assert!(after_delete.is_none());
 
-    // 7. Попытка удалить системную задачу
+    // 10. Попытка удалить системную задачу
     let forbidden_delete = scheduler.delete_task("sys-audit-retention").await;
     assert!(forbidden_delete.is_err());
 }
