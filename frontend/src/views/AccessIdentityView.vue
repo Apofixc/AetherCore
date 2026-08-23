@@ -10,7 +10,8 @@ import {
   SearchInput,
   StatusBadge,
   BaseModal,
-  ConfirmModal
+  ConfirmModal,
+  BaseSelect
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -257,7 +258,6 @@ interface AuditLogEntry {
 const auditSearch = ref('')
 const auditLogs = ref<AuditLogEntry[]>([])
 const selectedAuditCategory = ref<'all' | 'auth' | 'role' | 'policy' | 'module' | 'failed'>('all')
-const showFilterDropdown = ref(false)
 const pageSize = ref(25)
 const currentPage = ref(1)
 const totalLogsCount = ref(0)
@@ -267,12 +267,20 @@ const isClearingLogs = ref(false)
 const clearNotification = ref('')
 
 const auditCategories = computed(() => [
-  { id: 'all', label: t('accessIdentity.filterAll'), icon: 'list_alt' },
-  { id: 'auth', label: t('accessIdentity.filterAuth'), icon: 'login' },
-  { id: 'role', label: t('accessIdentity.filterRoles'), icon: 'badge' },
-  { id: 'policy', label: t('accessIdentity.filterPolicies'), icon: 'security' },
-  { id: 'module', label: t('accessIdentity.filterModules'), icon: 'extension' },
-  { id: 'failed', label: t('accessIdentity.filterFailed'), icon: 'warning' }
+  { value: 'all', id: 'all', label: t('accessIdentity.filterAll'), icon: 'list_alt' },
+  { value: 'auth', id: 'auth', label: t('accessIdentity.filterAuth'), icon: 'login' },
+  { value: 'role', id: 'role', label: t('accessIdentity.filterRoles'), icon: 'badge' },
+  { value: 'policy', id: 'policy', label: t('accessIdentity.filterPolicies'), icon: 'security' },
+  { value: 'module', id: 'module', label: t('accessIdentity.filterModules'), icon: 'extension' },
+  { value: 'failed', id: 'failed', label: t('accessIdentity.filterFailed'), icon: 'warning' }
+])
+
+const pageSizeOptions = computed(() => [
+  { label: '10', value: 10 },
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+  { label: t('common.all'), value: -1 }
 ])
 
 async function fetchAuditLogs() {
@@ -464,12 +472,6 @@ function nextPage() {
   if (currentPage.value < totalPages.value) {
     currentPage.value++
   }
-}
-
-function selectCategory(catId: string) {
-  selectedAuditCategory.value = catId as any
-  currentPage.value = 1
-  showFilterDropdown.value = false
 }
 
 function clearFilters() {
@@ -958,46 +960,14 @@ function clearFilters() {
                 @input="currentPage = 1"
               />
 
-              <!-- Filter Dropdown Container -->
-              <div class="relative">
-                <button
-                  type="button"
-                  class="h-8 px-2.5 bg-surface-container-highest border border-outline-variant rounded-lg text-xs font-medium hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
-                  :class="selectedAuditCategory !== 'all' ? 'text-primary-fixed-dim border-primary-fixed-dim/50 bg-primary-fixed-dim/10' : 'text-on-surface-variant'"
-                  :title="t('common.filter')"
-                  @click="showFilterDropdown = !showFilterDropdown"
-                >
-                  <span class="material-symbols-outlined text-[18px]">filter_list</span>
-                  <span v-if="selectedAuditCategory !== 'all'" class="text-[11px] font-bold">
-                    {{ auditCategories.find(c => c.id === selectedAuditCategory)?.label }}
-                  </span>
-                </button>
-
-                <!-- Filter Popover -->
-                <div
-                  v-if="showFilterDropdown"
-                  class="absolute right-0 top-10 w-52 bg-surface-container-high border border-outline-variant rounded-lg shadow-xl z-20 py-1 divide-y divide-outline-variant/30 animate-fade-in"
-                >
-                  <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                    {{ t('accessIdentity.filterCategory') }}
-                  </div>
-                  <div class="py-1">
-                    <button
-                      v-for="cat in auditCategories"
-                      :key="cat.id"
-                      type="button"
-                      class="w-full px-3 py-2 text-xs flex items-center justify-between hover:bg-surface-variant/40 transition-colors cursor-pointer text-left"
-                      :class="selectedAuditCategory === cat.id ? 'text-primary-fixed-dim font-bold bg-primary-fixed-dim/10' : 'text-on-surface'"
-                      @click="selectCategory(cat.id)"
-                    >
-                      <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-[16px]">{{ cat.icon }}</span>
-                        <span>{{ cat.label }}</span>
-                      </div>
-                      <span v-if="selectedAuditCategory === cat.id" class="material-symbols-outlined text-[16px]">check</span>
-                    </button>
-                  </div>
-                </div>
+              <!-- Filter Dropdown -->
+              <div class="w-48">
+                <BaseSelect
+                  v-model="selectedAuditCategory"
+                  :options="auditCategories"
+                  size="sm"
+                  @update:model-value="currentPage = 1"
+                />
               </div>
 
               <!-- Refresh Button -->
@@ -1181,17 +1151,14 @@ function clearFilters() {
               <!-- Rows per page selector -->
               <div class="flex items-center gap-2 text-xs text-on-surface-variant">
                 <span>{{ t('accessIdentity.rowsPerPage') }}</span>
-                <select
-                  v-model="pageSize"
-                  class="bg-surface-container-highest border border-outline-variant rounded-md px-2 py-1 text-xs text-on-surface focus:outline-none focus:border-primary-fixed-dim cursor-pointer font-body-mono"
-                  @change="currentPage = 1"
-                >
-                  <option :value="10">10</option>
-                  <option :value="25">25</option>
-                  <option :value="50">50</option>
-                  <option :value="100">100</option>
-                  <option :value="-1">{{ t('common.all') }}</option>
-                </select>
+                <div class="w-24">
+                  <BaseSelect
+                    v-model="pageSize"
+                    :options="pageSizeOptions"
+                    size="sm"
+                    @update:model-value="currentPage = 1"
+                  />
+                </div>
               </div>
 
               <!-- Page Buttons -->

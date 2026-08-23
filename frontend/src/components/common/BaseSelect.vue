@@ -5,12 +5,14 @@ export interface SelectOption {
   label: string
   value: string | number
   disabled?: boolean
+  icon?: string
+  description?: string
 }
 
 const props = withDefaults(
   defineProps<{
     modelValue: string | number
-    options: (SelectOption | string)[]
+    options: (SelectOption | string | number)[]
     label?: string
     placeholder?: string
     searchPlaceholder?: string
@@ -61,6 +63,10 @@ const selectedLabel = computed(() => {
   return props.placeholder || ''
 })
 
+const currentIcon = computed(() => {
+  return props.icon || selectedOption.value?.icon
+})
+
 const filteredOptions = computed(() => {
   if (!props.searchable || !searchQuery.value.trim()) {
     return normalizedOptions.value
@@ -74,19 +80,16 @@ const filteredOptions = computed(() => {
   )
 })
 
-function onChange(e: Event) {
-  const val = (e.target as HTMLSelectElement).value
-  emit('update:modelValue', val)
-}
-
 function toggleDropdown() {
   if (props.disabled) return
   isOpen.value = !isOpen.value
   if (isOpen.value) {
     searchQuery.value = ''
-    nextTick(() => {
-      searchInputRef.value?.focus()
-    })
+    if (props.searchable) {
+      nextTick(() => {
+        searchInputRef.value?.focus()
+      })
+    }
   }
 }
 
@@ -131,14 +134,14 @@ onUnmounted(() => {
       <slot name="labelRight" />
     </label>
 
-    <!-- Searchable Custom Dropdown Trigger -->
-    <div v-if="searchable" class="relative w-full" :class="isOpen ? 'z-30' : ''">
+    <!-- Unified Custom Dropdown Trigger -->
+    <div class="relative w-full" :class="isOpen ? 'z-30' : ''">
       <button
         type="button"
         :id="id"
         :disabled="disabled"
         @click="toggleDropdown"
-        class="relative flex items-center w-full rounded-lg transition-all duration-150 border bg-surface-container-highest text-left outline-none font-body-mono select-none"
+        class="relative flex items-center justify-between w-full rounded-lg transition-all duration-150 border bg-surface-container-highest text-left outline-none font-body-mono select-none text-on-surface"
         :class="[
           isOpen ? 'ring-1 ring-primary-fixed-dim border-primary-fixed-dim' : '',
           error
@@ -146,25 +149,27 @@ onUnmounted(() => {
             : 'border-outline-variant hover:border-outline-variant focus:border-primary-fixed-dim focus:ring-1 focus:ring-primary-fixed-dim',
           disabled ? 'opacity-50 cursor-not-allowed bg-surface-container-low' : 'cursor-pointer',
           size === 'sm' ? 'h-8 py-1 text-xs' : size === 'lg' ? 'h-11 py-2 text-base' : 'h-9 py-1.5 text-xs',
-          icon ? 'pl-8' : 'pl-3',
+          currentIcon ? 'pl-8' : 'pl-3',
           'pr-8'
         ]"
       >
         <!-- Leading Icon -->
         <span
-          v-if="icon"
+          v-if="currentIcon"
           class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/70 pointer-events-none select-none"
           :class="size === 'sm' ? 'text-base' : 'text-lg'"
         >
-          {{ icon }}
+          {{ currentIcon }}
         </span>
 
-        <!-- Current Value / Placeholder -->
+        <!-- Current Value / Placeholder / Custom Slot -->
         <span
-          class="truncate"
+          class="truncate mr-2"
           :class="selectedOption ? 'text-on-surface' : 'text-on-surface-variant/70'"
         >
-          {{ selectedLabel }}
+          <slot name="selected" :option="selectedOption">
+            {{ selectedLabel }}
+          </slot>
         </span>
 
         <!-- Dropdown Chevron Icon -->
@@ -179,13 +184,16 @@ onUnmounted(() => {
         </span>
       </button>
 
-      <!-- Searchable Popover Menu -->
+      <!-- Custom Popover Menu -->
       <div
         v-if="isOpen"
-        class="absolute left-0 top-full mt-1 w-full min-w-[280px] bg-surface-container-high border border-outline-variant rounded-lg shadow-2xl z-[100] overflow-hidden flex flex-col backdrop-blur-md"
+        class="absolute left-0 top-full mt-1 w-full min-w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-2xl z-[100] overflow-hidden flex flex-col backdrop-blur-md animate-fade-in"
       >
-        <!-- Embedded Search Input Box -->
-        <div class="p-2 border-b border-outline-variant/40 bg-surface-container-highest/60 sticky top-0 z-10">
+        <!-- Search Input Box (when searchable is true) -->
+        <div
+          v-if="searchable"
+          class="p-2 border-b border-outline-variant/40 bg-surface-container-highest/60 sticky top-0 z-10"
+        >
           <div class="relative flex items-center">
             <span class="material-symbols-outlined absolute left-2 text-on-surface-variant text-base pointer-events-none select-none">
               search
@@ -210,7 +218,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Scrollable Options List -->
-        <div class="max-h-60 overflow-y-auto p-1 flex flex-col gap-0.5">
+        <div class="max-h-60 overflow-y-auto p-1 flex flex-col gap-0.5 custom-scrollbar">
           <button
             v-for="opt in filteredOptions"
             :key="opt.value"
@@ -224,10 +232,17 @@ onUnmounted(() => {
                 : 'text-on-surface hover:bg-surface-container-highest'
             ]"
           >
-            <span class="truncate pr-2">{{ opt.label }}</span>
+            <div class="flex items-center gap-2 truncate pr-2">
+              <span v-if="opt.icon" class="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant/80">
+                {{ opt.icon }}
+              </span>
+              <slot name="option" :option="opt">
+                <span class="truncate">{{ opt.label }}</span>
+              </slot>
+            </div>
             <span
               v-if="opt.value === modelValue"
-              class="material-symbols-outlined text-sm text-primary-fixed-dim shrink-0"
+              class="material-symbols-outlined text-sm text-primary-fixed-dim shrink-0 ml-1"
             >
               check
             </span>
@@ -242,67 +257,6 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Native Select (when searchable is false) -->
-    <div
-      v-else
-      class="relative flex items-center w-full rounded-lg transition-all duration-150 border bg-surface-container-highest focus-within:ring-1 focus-within:ring-primary-fixed-dim"
-      :class="[
-        error
-          ? 'border-error focus-within:border-error focus-within:ring-error'
-          : 'border-outline-variant hover:border-outline-variant focus-within:border-primary-fixed-dim',
-        disabled ? 'opacity-50 cursor-not-allowed bg-surface-container-low' : ''
-      ]"
-    >
-      <!-- Leading Icon -->
-      <span
-        v-if="icon"
-        class="material-symbols-outlined absolute left-2.5 text-on-surface-variant/70 pointer-events-none select-none"
-        :class="size === 'sm' ? 'text-base' : 'text-lg'"
-      >
-        {{ icon }}
-      </span>
-
-      <!-- Native Select -->
-      <select
-        :id="id"
-        :value="modelValue"
-        :disabled="disabled"
-        @change="onChange"
-        class="w-full bg-transparent text-on-surface font-body-mono outline-none appearance-none cursor-pointer transition-colors"
-        :class="[
-          size === 'sm' ? 'h-8 py-1 text-xs' : size === 'lg' ? 'h-11 py-2 text-base' : 'h-9 py-1.5 text-xs',
-          icon ? 'pl-8' : 'pl-3',
-          'pr-8'
-        ]"
-      >
-        <option
-          v-if="placeholder"
-          value=""
-          disabled
-          class="bg-surface-container text-on-surface-variant"
-        >
-          {{ placeholder }}
-        </option>
-        <option
-          v-for="opt in normalizedOptions"
-          :key="opt.value"
-          :value="opt.value"
-          :disabled="opt.disabled"
-          class="bg-surface-container text-on-surface py-1"
-        >
-          {{ opt.label }}
-        </option>
-      </select>
-
-      <!-- Dropdown Chevron Icon -->
-      <span
-        class="material-symbols-outlined absolute right-2 text-on-surface-variant/70 pointer-events-none select-none"
-        :class="size === 'sm' ? 'text-base' : 'text-lg'"
-      >
-        expand_more
-      </span>
     </div>
 
     <!-- Error Message or Hint -->
