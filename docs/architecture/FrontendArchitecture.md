@@ -1034,6 +1034,99 @@ flowchart TD
     end
 ```
 
+---
+
+## 15. Двухуровневая модель управления сессиями и устройствами: Системный уровень vs Профиль пользователя
+
+Архитектура AetherCore разграничивает управление сессиями на два изолированных контура:
+
+1. **Системный контур (`SystemAdminView.vue` → `/api/v1/system/sessions`)**:
+   - Доступен администраторам с привилегией `system.manage`.
+   - Позволяет отслеживать сессии **всех операторов** платформы, принудительно сбрасывать сессии других операторов или всех пользователей с фиксацией в аудите безопасности.
+2. **Персональный контур (`UserProfileView.vue` → `/api/v1/auth/sessions`)**:
+   - Доступен **любому авторизованному пользователю** для управления **только своими** активными устройствами и браузерами.
+   - Позволяет завершить сеансы на других устройствах, выйти со всех устройств или завершить текущий сеанс с перенаправлением на вход.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Администратор (SystemAdminView)
+    actor User as Пользователь (UserProfileView)
+    participant UI as Frontend Client (Vue 3)
+    participant ApiClient as ApiClient (api/client.ts)
+    participant AuthRouter as Axum /api/v1/auth/*
+    participant SysRouter as Axum /api/v1/system/*
+    participant Middleware as AuthUser Middleware
+    participant SessionSvc as SessionService
+    participant DB as SQLite (active_sessions)
+    participant Audit as AuditService
+
+    %% Ветка 1: Персональные устройства пользователя
+    rect rgb(20, 30, 45)
+        Note over User, DB: 1. Персональный контур: «Мои активные устройства» (/auth/sessions)
+        User->>UI: Открытие вкладки "Профиль" (UserProfileView.vue)
+        UI->>ApiClient: authApi.getSessions()
+        ApiClient->>AuthRouter: GET /api/v1/auth/sessions (Bearer Token)
+        AuthRouter->>Middleware: Валидация токена + session_id
+        Middleware->>SessionSvc: is_session_valid(session_id)
+        SessionSvc->>DB: SELECT id FROM active_sessions WHERE id=? AND expires_at > now
+        DB-->>SessionSvc: Валидна (true)
+        AuthRouter->>SessionSvc: list_user_sessions(claims.sub)
+        SessionSvc->>DB: SELECT * FROM active_sessions WHERE user_id=?
+        DB-->>SessionSvc: Список сессий текущего пользователя
+        AuthRouter-->>ApiClient: [ { id, ip, user_agent, is_current, ... } ]
+        ApiClient-->>UI: Рендеринг таблицы активных устройств
+        
+        User->>UI: Нажатие "Выйти на других устройствах"
+        UI->>ApiClient: authApi.terminateOtherSessions()
+        ApiClient->>AuthRouter: POST /api/v1/auth/sessions/terminate-others
+        AuthRouter->>SessionSvc: revoke_user_sessions_except(user_id, current_session_id)
+        SessionSvc->>DB: DELETE FROM active_sessions WHERE user_id=? AND id != current_id
+        DB-->>SessionSvc: deleted_count
+        AuthRouter->>Audit: log(user_id, "auth.other_sessions_terminated")
+        AuthRouter-->>ApiClient: { success: true, terminated_count }
+        ApiClient-->>UI: Всплывающий тост + обновление списка устройств
+    end
+
+    %% Ветка 2: Глобальные сессии операторов
+    rect rgb(40, 25, 30)
+        Note over Admin, DB: 2. Системный контур: «Глобальные сессии операторов» (/system/sessions)
+        Admin->>UI: Открытие раздела "Система" (SystemAdminView.vue)
+        UI->>ApiClient: systemApi.getSessions()
+        ApiClient->>SysRouter: GET /api/v1/system/sessions (Проверка прав system.manage)
+        SysRouter->>SessionSvc: list_active_sessions()
+        SessionSvc->>DB: SELECT * FROM active_sessions WHERE expires_at > now
+        DB-->>SessionSvc: Все активные сессии платформы
+        SysRouter-->>ApiClient: [ { id, user_id, username, roles, ip, user_agent, is_current } ]
+        ApiClient-->>UI: Рендеринг глобального списка операторов
+
+        Admin->>UI: Нажатие "Отозвать сессию" у скомпрометированного оператора
+        UI->>ApiClient: systemApi.revokeSession(target_session_id)
+        ApiClient->>SysRouter: DELETE /api/v1/system/sessions/{id}
+        SysRouter->>SessionSvc: revoke_session(target_session_id)
+        SessionSvc->>DB: DELETE FROM active_sessions WHERE id=?
+        SysRouter->>Audit: log(admin_id, "system.session_revoked", target_session_id)
+        SysRouter-->>ApiClient: { success: true, session_id }
+    end
+
+    %% Ветка 3: Мгновенная инвалидация для отозванного клиента
+    rect rgb(35, 35, 20)
+        Note over User, DB: 3. Мгновенная реакция отозванного клиента на следующем запросе
+        User->>UI: Любое действие (клик, переход, автообновление)
+        UI->>ApiClient: Запрос GET /api/v1/auth/me
+        ApiClient->>AuthRouter: GET /api/v1/auth/me (Токен с отозванным session_id)
+        AuthRouter->>Middleware: Проверка session_id
+        Middleware->>SessionSvc: is_session_valid(session_id)
+        SessionSvc->>DB: SELECT id FROM active_sessions WHERE id=?
+        DB-->>SessionSvc: Запись не найдена (false)
+        Middleware-->>ApiClient: 401 Unauthorized (core.auth.session_revoked)
+        ApiClient->>ApiClient: setToken(null) — удаление токена из Storage
+        ApiClient-->>UI: Редирект на /login
+        UI-->>User: Отображение формы входа с уведомлением об отзыве сессии
+    end
+```
+
+
 
 
 
