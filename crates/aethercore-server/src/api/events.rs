@@ -1,7 +1,7 @@
 //! # Эндпоинты надежного журнала событий (`/api/v1/events`)
 //!
 //! Предоставляет HTTP эндпоинты для выборки исторических событий из журнала SQLite WAL
-//! с поддержкой фильтрации по топикам и постраничной пагинации по ID.
+//! с поддержкой фильтрации по топикам и постраничной пагинации по ID, а также метрик шины.
 
 use crate::middleware::{AuthUser, RequestLocale};
 use crate::state::AppState;
@@ -11,11 +11,14 @@ use axum::routing::get;
 use axum::{Json, Router};
 use aethercore_common::error::ErrorResponse;
 use aethercore_common::models::events::ReliableEventRecord;
+use aethercore_core::bus::BusStats;
 use serde::Deserialize;
 
 /// Создать вложенный роутер системных событий `/events`
 pub fn router() -> Router<AppState> {
-    Router::new().route("/", get(query_events_handler))
+    Router::new()
+        .route("/", get(query_events_handler))
+        .route("/stats", get(get_bus_stats_handler))
 }
 
 /// Параметры фильтрации и пагинации журнала событий
@@ -32,18 +35,6 @@ pub struct EventsQuery {
 /// GET /api/v1/events
 ///
 /// Извлекает исторические записи системных событий из таблицы `event_journal` SQLite WAL.
-///
-/// # Аргументы
-/// * `state` — Разделяемое состояние сервера [`AppState`].
-/// * `locale` — Локаль запроса [`RequestLocale`].
-/// * `_auth` — Авторизованный пользователь [`AuthUser`].
-/// * `query` — Параметры фильтрации и пагинации [`EventsQuery`].
-///
-/// # Возвращаемое значение
-/// Список записей событий платформы [`ReliableEventRecord`].
-///
-/// # Ошибки
-/// * [`StatusCode::INTERNAL_SERVER_ERROR`] — при сбое выборки из базы данных.
 async fn query_events_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
@@ -63,4 +54,14 @@ async fn query_events_handler(
         })?;
 
     Ok(Json(events))
+}
+
+/// GET /api/v1/events/stats
+///
+/// Возвращает метрики производительности и состояние очередей событийной шины.
+async fn get_bus_stats_handler(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Json<BusStats> {
+    Json(state.bus.stats())
 }

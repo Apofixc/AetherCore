@@ -167,6 +167,18 @@ impl AppError {
         }
     }
 
+    /// 504 Gateway Timeout — Превышено время ожидания операции или ответа
+    pub fn timeout(details: impl Into<String>) -> Self {
+        let msg = details.into();
+        Self {
+            code: "TIMEOUT".into(),
+            message: msg.clone(),
+            status_code: 504,
+            i18n_key: "core.error.timeout".into(),
+            details: serde_json::json!({ "details": msg }),
+        }
+    }
+
     /// 404 Not Found — Запрашиваемый ресурс не найден
     ///
     /// # Аргументы

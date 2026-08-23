@@ -90,7 +90,8 @@ async fn test_full_platform_lifecycle() {
         .await
         .is_err());
 
-    // 9. Проверка журнала событий
+    // 9. Проверка журнала событий (микропауза для асинхронного L2 батч-воркера)
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
     let events = bus
         .query_journal(Some("example-plugin."), None, 10)
         .await

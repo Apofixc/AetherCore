@@ -1,230 +1,293 @@
-//! # Гибридная шина событий платформы (Event Bus & Reliable Event Journal)
+//! # Высокопроизводительная гибридная шина событий платформы (EventBus)
 //!
-//! Включает два контура доставки сообщений:
-//! 1. **Live Telemetry Bus**: высокочастотный in-memory pub/sub (`tokio::sync::broadcast`) для метрик и вебсокетов.
-//! 2. **Reliable Event Journal**: гарантированная доставка через очередь `tokio::sync::mpsc` с персистентной записью в SQLite WAL.
+//! Предоставляет:
+//! - Двухуровневое хранилище (L1 In-Memory RingBuffer + L2 SQLite Storage с TTL).
+//! - Топик-роутер на префиксном дереве ([`router::TopicRouter`]) с поддержкой масок `*` и `#`.
+//! - RAII-подписки ([`router::SubscriptionHandle`]) с автоматической отпиской при `Drop`.
+//! - Взвешенные приоритеты очередей (Weighted Fair Queuing) для предотвращения голодания.
+//! - In-memory дедупликацию сообщений по UUID.
+//! - Конвейер перехватчиков (Interceptors) для аудита, маскирования и трассировки.
+//! - In-Process Request-Reply RPC.
+
+pub mod dedup;
+pub mod interceptor;
+pub mod queue;
+pub mod ring;
+pub mod router;
+pub mod stats;
+pub mod storage;
+
+pub use dedup::EventDeduplicator;
+pub use interceptor::{EventInterceptor, InterceptorAction, InterceptorPipeline, MaskingInterceptor};
+pub use queue::{create_priority_queue, PriorityQueueReceiver, PriorityQueueSender};
+pub use ring::EventRingBuffer;
+pub use router::{SubscriptionHandle, TopicRouter};
+pub use stats::{BusMetrics, BusStats};
+pub use storage::EventStorage;
 
 use crate::db::Db;
-use chrono::{DateTime, Utc};
 use aethercore_common::error::{AppError, Result};
 use aethercore_common::models::events::{EventMessage, EventType, ReliableEventRecord};
-use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error, info};
-
-/// Размер буфера кольцевой очереди broadcast
-const BROADCAST_CAPACITY: usize = 1024;
-/// Размер буфера персистентной очереди MPSC
-const JOURNAL_QUEUE_CAPACITY: usize = 4096;
+use chrono::Duration;
+use std::sync::Arc;
+use std::time::Duration as StdDuration;
+use tracing::{debug, error, trace};
+use uuid::Uuid;
 
 /// Экземпляр гибридной шины событий платформы
-///
-/// Предоставляет двойной контур маршрутизации:
-/// - **Broadcast канал**: легковесная pub/sub модель для live-подписчиков (WebSockets, SSE, real-time UI).
-/// - **Reliable журнал**: асинхронный MPSC воркер, персистентно сохраняющий важные события в SQLite WAL.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct EventBus {
-    /// Broadcast sender для передачи событий в реальном времени
-    broadcast_tx: broadcast::Sender<EventMessage>,
-    /// MPSC sender для постановки событий в персистентную очередь журнала
-    journal_tx: mpsc::Sender<EventMessage>,
-    /// Ссылка на базу данных для выборки журнала
-    db: Db,
+    router: TopicRouter,
+    queue_tx: PriorityQueueSender,
+    ring: EventRingBuffer,
+    dedup: EventDeduplicator,
+    interceptors: InterceptorPipeline,
+    storage: Option<EventStorage>,
+    metrics: BusMetrics,
 }
 
 impl EventBus {
-    /// Инициализировать шину событий и запустить фоновый воркер персистентного журнала
-    ///
-    /// Создает broadcast канал с буфером на 1024 сообщения и MPSC очередь на 4096 записей.
-    /// Автоматически запускает асинхронную задачу Tokio для фонового сохранения событий в базу данных.
-    ///
-    /// # Аргументы
-    /// * `db` — Пул подключений к базе данных SQLite ([`Db`]).
-    ///
-    /// # Примеры
-    /// ```rust,no_run
-    /// use aethercore_core::bus::EventBus;
-    /// use aethercore_core::db::Db;
-    ///
-    /// # async fn run(db: Db) {
-    /// let event_bus = EventBus::new(db);
-    /// # }
-    /// ```
+    /// Инициализировать шину событий с опциональным подключением к базе данных SQLite
     pub fn new(db: Db) -> Self {
-        let (broadcast_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
-        let (journal_tx, mut journal_rx) = mpsc::channel(JOURNAL_QUEUE_CAPACITY);
+        Self::with_options(Some(db), ring::DEFAULT_RING_CAPACITY)
+    }
+
+    /// Инициализировать полностью In-Memory шину без базы данных
+    pub fn in_memory() -> Self {
+        Self::with_options(None, ring::DEFAULT_RING_CAPACITY)
+    }
+
+    /// Инициализировать шину с заданными параметрами емкости
+    pub fn with_options(db: Option<Db>, ring_capacity: usize) -> Self {
+        let router = TopicRouter::new();
+        let (queue_tx, mut queue_rx) = create_priority_queue();
+        let ring = EventRingBuffer::new(ring_capacity);
+        let dedup = EventDeduplicator::default();
+        let mut interceptors = InterceptorPipeline::new();
+        interceptors.register(Arc::new(MaskingInterceptor::default()));
+        let storage = db.map(EventStorage::new);
+        let metrics = BusMetrics::default();
 
         let bus = Self {
-            broadcast_tx: broadcast_tx.clone(),
-            journal_tx,
-            db: db.clone(),
+            router: router.clone(),
+            queue_tx,
+            ring: ring.clone(),
+            dedup: dedup.clone(),
+            interceptors: interceptors.clone(),
+            storage: storage.clone(),
+            metrics: metrics.clone(),
         };
 
-        // Фоновый таск для гарантированной записи системных событий в SQLite WAL
-        let worker_db = db.clone();
+        // Запуск фонового диспетчера взвешенных очередей
+        let dispatch_router = router.clone();
+        let dispatch_ring = ring.clone();
+        let dispatch_storage = storage.clone();
+        let dispatch_metrics = metrics.clone();
+
         tokio::spawn(async move {
-            debug!("Event Journal background worker started");
-            while let Some(event) = journal_rx.recv().await {
-                if let Err(e) = record_event_to_db(&worker_db, &event).await {
-                    error!(
-                        "Failed to persist event '{}' (id: {}) to journal: {}",
-                        event.topic, event.id, e
-                    );
+            debug!("EventBus weighted fair queuing dispatcher started");
+            while let Some(event) = queue_rx.dequeue().await {
+                // 1. Сохраняем в горячий L1 кольцевой буфер
+                let evicted = dispatch_ring.push(event.clone());
+
+                // 2. Если вытеснено надежное событие и есть L2 хранилище — сбрасываем в L2 Spillover
+                if let Some(evicted_msg) = evicted {
+                    if evicted_msg.event_type == EventType::Reliable {
+                        if let Some(ref st) = dispatch_storage {
+                            let _ = st.persist(evicted_msg).await;
+                        }
+                    }
                 }
+
+                // 3. Если событие типа Reliable — сразу ставим в очередь сохранения L2
+                if event.event_type == EventType::Reliable {
+                    if let Some(ref st) = dispatch_storage {
+                        if let Err(e) = st.persist(event.clone()).await {
+                            error!("Failed to enqueue reliable event to L2 storage: {}", e);
+                        }
+                    }
+                }
+
+                // 4. Доставляем всем подходящим подписчикам через TopicRouter
+                let delivered = dispatch_router.dispatch(&event);
+                trace!("Dispatched event '{}' to {} subscribers", event.topic, delivered);
+
+                dispatch_metrics.0.record_published(event.priority);
             }
-            info!("Event Journal worker terminated");
+            debug!("EventBus dispatcher terminated");
         });
 
         bus
     }
 
     /// Опубликовать событие в шину
-    ///
-    /// Событие безусловно отправляется в live broadcast-канал.
-    /// Если `event.event_type == EventType::Reliable`, оно также помещается в очередь
-    /// персистентной фиксации в журнале SQLite.
-    ///
-    /// # Аргументы
-    /// * `event` — Публикуемое событие ([`EventMessage`]).
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Internal`](aethercore_common::error::AppError), если очередь
-    /// надежного журнала переполнена или закрыта.
-    pub async fn publish(&self, event: EventMessage) -> Result<()> {
-        // 1. Отправляем в Live Broadcast канал (если есть подписчики)
-        let _ = self.broadcast_tx.send(event.clone());
-
-        // 2. Если событие типа Reliable — ставим в очередь персистентной записи
-        if event.event_type == EventType::Reliable {
-            self.journal_tx
-                .send(event)
-                .await
-                .map_err(|e| {
-                    AppError::internal(format!("Failed to enqueue event for persistent journal: {}", e))
-                })?;
+    pub async fn publish(&self, mut event: EventMessage) -> Result<()> {
+        // Проверка на дубликат по UUID
+        if self.dedup.is_duplicate_or_record(&event.id) {
+            trace!("Ignoring duplicate event {}", event.id);
+            return Ok(());
         }
+
+        // Выполнение конвейера перехватчиков (pre-publish)
+        match self.interceptors.execute_pre(&mut event).await? {
+            InterceptorAction::Continue => {}
+            InterceptorAction::DropSilently => return Ok(()),
+            InterceptorAction::Reject(err) => return Err(err),
+        }
+
+        // Постановка во взвешенную очередь диспетчера
+        self.queue_tx.enqueue(event.clone()).await?;
+
+        // Выполнение конвейера перехватчиков (post-publish)
+        self.interceptors.execute_post(&event).await;
 
         Ok(())
     }
 
-    /// Подписаться на поток событий в реальном времени
-    ///
-    /// Возвращает асинхронный приемник [`broadcast::Receiver<EventMessage>`],
-    /// через который можно читать все входящие события в реальном времени.
-    pub fn subscribe(&self) -> broadcast::Receiver<EventMessage> {
-        self.broadcast_tx.subscribe()
+    /// Массовая публикация пакета событий
+    pub async fn publish_batch(&self, events: Vec<EventMessage>) -> Result<()> {
+        for event in events {
+            self.publish(event).await?;
+        }
+        Ok(())
     }
 
-    /// Запросить исторические события из надежного журнала с пагинацией и фильтрацией
+    /// Подписаться на все события (`#`)
+    pub fn subscribe(&self) -> SubscriptionHandle {
+        self.router.subscribe(&["#"])
+    }
+
+    /// Подписаться на конкретный топик или маску (`*`, `#`)
+    pub fn subscribe_topic(&self, pattern: impl AsRef<str>) -> SubscriptionHandle {
+        self.router.subscribe(&[pattern.as_ref()])
+    }
+
+    /// Подписаться на несколько топиков или масок
+    pub fn subscribe_topics(&self, patterns: &[&str]) -> SubscriptionHandle {
+        self.router.subscribe(patterns)
+    }
+
+    /// Синхронный запрос-ответ (In-Process Request-Reply RPC)
     ///
-    /// # Аргументы
-    /// * `topic_filter` — Опциональный префикс темы (например, `"device."` или `"system.auth"`).
-    /// * `after_id` — ID последней прочитанной записи для пагинации (курсор).
-    /// * `limit` — Максимальное число возвращаемых записей (ограничивается диапазоном 1..=1000).
-    ///
-    /// # Возвращаемое значение
-    /// Список сохраненных записей журнала [`ReliableEventRecord`] в порядке возрастания ID.
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::Database`](aethercore_common::error::AppError) при сбое выполнения SQL-запроса.
+    /// Отправляет запрос на топик и ожидает ответное сообщение с совпадающим `correlation_id`.
+    pub async fn request(
+        &self,
+        topic: &str,
+        payload: serde_json::Value,
+        timeout: StdDuration,
+    ) -> Result<EventMessage> {
+        let correlation_id = Uuid::new_v4();
+        let reply_topic = format!("_reply.{}", correlation_id);
+
+        let mut sub = self.subscribe_topic(&reply_topic);
+
+        let mut req_msg = EventMessage::telemetry(topic, "core.rpc", payload);
+        req_msg = req_msg.with_correlation(correlation_id, Some(reply_topic));
+
+        self.publish(req_msg).await?;
+
+        let timeout_fut = tokio::time::sleep(timeout);
+        tokio::pin!(timeout_fut);
+
+        loop {
+            tokio::select! {
+                Some(reply) = sub.recv() => {
+                    if reply.correlation_id == Some(correlation_id) {
+                        return Ok(reply);
+                    }
+                }
+                _ = &mut timeout_fut => {
+                    return Err(AppError::timeout(format!("Request to topic '{}' timed out after {:?}", topic, timeout)));
+                }
+            }
+        }
+    }
+
+    /// Отправить ответ на входящий RPC-запрос
+    pub async fn reply_to(&self, request: &EventMessage, payload: serde_json::Value) -> Result<()> {
+        if let (Some(reply_topic), Some(corr_id)) = (&request.reply_to, request.correlation_id) {
+            let mut reply_msg = EventMessage::telemetry(reply_topic, "core.rpc", payload);
+            reply_msg = reply_msg.with_correlation(corr_id, None);
+            self.publish(reply_msg).await?;
+            Ok(())
+        } else {
+            Err(AppError::validation("request", "Missing reply_to or correlation_id in request"))
+        }
+    }
+
+    /// Запросить историю событий: сначала из L1 RAM RingBuffer, при нехватке — из L2 SQLite
+    pub async fn query_history(
+        &self,
+        topic_filter: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EventMessage>> {
+        // 1. Читаем из горячего L1 кольцевого буфера
+        let ram_events = self.ring.query(topic_filter, limit);
+        if ram_events.len() >= limit || self.storage.is_none() {
+            return Ok(ram_events);
+        }
+
+        // 2. Если в памяти меньше limit и подключена БД — дочитываем из L2
+        if let Some(ref st) = self.storage {
+            let needed = (limit - ram_events.len()) as u32;
+            let db_records = st.query(topic_filter, None, needed).await?;
+
+            let mut combined = Vec::with_capacity(ram_events.len() + db_records.len());
+            for rec in db_records {
+                let payload = serde_json::from_str(&rec.payload_json).unwrap_or(serde_json::Value::Null);
+                let msg = EventMessage {
+                    id: rec.event_uuid,
+                    topic: rec.topic,
+                    event_type: EventType::Reliable,
+                    priority: aethercore_common::models::events::EventPriority::Normal,
+                    source: rec.source,
+                    payload,
+                    binary_payload: None,
+                    timestamp: rec.created_at,
+                    expires_at: None,
+                    correlation_id: None,
+                    reply_to: None,
+                };
+                combined.push(msg);
+            }
+            combined.extend(ram_events);
+            return Ok(combined);
+        }
+
+        Ok(ram_events)
+    }
+
+    /// Запросить записи из персистентного журнала SQLite
     pub async fn query_journal(
         &self,
         topic_filter: Option<&str>,
         after_id: Option<i64>,
         limit: u32,
     ) -> Result<Vec<ReliableEventRecord>> {
-        let limit = limit.min(1000).max(1) as i64;
-        let after_id = after_id.unwrap_or(0);
-
-        let query_sql = match topic_filter {
-            Some(prefix) if !prefix.is_empty() => {
-                let pattern = format!("{}%", prefix);
-                sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-                    r#"
-                    SELECT id, event_uuid, topic, source, payload_json, created_at
-                    FROM event_journal
-                    WHERE id > ? AND topic LIKE ?
-                    ORDER BY id ASC
-                    LIMIT ?
-                    "#,
-                )
-                .bind(after_id)
-                .bind(pattern)
-                .bind(limit)
-                .fetch_all(self.db.reader())
-                .await
-            }
-            _ => {
-                sqlx::query_as::<_, (i64, String, String, String, String, String)>(
-                    r#"
-                    SELECT id, event_uuid, topic, source, payload_json, created_at
-                    FROM event_journal
-                    WHERE id > ?
-                    ORDER BY id ASC
-                    LIMIT ?
-                    "#,
-                )
-                .bind(after_id)
-                .bind(limit)
-                .fetch_all(self.db.reader())
-                .await
-            }
-        };
-
-        let rows = query_sql.map_err(|e| {
-            AppError::database(format!("Failed to query event journal: {}", e))
-        })?;
-
-        let mut records = Vec::with_capacity(rows.len());
-        for (id, uuid_str, topic, source, payload_json, created_at_str) in rows {
-            let event_uuid = uuid::Uuid::parse_str(&uuid_str).unwrap_or_default();
-            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now());
-
-            records.push(ReliableEventRecord {
-                id,
-                event_uuid,
-                topic,
-                source,
-                payload_json,
-                created_at,
-            });
+        if let Some(ref st) = self.storage {
+            st.query(topic_filter, after_id, limit).await
+        } else {
+            Ok(Vec::new())
         }
-
-        Ok(records)
     }
-}
 
-/// Персистентная запись надежного события в таблицу журнала SQLite `event_journal`
-///
-/// Сериализует JSON-пейлоад события и сохраняет запись с временной меткой в формате RFC 3339.
-///
-/// # Аргументы
-/// * `db` — Экземпляр базы данных SQLite ([`Db`]).
-/// * `event` — Сохраняемое событие ([`EventMessage`]).
-///
-/// # Ошибки
-/// - [`AppError::Validation`](aethercore_common::error::AppError) — при ошибке сериализации полезной нагрузки в JSON.
-/// - [`AppError::Database`](aethercore_common::error::AppError) — при сбое выполнения SQL-вставки.
-async fn record_event_to_db(db: &Db, event: &EventMessage) -> Result<()> {
-    let payload_str = serde_json::to_string(&event.payload).map_err(|e| {
-        AppError::validation("payload", e.to_string())
-    })?;
+    /// Выполнить ручную ротацию и очистку устаревших записей журнала
+    pub async fn prune_journal(
+        &self,
+        max_age: Option<Duration>,
+        max_count: Option<usize>,
+    ) -> Result<u64> {
+        if let Some(ref st) = self.storage {
+            st.prune(max_age, max_count).await
+        } else {
+            Ok(0)
+        }
+    }
 
-    sqlx::query(
-        r#"
-        INSERT INTO event_journal (event_uuid, topic, source, payload_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(event.id.to_string())
-    .bind(&event.topic)
-    .bind(&event.source)
-    .bind(payload_str)
-    .bind(event.timestamp.to_rfc3339())
-    .execute(db.writer())
-    .await
-    .map_err(|e| AppError::database(e.to_string()))?;
-
-    Ok(())
+    /// Получить снимок метрик и состояния шины
+    pub fn stats(&self) -> BusStats {
+        self.metrics
+            .0
+            .snapshot(self.router.subscriber_count(), self.ring.len())
+    }
 }
