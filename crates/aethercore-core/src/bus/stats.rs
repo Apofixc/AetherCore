@@ -4,6 +4,7 @@ use aethercore_common::models::events::EventPriority;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Снимок текущего состояния и метрик производительности шины событий
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -22,8 +23,12 @@ pub struct BusStats {
     pub active_subscribers: usize,
     /// Текущий размер горячего L1 кольцевого буфера
     pub ring_buffer_len: usize,
+    /// Количество удерживаемых Retained-сообщений в памяти
+    pub retained_messages_len: usize,
     /// Количество сброшенных/пропущенных сообщений из-за переполнения очередей
     pub dropped_total: u64,
+    /// Средняя задержка обработки диспетчера в микросекундах
+    pub avg_dispatch_latency_us: f64,
 }
 
 /// Внутренние атомарные счетчики метрик
@@ -35,6 +40,8 @@ pub struct MetricsCollector {
     normal_total: AtomicU64,
     low_total: AtomicU64,
     dropped_total: AtomicU64,
+    total_dispatch_latency_us: AtomicU64,
+    dispatch_count: AtomicU64,
 }
 
 impl MetricsCollector {
@@ -54,8 +61,28 @@ impl MetricsCollector {
         self.dropped_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Учесть задержку диспетчеризации события
+    pub fn record_dispatch_latency(&self, duration: Duration) {
+        let us = duration.as_micros() as u64;
+        self.total_dispatch_latency_us.fetch_add(us, Ordering::Relaxed);
+        self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Сформировать снимок текущей статистики
-    pub fn snapshot(&self, active_subscribers: usize, ring_len: usize) -> BusStats {
+    pub fn snapshot(
+        &self,
+        active_subscribers: usize,
+        ring_len: usize,
+        retained_len: usize,
+    ) -> BusStats {
+        let total_us = self.total_dispatch_latency_us.load(Ordering::Relaxed);
+        let count = self.dispatch_count.load(Ordering::Relaxed);
+        let avg_latency = if count > 0 {
+            total_us as f64 / count as f64
+        } else {
+            0.0
+        };
+
         BusStats {
             published_total: self.published_total.load(Ordering::Relaxed),
             critical_total: self.critical_total.load(Ordering::Relaxed),
@@ -64,7 +91,9 @@ impl MetricsCollector {
             low_total: self.low_total.load(Ordering::Relaxed),
             active_subscribers,
             ring_buffer_len: ring_len,
+            retained_messages_len: retained_len,
             dropped_total: self.dropped_total.load(Ordering::Relaxed),
+            avg_dispatch_latency_us: avg_latency,
         }
     }
 }

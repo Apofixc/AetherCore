@@ -207,3 +207,163 @@ async fn test_l1_ring_buffer_and_stats() {
     assert_eq!(stats.published_total, 10);
     assert_eq!(stats.ring_buffer_len, 10);
 }
+
+#[tokio::test]
+async fn test_predicate_filter() {
+    let bus = EventBus::in_memory();
+
+    // Подписка только на критические алармы с zone == 1
+    let mut filtered_sub = bus
+        .subscribe_topic("alarms.*")
+        .with_filter(|ev| {
+            ev.payload.get("zone").and_then(|z| z.as_i64()) == Some(1)
+        });
+
+    // 1. Сообщение для zone 2 — должно быть отфильтровано
+    let ev_zone2 = EventMessage::telemetry(
+        "alarms.fire",
+        "sensor-1",
+        serde_json::json!({"zone": 2}),
+    );
+    bus.publish(ev_zone2).await.unwrap();
+
+    // 2. Сообщение для zone 1 — должно пройти
+    let ev_zone1 = EventMessage::telemetry(
+        "alarms.fire",
+        "sensor-2",
+        serde_json::json!({"zone": 1}),
+    );
+    bus.publish(ev_zone1).await.unwrap();
+
+    let received = filtered_sub.recv().await.unwrap();
+    assert_eq!(received.payload.get("zone").unwrap(), 1);
+    assert_eq!(received.source, "sensor-2");
+}
+
+#[tokio::test]
+async fn test_dedup_by_business_key() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe();
+
+    // Отправляем два разных сообщения (разные UUID), но с одинаковым business dedup_key
+    let msg1 = EventMessage::telemetry(
+        "devices.sw1.alarm",
+        "sw1",
+        serde_json::json!({"state": "down"}),
+    )
+    .with_dedup_key("link_down:sw1:port0");
+
+    let msg2 = EventMessage::telemetry(
+        "devices.sw1.alarm",
+        "sw1",
+        serde_json::json!({"state": "down_repeated"}),
+    )
+    .with_dedup_key("link_down:sw1:port0");
+
+    bus.publish(msg1).await.unwrap();
+    bus.publish(msg2).await.unwrap();
+
+    let received = sub.recv().await.unwrap();
+    assert_eq!(received.payload.get("state").unwrap(), "down");
+
+    // Второе сообщение должно быть отброшено дедупликатором
+    tokio::select! {
+        _ = sub.recv() => panic!("Duplicate message should have been dropped!"),
+        _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+    }
+}
+
+#[tokio::test]
+async fn test_retained_messages_and_safe_subscription() {
+    let bus = EventBus::in_memory();
+
+    // Публикуем Retained-сообщения
+    let msg_dev1 = EventMessage::telemetry(
+        "devices.switch1.state",
+        "agent",
+        serde_json::json!({"status": "online", "ports": 24}),
+    )
+    .with_retain(true);
+
+    let msg_dev2 = EventMessage::telemetry(
+        "devices.switch2.state",
+        "agent",
+        serde_json::json!({"status": "offline"}),
+    )
+    .with_retain(true);
+
+    // Обычное сообщение без retain
+    let msg_temp = EventMessage::telemetry(
+        "devices.switch1.temp",
+        "agent",
+        serde_json::json!({"temp": 45}),
+    )
+    .with_retain(false);
+
+    bus.publish(msg_dev1).await.unwrap();
+    bus.publish(msg_dev2).await.unwrap();
+    bus.publish(msg_temp).await.unwrap();
+
+    // Даем микропаузу воркеру на обработку опубликованных сообщений
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    // 1. Проверяем get_retained
+    let retained_sw1 = bus.get_retained("devices.switch1.state", 10);
+    assert_eq!(retained_sw1.len(), 1);
+    assert_eq!(retained_sw1[0].payload.get("status").unwrap(), "online");
+
+    let retained_all_devs = bus.get_retained("devices.*.state", 10);
+    assert_eq!(retained_all_devs.len(), 2);
+
+    // 2. Безопасная подписка с получением сохраненного состояния
+    let (mut sub, initial) = bus.subscribe_with_retained("devices.switch1.state", 5);
+    assert_eq!(initial.len(), 1);
+    assert_eq!(initial[0].payload.get("ports").unwrap(), 24);
+
+    // Последующее live-событие доставляется как обычно
+    let live_ev = EventMessage::telemetry(
+        "devices.switch1.state",
+        "agent",
+        serde_json::json!({"status": "online", "ports": 48}),
+    );
+    bus.publish(live_ev).await.unwrap();
+
+    let live_rec = sub.recv().await.unwrap();
+    assert_eq!(live_rec.payload.get("ports").unwrap(), 48);
+
+    assert_eq!(bus.stats().retained_messages_len, 2);
+}
+
+#[tokio::test]
+async fn test_scatter_gather_rpc() {
+    let bus = EventBus::in_memory();
+
+    // Эмулируем три обработчика микросервисов
+    for i in 1..=3 {
+        let bus_clone = bus.clone();
+        let mut sub = bus_clone.subscribe_topic("cluster.status");
+        tokio::spawn(async move {
+            if let Some(req) = sub.recv().await {
+                let _ = bus_clone
+                    .reply_to(
+                        &req,
+                        serde_json::json!({"node_id": i, "status": "healthy"}),
+                    )
+                    .await;
+            }
+        });
+    }
+
+    // Делаем Scatter-Gather RPC запрос с ожиданием 3 ответов
+    let responses = bus
+        .request_many(
+            "cluster.status",
+            serde_json::json!({"ping": true}),
+            Duration::from_secs(1),
+            3,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(responses.len(), 3);
+}

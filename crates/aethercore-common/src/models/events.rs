@@ -57,6 +57,12 @@ pub struct EventMessage {
     /// Опциональный бинарный payload (для high-frequency телеметрии, MessagePack или Protobuf)
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub binary_payload: Option<Vec<u8>>,
+    /// Опциональный бизнес-ключ дедупликации (например, `"alarm:device_123:link_down"`)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dedup_key: Option<String>,
+    /// Флаг сохранения последнего актуального состояния топика в Retained Store
+    #[serde(default)]
+    pub retain: bool,
     /// Время создания события (UTC)
     pub timestamp: DateTime<Utc>,
     /// Время истечения актуальности (TTL). Если None — бессрочно (для постоянного аудита)
@@ -84,6 +90,8 @@ impl EventMessage {
             source: source.into(),
             payload,
             binary_payload: None,
+            dedup_key: None,
+            retain: false,
             timestamp: now,
             expires_at: Some(now + Duration::minutes(30)),
             correlation_id: None,
@@ -104,6 +112,8 @@ impl EventMessage {
             source: source.into(),
             payload,
             binary_payload: None,
+            dedup_key: None,
+            retain: false,
             timestamp: now,
             expires_at: None,
             correlation_id: None,
@@ -114,6 +124,18 @@ impl EventMessage {
     /// Установить приоритет события
     pub fn with_priority(mut self, priority: EventPriority) -> Self {
         self.priority = priority;
+        self
+    }
+
+    /// Установить бизнес-ключ дедупликации
+    pub fn with_dedup_key(mut self, key: impl Into<String>) -> Self {
+        self.dedup_key = Some(key.into());
+        self
+    }
+
+    /// Установить флаг Retained (сохранение последнего состояния)
+    pub fn with_retain(mut self, retain: bool) -> Self {
+        self.retain = retain;
         self
     }
 

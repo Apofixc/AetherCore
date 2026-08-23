@@ -21,6 +21,8 @@ pub struct WsAuthQuery {
     pub token: Option<String>,
     /// Начальные темы подписки через запятую (например, `?topics=devices.*,system.#`)
     pub topics: Option<String>,
+    /// Запросить ли сохраненные Retained-состояния топиков при подключении (`?retained=true`)
+    pub retained: Option<bool>,
 }
 
 /// Входящая управляющая команда от WebSocket клиента
@@ -31,6 +33,9 @@ pub enum WsClientCommand {
     Subscribe {
         /// Список топиков или масок подписки
         topics: Vec<String>,
+        /// Запросить ли сохраненные Retained-состояния топиков
+        #[serde(default)]
+        with_retained: bool,
     },
     /// Удалить подписку на темы
     Unsubscribe {
@@ -78,10 +83,17 @@ pub async fn ws_events_handler(
         .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
 
-    ws.on_upgrade(move |socket| handle_socket(socket, state, initial_topics))
+    let send_retained = query.retained.unwrap_or(false);
+
+    ws.on_upgrade(move |socket| handle_socket(socket, state, initial_topics, send_retained))
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<String>) {
+async fn handle_socket(
+    socket: WebSocket,
+    state: AppState,
+    initial_topics: Vec<String>,
+    send_retained: bool,
+) {
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
 
@@ -96,10 +108,39 @@ async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<S
 
     debug!("WebSocket client connected to /ws/events (sub_id: {})", sub_id);
 
+    // Если запрошены сохраненные retained-состояния при подключении
+    if send_retained {
+        let mut initial_retained = Vec::new();
+        if initial_topics.is_empty() {
+            initial_retained.extend(state.bus.get_retained("*", 50));
+        } else {
+            for top in &initial_topics {
+                initial_retained.extend(state.bus.get_retained(top, 20));
+            }
+        }
+        for ev in initial_retained {
+            if let Ok(json_str) = serde_json::to_string(&ev) {
+                let mut guard = sender.lock().await;
+                let _ = guard.send(Message::Text(json_str.into())).await;
+            }
+        }
+    }
+
     let send_tx = sender.clone();
     // Задача отправки событий из шины клиенту
     let send_task = tokio::spawn(async move {
         while let Some(event) = subscription.recv().await {
+            // Если есть бинарный payload и нет JSON payload — отправляем бинарный кадр
+            if let Some(ref bin) = event.binary_payload {
+                if event.payload.is_null() {
+                    let mut guard = send_tx.lock().await;
+                    if guard.send(Message::Binary(bin.clone().into())).await.is_err() {
+                        break;
+                    }
+                    continue;
+                }
+            }
+
             if let Ok(json_str) = serde_json::to_string(&event) {
                 let mut guard = send_tx.lock().await;
                 if guard.send(Message::Text(json_str.into())).await.is_err() {
@@ -117,9 +158,17 @@ async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<S
                 Message::Text(text) => {
                     if let Ok(cmd) = serde_json::from_str::<WsClientCommand>(&text) {
                         match cmd {
-                            WsClientCommand::Subscribe { topics } => {
+                            WsClientCommand::Subscribe { topics, with_retained } => {
                                 for topic in &topics {
                                     state.bus.add_subscription_topic(sub_id, topic);
+                                    if with_retained {
+                                        for ev in state.bus.get_retained(topic, 20) {
+                                            if let Ok(json_str) = serde_json::to_string(&ev) {
+                                                let mut guard = recv_tx.lock().await;
+                                                let _ = guard.send(Message::Text(json_str.into())).await;
+                                            }
+                                        }
+                                    }
                                 }
                                 let reply = WsServerMessage::Subscribed { topics };
                                 if let Ok(reply_json) = serde_json::to_string(&reply) {

@@ -1,7 +1,8 @@
-//! # Дедупликация входящих событий по UUID (In-Memory Sliding Window)
+//! # Дедупликация входящих событий по UUID и бизнес-ключам (In-Memory Sliding Window)
 //!
-//! Защищает от дублирования сетевых пакетов, повторов брокеров и плагинов.
+//! Защищает от дублирования сетевых пакетов, повторов брокеров, плагинов и штормов алармов.
 
+use aethercore_common::models::events::EventMessage;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -12,10 +13,17 @@ const DEFAULT_DEDUP_CAPACITY: usize = 10_000;
 /// Время жизни записи в окне дедупликации по умолчанию
 const DEFAULT_DEDUP_TTL: Duration = Duration::from_secs(60);
 
+/// Ключ дедупликации (UUID сообщения или пользовательский бизнес-ключ)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum DedupKey {
+    Uuid(Uuid),
+    Custom(String),
+}
+
 #[derive(Debug)]
 struct DedupInner {
-    records: HashMap<Uuid, Instant>,
-    queue: VecDeque<(Uuid, Instant)>,
+    records: HashMap<DedupKey, Instant>,
+    queue: VecDeque<(DedupKey, Instant)>,
     capacity: usize,
     ttl: Duration,
 }
@@ -24,13 +32,30 @@ impl DedupInner {
     fn clean_expired(&mut self, now: Instant) {
         while let Some((_, ts)) = self.queue.front() {
             if now.duration_since(*ts) > self.ttl {
-                if let Some((id, _)) = self.queue.pop_front() {
-                    self.records.remove(&id);
+                if let Some((key, _)) = self.queue.pop_front() {
+                    self.records.remove(&key);
                 }
             } else {
                 break;
             }
         }
+    }
+
+    fn check_and_insert(&mut self, key: DedupKey, now: Instant) -> bool {
+        if self.records.contains_key(&key) {
+            return true;
+        }
+
+        // Если емкость исчерпана — вытесняем самый старый элемент
+        if self.queue.len() >= self.capacity {
+            if let Some((old_key, _)) = self.queue.pop_front() {
+                self.records.remove(&old_key);
+            }
+        }
+
+        self.records.insert(key.clone(), now);
+        self.queue.push_back((key, now));
+        false
     }
 }
 
@@ -50,7 +75,7 @@ impl EventDeduplicator {
     /// Создать дедупликатор с заданной емкостью и временем жизни записи
     ///
     /// # Аргументы
-    /// * `capacity` — Максимальное количество удерживаемых идентификаторов UUID.
+    /// * `capacity` — Максимальное количество удерживаемых идентификаторов.
     /// * `ttl` — Время жизни записи в окне дедупликации ([`Duration`]).
     pub fn new(capacity: usize, ttl: Duration) -> Self {
         Self {
@@ -63,33 +88,38 @@ impl EventDeduplicator {
         }
     }
 
-    /// Проверить, является ли событие дубликатом, и зафиксировать его, если оно новое
-    ///
-    /// # Аргументы
-    /// * `id` — Уникальный идентификатор события ([`Uuid`]).
-    ///
-    /// # Возвращаемое значение
-    /// Возвращает `true`, если событие УЖЕ было обработано ранее (дубликат),
-    /// или `false`, если это новое сообщение (зафиксировано в дедупликаторе).
-    pub fn is_duplicate_or_record(&self, id: &Uuid) -> bool {
+    /// Проверить, является ли событие дубликатом по business key или UUID, и зафиксировать его
+    pub fn is_duplicate_event_or_record(&self, event: &EventMessage) -> bool {
         let now = Instant::now();
         let mut guard = self.inner.write().unwrap();
-
         guard.clean_expired(now);
 
-        if guard.records.contains_key(id) {
-            return true;
-        }
-
-        // Если емкость исчерпана — вытесняем самый старый элемент
-        if guard.queue.len() >= guard.capacity {
-            if let Some((old_id, _)) = guard.queue.pop_front() {
-                guard.records.remove(&old_id);
+        // 1. Проверяем бизнес-ключ дедупликации (если задан)
+        if let Some(ref custom_key) = event.dedup_key {
+            if guard.check_and_insert(DedupKey::Custom(custom_key.clone()), now) {
+                return true;
             }
         }
 
-        guard.records.insert(*id, now);
-        guard.queue.push_back((*id, now));
-        false
+        // 2. Проверяем UUID события
+        guard.check_and_insert(DedupKey::Uuid(event.id), now)
+    }
+
+    /// Проверить, является ли событие дубликатом по UUID, и зафиксировать его
+    pub fn is_duplicate_or_record(&self, id: &Uuid) -> bool {
+        let now = Instant::now();
+        let mut guard = self.inner.write().unwrap();
+        guard.clean_expired(now);
+        guard.check_and_insert(DedupKey::Uuid(*id), now)
+    }
+
+    /// Текущее количество активных записей в дедупликаторе
+    pub fn len(&self) -> usize {
+        self.inner.read().unwrap().records.len()
+    }
+
+    /// Проверить, пуст ли дедупликатор
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

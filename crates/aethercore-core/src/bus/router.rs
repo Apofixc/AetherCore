@@ -121,11 +121,24 @@ impl TopicTrieNode {
     }
 }
 
+/// Пользовательский предикат контентной фильтрации событий подписки
+pub type EventFilter = Arc<dyn Fn(&EventMessage) -> bool + Send + Sync>;
+
 /// Состояние отдельного подписчика в роутере
-#[derive(Debug)]
+#[derive(Clone)]
 struct SubscriberEntry {
     tx: mpsc::Sender<EventMessage>,
     patterns: HashSet<String>,
+    filter: Option<EventFilter>,
+}
+
+impl std::fmt::Debug for SubscriberEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SubscriberEntry")
+            .field("patterns", &self.patterns)
+            .field("has_filter", &self.filter.is_some())
+            .finish()
+    }
 }
 
 /// Внутреннее состояние потокобезопасного роутера топиков
@@ -157,6 +170,15 @@ impl TopicRouter {
     /// # Возвращаемое значение
     /// RAII-дескриптор [`SubscriptionHandle`], удаляющий подписку при `Drop`.
     pub fn subscribe(&self, patterns: &[&str]) -> SubscriptionHandle {
+        self.subscribe_filtered(patterns, None)
+    }
+
+    /// Создать новую подписку с предикатом контентной фильтрации
+    pub fn subscribe_filtered(
+        &self,
+        patterns: &[&str],
+        filter: Option<EventFilter>,
+    ) -> SubscriptionHandle {
         let sub_id = SUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(SUBSCRIBER_QUEUE_CAPACITY);
 
@@ -177,6 +199,7 @@ impl TopicRouter {
                 SubscriberEntry {
                     tx,
                     patterns: patterns_set,
+                    filter: filter.clone(),
                 },
             );
         }
@@ -185,6 +208,15 @@ impl TopicRouter {
             id: sub_id,
             rx,
             router: self.clone(),
+            filter,
+        }
+    }
+
+    /// Установить предикат контентной фильтрации для активной подписки
+    pub fn set_filter(&self, sub_id: SubscriptionId, filter: Option<EventFilter>) {
+        let mut guard = self.inner.write().unwrap();
+        if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
+            entry.filter = filter;
         }
     }
 
@@ -242,7 +274,7 @@ impl TopicRouter {
         }
     }
 
-    /// Отправить событие всем подходящим подписчикам по дереву топиков
+    /// Отправить событие всем подходящим подписчикам по дереву топиков с применением фильтров
     ///
     /// # Аргументы
     /// * `event` — Доставляемое событие платформы ([`EventMessage`]).
@@ -266,8 +298,15 @@ impl TopicRouter {
         let guard = self.inner.read().unwrap();
         for id in target_ids {
             if let Some(entry) = guard.subscribers.get(&id) {
+                // Проверяем предикат контентной фильтрации подписчика
+                if let Some(ref predicate) = entry.filter {
+                    if !predicate(event) {
+                        continue;
+                    }
+                }
+
                 // Пытаемся отправить без блокировки (non-blocking try_send)
-                // Если буфер подписчика переполнен, фиксируем lag
+                // Если буфер подписчика переполнен, защищаем сервер от блокировки
                 match entry.tx.try_send(event.clone()) {
                     Ok(_) => delivered += 1,
                     Err(mpsc::error::TrySendError::Full(_)) => {
@@ -296,6 +335,7 @@ pub struct SubscriptionHandle {
     id: SubscriptionId,
     rx: mpsc::Receiver<EventMessage>,
     router: TopicRouter,
+    filter: Option<EventFilter>,
 }
 
 impl SubscriptionHandle {
@@ -314,6 +354,17 @@ impl SubscriptionHandle {
     /// Попробовать прочитать следующее событие без блокировки
     pub fn try_recv(&mut self) -> std::result::Result<EventMessage, mpsc::error::TryRecvError> {
         self.rx.try_recv()
+    }
+
+    /// Установить предикат контентной фильтрации событий
+    pub fn with_filter<F>(mut self, predicate: F) -> Self
+    where
+        F: Fn(&EventMessage) -> bool + Send + Sync + 'static,
+    {
+        let filter: EventFilter = Arc::new(predicate);
+        self.router.set_filter(self.id, Some(filter.clone()));
+        self.filter = Some(filter);
+        self
     }
 
     /// Динамически добавить топик или маску к данной подписке
