@@ -5,7 +5,10 @@ import {
   AppButton,
   StatusBadge,
   BaseModal,
-  ConfirmModal
+  ConfirmModal,
+  BaseInput,
+  BaseSelect,
+  BaseSwitch
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -25,6 +28,24 @@ const tasks = ref<ScheduledTask[]>([])
 const isLoading = ref(false)
 const executingTasks = ref<Record<string, boolean>>({})
 const notification = ref<{ message: string; type: 'success' | 'error' } | null>(null)
+
+// Select options
+const scheduleTypeOptions = computed(() => [
+  { value: 'cron', label: t('scheduler.scheduleTypeCron'), icon: 'schedule' },
+  { value: 'interval_sec', label: t('scheduler.scheduleTypeInterval'), icon: 'timer' }
+])
+
+const actionTypeOptions = computed(() => [
+  { value: 'system_history_cleanup', label: t('scheduler.actionSystemCleanup'), icon: 'cleaning_services' },
+  { value: 'system_audit_rotation', label: t('scheduler.actionSystemAudit'), icon: 'history_toggle_drop_down' },
+  { value: 'system_db_backup', label: t('scheduler.actionSystemBackup'), icon: 'database' }
+])
+
+const concurrencyOptions = computed(() => [
+  { value: 'skip', label: t('scheduler.policySkip') },
+  { value: 'allow', label: t('scheduler.policyAllow') },
+  { value: 'queue', label: t('scheduler.policyQueue') }
+])
 
 // History Modal State
 const showHistoryModal = ref(false)
@@ -433,7 +454,7 @@ onUnmounted(() => {
                   {{ t('common.disabled') }}
                 </StatusBadge>
                 <StatusBadge
-                  v-else-if="executingTasks[task.id] || task.last_status === 'running'"
+                  v-else-if="executingTasks[task.id] || (task.last_status as any) === 'running'"
                   variant="primary"
                   :pulse="true"
                   size="xs"
@@ -550,7 +571,7 @@ onUnmounted(() => {
               type="number"
               min="1"
               max="365"
-              class="w-16 px-2 py-1 text-xs rounded bg-surface-container-lowest border border-outline-variant font-mono"
+              class="w-16 px-2 py-1 text-xs rounded bg-surface-container-lowest border border-outline-variant font-mono text-on-surface outline-none"
             />
             <span class="text-xs text-on-surface-variant">дней</span>
           </div>
@@ -629,101 +650,74 @@ onUnmounted(() => {
     >
       <form class="flex flex-col gap-4" @submit.prevent="handleSaveTask">
         <!-- Name -->
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.taskName') }} *</label>
-          <input
-            v-model="taskForm.name"
-            type="text"
-            required
-            placeholder="Например: Ночная ротация"
-            class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface focus:border-primary-fixed-dim outline-none font-mono"
-          />
-        </div>
+        <BaseInput
+          v-model="taskForm.name"
+          :label="t('scheduler.taskName')"
+          placeholder="Например: Ночная ротация"
+          icon="title"
+          :required="true"
+        />
 
         <!-- Description -->
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.taskDescription') }}</label>
-          <input
-            v-model="taskForm.description"
-            type="text"
-            placeholder="Краткое назначение задачи"
-            class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface focus:border-primary-fixed-dim outline-none"
-          />
-        </div>
+        <BaseInput
+          v-model="taskForm.description"
+          :label="t('scheduler.taskDescription')"
+          placeholder="Краткое назначение задачи"
+          icon="description"
+        />
 
         <!-- Schedule Type & Value -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.schedule') }} (Тип)</label>
-            <select
-              v-model="taskForm.scheduleType"
-              class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface outline-none"
-            >
-              <option value="cron">{{ t('scheduler.scheduleTypeCron') }}</option>
-              <option value="interval_sec">{{ t('scheduler.scheduleTypeInterval') }}</option>
-            </select>
-          </div>
+          <BaseSelect
+            v-model="taskForm.scheduleType"
+            :options="scheduleTypeOptions"
+            :label="t('scheduler.schedule') + ' (Тип)'"
+            icon="schedule"
+          />
 
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.schedule') }} (Значение)</label>
-            <input
-              v-model="taskForm.scheduleValue"
-              type="text"
-              required
-              :placeholder="taskForm.scheduleType === 'cron' ? t('scheduler.cronPlaceholder') : t('scheduler.intervalPlaceholder')"
-              class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface focus:border-primary-fixed-dim outline-none font-mono"
-            />
-          </div>
+          <BaseInput
+            v-model="taskForm.scheduleValue"
+            :label="t('scheduler.schedule') + ' (Значение)'"
+            :placeholder="taskForm.scheduleType === 'cron' ? t('scheduler.cronPlaceholder') : t('scheduler.intervalPlaceholder')"
+            icon="tune"
+            :required="true"
+          />
         </div>
 
         <!-- Action Type -->
-        <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.action') }}</label>
-          <select
-            v-model="taskForm.actionType"
-            class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface outline-none"
-          >
-            <option value="system_history_cleanup">{{ t('scheduler.actionSystemCleanup') }}</option>
-            <option value="system_audit_rotation">{{ t('scheduler.actionSystemAudit') }}</option>
-            <option value="system_db_backup">{{ t('scheduler.actionSystemBackup') }}</option>
-          </select>
-        </div>
+        <BaseSelect
+          v-model="taskForm.actionType"
+          :options="actionTypeOptions"
+          :label="t('scheduler.action')"
+          icon="play_circle"
+        />
 
         <!-- Concurrency & Timeout -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.concurrencyPolicy') }}</label>
-            <select
-              v-model="taskForm.concurrencyPolicy"
-              class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface outline-none"
-            >
-              <option value="skip">{{ t('scheduler.policySkip') }}</option>
-              <option value="allow">{{ t('scheduler.policyAllow') }}</option>
-              <option value="queue">{{ t('scheduler.policyQueue') }}</option>
-            </select>
-          </div>
+          <BaseSelect
+            v-model="taskForm.concurrencyPolicy"
+            :options="concurrencyOptions"
+            :label="t('scheduler.concurrencyPolicy')"
+            icon="alt_route"
+          />
 
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-on-surface">{{ t('scheduler.timeoutSecs') }}</label>
-            <input
-              v-model.number="taskForm.timeoutSecs"
-              type="number"
-              min="5"
-              max="3600"
-              class="px-3 py-2 text-xs rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface focus:border-primary-fixed-dim outline-none font-mono"
-            />
-          </div>
+          <BaseInput
+            v-model="taskForm.timeoutSecs"
+            type="number"
+            :label="t('scheduler.timeoutSecs')"
+            icon="timer"
+            :required="true"
+          />
         </div>
 
-        <!-- Is Enabled -->
-        <label class="flex items-center gap-2 cursor-pointer mt-1">
-          <input
-            v-model="taskForm.isEnabled"
-            type="checkbox"
-            class="rounded border-outline-variant bg-surface-container-lowest text-primary-fixed-dim focus:ring-0 cursor-pointer"
-          />
-          <span class="text-xs text-on-surface select-none">{{ t('common.active') }}</span>
-        </label>
+        <!-- Is Enabled Switch -->
+        <BaseSwitch
+          v-model="taskForm.isEnabled"
+          :label="t('common.active')"
+          description="Включить регулярное автоматическое исполнение задачи по расписанию"
+          icon="toggle_on"
+          :card="true"
+        />
       </form>
 
       <template #footer>
