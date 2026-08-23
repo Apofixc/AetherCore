@@ -167,6 +167,16 @@ impl EventBus {
         self.router.subscribe(patterns)
     }
 
+    /// Динамически добавить тему к существующей подписке по ее идентификатору
+    pub fn add_subscription_topic(&self, sub_id: router::SubscriptionId, pattern: impl AsRef<str>) {
+        self.router.add_topic(sub_id, pattern.as_ref());
+    }
+
+    /// Динамически удалить тему из существующей подписки по ее идентификатору
+    pub fn remove_subscription_topic(&self, sub_id: router::SubscriptionId, pattern: impl AsRef<str>) {
+        self.router.remove_topic(sub_id, pattern.as_ref());
+    }
+
     /// Синхронный запрос-ответ (In-Process Request-Reply RPC)
     ///
     /// Отправляет запрос на топик и ожидает ответное сообщение с совпадающим `correlation_id`.

@@ -92,8 +92,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<S
         let topic_refs: Vec<&str> = initial_topics.iter().map(|s| s.as_str()).collect();
         state.bus.subscribe_topics(&topic_refs)
     };
+    let sub_id = subscription.id();
 
-    debug!("WebSocket client connected to /ws/events (sub_id: {})", subscription.id());
+    debug!("WebSocket client connected to /ws/events (sub_id: {})", sub_id);
 
     let send_tx = sender.clone();
     // Задача отправки событий из шины клиенту
@@ -118,7 +119,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<S
                         match cmd {
                             WsClientCommand::Subscribe { topics } => {
                                 for topic in &topics {
-                                    state.bus.subscribe_topic(topic); // router dinamically handles
+                                    state.bus.add_subscription_topic(sub_id, topic);
                                 }
                                 let reply = WsServerMessage::Subscribed { topics };
                                 if let Ok(reply_json) = serde_json::to_string(&reply) {
@@ -127,6 +128,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, initial_topics: Vec<S
                                 }
                             }
                             WsClientCommand::Unsubscribe { topics } => {
+                                for topic in &topics {
+                                    state.bus.remove_subscription_topic(sub_id, topic);
+                                }
                                 let reply = WsServerMessage::Unsubscribed { topics };
                                 if let Ok(reply_json) = serde_json::to_string(&reply) {
                                     let mut guard = recv_tx.lock().await;
