@@ -1126,6 +1126,111 @@ sequenceDiagram
     end
 ```
 
+---
+
+## 16. Блок-схема и диаграмма последовательности: Выход из системы (Logout) и трекинг статуса «В сети» (is_online)
+
+### 16.1. Блок-схема работы Logout и синхронизации статуса присутствия
+
+```mermaid
+graph TD
+    Trigger(["Инициатор: Клик 'Выйти' в AppHeader / UserProfileView / SystemAdminView"]) --> CallStore["await authStore.logout()"]
+    
+    CallStore --> StopTracker["Остановка таймера неактивности<br/>stopInactivityTracker()"]
+    StopTracker --> CheckToken{"Токен присутствует?"}
+    
+    CheckToken -- "Да" --> PostLogout["POST /api/v1/auth/logout<br/>(Authorization: Bearer JWT)"]
+    CheckToken -- "Нет" --> ClearLocal
+    
+    PostLogout --> ServerExtract["Axum AuthUser: извлечение claims.session_id"]
+    ServerExtract --> RevokeSession["SessionService.revoke_session(session_id)<br/>DELETE FROM active_sessions WHERE id = ?"]
+    RevokeSession --> AuditLog["AuditService.log('auth.logout')"]
+    AuditLog --> ServerRes["200 OK { success: true }"]
+    
+    ServerRes --> ClearLocal["Очистка клиентского состояния:"]
+    ClearLocal --> StorageClear["• localStorage.removeItem('aether_token')<br/>• sessionStorage.removeItem('aether_token')<br/>• api.setToken(null)<br/>• token.value = null, user.value = null"]
+    
+    StorageClear --> Redirect["router.push('/login')"]
+    Redirect --> LoginRender["Отображение страницы входа"]
+    
+    subgraph StatusSync ["Синхронизация статуса операторов (UsersManagementView.vue)"]
+        FetchUsers["GET /api/v1/users"] --> QueryDB["UserService.list_users()"]
+        FetchUsers --> QuerySessions["SessionService.list_active_sessions()"]
+        QueryDB & QuerySessions --> MatchOnline["Вычисление: is_online = online_user_ids.contains(u.id)"]
+        MatchOnline --> ReturnDTO["Vec<UserResponseDto> (с точным is_online: bool)"]
+        ReturnDTO --> UIRender["UI: Рендеринг таблицы операторов:<br/>• Зеленый индикатор / бейдж 'В сети' только при active_sessions > 0<br/>• Серый индикатор / бейдж 'Не в сети' при отсутствии сессий"]
+    end
+```
+
+### 16.2. Диаграмма последовательности сквозного процесса Logout
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Оператор (Браузер)
+    participant Header as AppHeader.vue / UserProfileView.vue
+    participant Store as authStore (Pinia)
+    participant AuthApi as authApi (/api/v1/auth)
+    participant Server as AetherCore Axum Backend
+    participant SessionSvc as SessionService
+    participant SQLite as SQLite Database (active_sessions)
+    participant Audit as AuditService
+
+    Operator->>Header: Нажатие кнопки "Выйти из системы" (Logout)
+    Header->>Store: await authStore.logout()
+    Store->>Store: stopInactivityTracker()
+    
+    Store->>AuthApi: authApi.logout()
+    AuthApi->>Server: POST /api/v1/auth/logout (Bearer JWT)
+    
+    Server->>Server: AuthUser Middleware извлекает claims.session_id
+    alt session_id присутствует
+        Server->>SessionSvc: revoke_session(session_id)
+        SessionSvc->>SQLite: DELETE FROM active_sessions WHERE id = ?
+        SQLite-->>SessionSvc: rows_affected: 1
+    end
+    
+    Server->>Audit: log(user_id, username, "auth.logout", "auth", "success")
+    Server-->>AuthApi: 200 OK { success: true }
+    AuthApi-->>Store: Успешный ответ
+    
+    Store->>Store: token = null, user = null, avatar = null
+    Store->>Store: localStorage.removeItem('aether_token')
+    Store->>Store: sessionStorage.removeItem('aether_token')
+    Store->>Store: api.setToken(null)
+    
+    Store-->>Header: Завершение logout()
+    Header->>Header: router.push('/login')
+    Header-->>Operator: Отображение формы авторизации
+```
+
+---
+
+## 17. Сценарии верификации механизма сессий и онлайн-статуса (Given-When-Then)
+
+### ТК-1: Завершение сеанса через Logout и очистка на бэкенде
+* **Given**: Оператор авторизован в системе, токен и активная сессия зарегистрированы в таблице `active_sessions`.
+* **When**: Оператор нажимает кнопку «Выйти из системы» в выпадающем меню профиля ([`AppHeader.vue`](file:///opt/aethercore/frontend/src/components/layout/AppHeader.vue)).
+* **Then**:
+  1. Выполняется сетевой запрос `POST /api/v1/auth/logout`.
+  2. Запись сессии с соответствующим `session_id` удаляется из таблицы `active_sessions` базы данных.
+  3. В аудит записывается событие `auth.logout`.
+  4. Локальные токены очищаются из `localStorage`/`sessionStorage`.
+  5. Пользователь перенаправляется на страницу `/login`.
+  6. При попытке повторного использования старого токена сервер возвращает `401 Unauthorized`.
+
+---
+
+### ТК-2: Корректное отображение статуса «В сети» / «Не в сети» в списке операторов
+* **Given**: В системе создано два пользователя: `operator_online` (выполнил вход) и `operator_offline` (учетная запись активна `is_active: true`, но вход не выполнялся).
+* **When**: Администратор открывает страницу управления пользователями `/settings/users`.
+* **Then**:
+  1. Сервер возвращает `operator_online` со свойством `is_online: true`, а `operator_offline` — со свойством `is_online: false`.
+  2. В интерфейсе у `operator_online` отображается зеленый пульсирующий бейдж «В сети».
+  3. У `operator_offline` отображается нейтральный серый бейдж «Не в сети».
+  4. Виджет «В сети сейчас» корректно учитывает только пользователей с `is_online === true`.
+
+
 
 
 

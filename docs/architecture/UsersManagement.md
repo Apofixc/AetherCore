@@ -21,8 +21,8 @@ flowchart TD
     Start([Открытие UsersManagementView]) --> Mount[onMounted: loadUsers]
     Mount --> ParallelFetch["Promise.allSettled:\n1. usersApi.list()\n2. settingsApi.getSecurityPolicies()"]
     
-    ParallelFetch --> SetState["Сохранение в operators & securityPolicies"]
-    SetState --> CalcHints["Вычисление dynamic passwordHintText на основе SecurityPolicies"]
+    ParallelFetch --> SetState["Сохранение в operators & securityPolicies\nМаппинг is_online: Boolean(u.is_online)\nМаппинг is_active: Boolean(u.is_active)"]
+    SetState --> CalcHints["Вычисление dynamic passwordHintText на основе SecurityPolicies\nПодсчет onlineCount и activeCount"]
     
     CalcHints --> UserAction{"Действие Администратора"}
     
@@ -33,7 +33,7 @@ flowchart TD
     ValidateForm -->|Корректно| PostApi["usersApi.create(CreateUserDto)"]
     
     PostApi --> ApiResponse{"Ответ бэкенда"}
-    ApiResponse -->|200 OK / 201 Created| SuccessAdd["Добавление в operators.value\nСброс формы\nЗакрытие модального окна"]
+    ApiResponse -->|200 OK / 201 Created| SuccessAdd["Добавление в operators.value (is_online: false)\nСброс формы\nЗакрытие модального окна"]
     ApiResponse -->|400 / 409 / 422 Ошибка| ErrorAdd["formError = err.message (текст ошибки бэкенда)\nМодальное окно остается открытым\nФейковые пользователи НЕ создаются"]
     
     UserAction -->|Редактирование / Сброс пароля| OpenEditModal["handleOpenEdit: установка формы, editFormError = null"]
@@ -43,7 +43,7 @@ flowchart TD
     EditResponse -->|Ошибка| ErrorEdit["editFormError = err.message\nМодалка остается открытой"]
     
     UserAction -->|Блокировка / Разблокировка| LockAction["confirmToggleLock -> usersApi.update(id, is_active)"]
-    LockAction -->|Успех| UpdateLockState["selectedUserForAction.is_active = newActiveState"]
+    LockAction -->|Успех| UpdateLockState["selectedUserForAction.is_active = newActiveState\nПри блокировке: is_online = false"]
     
     UserAction -->|Удаление| DeleteAction["confirmDeleteUser -> usersApi.delete(id)"]
     DeleteAction -->|Успех| RemoveFromList["Удаление из operators.value и selectedUserIds"]
