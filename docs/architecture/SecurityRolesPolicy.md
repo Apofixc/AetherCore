@@ -133,6 +133,26 @@ graph TD
     CheckRoleRank -- "Operator / Viewer: Ранг <= 2" --> Err403Low["403 Forbidden: Меньший ранг не имеет доступа на запись матрицы"]
 ```
 
+### Д. Блок-схема разграничения прав и маршрутизации на Frontend (Vue Router & Pinia RBAC)
+
+```mermaid
+graph TD
+    NavReq(["Переход по маршруту (to.path)"]) --> CheckAuth{"to.meta.requiresAuth?"}
+    CheckAuth -- "Нет" --> AllowPass["Разрешить переход"]
+    CheckAuth -- "Да" --> IsAuth{"authStore.isAuthenticated?"}
+    IsAuth -- "Нет" --> RedirLog["Редирект на /login"]
+    IsAuth -- "Да" --> IsSuper{"authStore.isSuperuser?"}
+    IsSuper -- "Да" --> AllowPass
+    IsSuper -- "Нет" --> HasReqPerm{"to.meta.requiredPermission?"}
+    HasReqPerm -- "Нет" --> AllowPass
+    HasReqPerm -- "Да" --> CheckPerm["authStore.hasPermission(permission)"]
+    CheckPerm --> MatchDirect{"Прямое совпадение ИЛИ *?"}
+    MatchDirect -- "Да" --> AllowPass
+    MatchDirect -- "Нет" --> MatchManage{"Требуется .view И есть domain.manage?"}
+    MatchManage -- "Да" --> AllowPass
+    MatchManage -- "Нет" --> RedirForbidden["Редирект на /dashboard (403 Access Denied)"]
+```
+
 ---
 
 ## 2. Тест-кейсы для верификации (Given-When-Then)

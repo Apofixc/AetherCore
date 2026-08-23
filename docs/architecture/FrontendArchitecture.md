@@ -868,6 +868,71 @@ sequenceDiagram
     View-->>Admin: Всплывающее уведомление "Ротация успешно выполнена: удалено 142 записей (архив: audit_archive_*.json)"
 ```
 
+---
+
+## 13. Блок-схема: Изолированная модель RBAC и динамический рендеринг UI (Frontend RBAC & Navigation)
+
+Схема демонстрирует сквозную работу ролевого контроля доступа (RBAC) на клиенте: проверку маршрутов через Vue Router Navigation Guards, вычисление прав в Pinia `authStore`, фильтрацию бокового меню (`AppSidebar.vue`, `SettingsNav.vue`) и реактивное скрытие управляющих кнопок/действий (`v-if="canManage*"`).
+
+```mermaid
+graph TD
+    subgraph ROUTER_GUARD["1. Vue Router Navigation Guard (router/index.ts)"]
+        NavReq(["Переход по маршруту (to.path)"]) --> CheckAuthReq{"to.meta.requiresAuth?"}
+        CheckAuthReq -- "Нет" --> AllowNav["Разрешить переход (next())"]
+        CheckAuthReq -- "Да" --> CheckIsAuth{"authStore.isAuthenticated?"}
+        CheckIsAuth -- "Нет" --> RedirLogin["Редирект на /login"]
+        CheckIsAuth -- "Да" --> CheckSuper{"authStore.isSuperuser?"}
+        CheckSuper -- "Да" --> AllowNav
+        CheckSuper -- "Нет" --> CheckRoutePerm{"to.meta.requiredPermission задан?"}
+        CheckRoutePerm -- "Нет" --> AllowNav
+        CheckRoutePerm -- "Да" --> HasRoutePerm{"authStore.hasPermission(requiredPermission)?"}
+        HasRoutePerm -- "Да" --> AllowNav
+        HasRoutePerm -- "Нет" --> Block403["Редирект на /dashboard<br/>(Уведомление об отказе в доступе)"]
+    end
+
+    subgraph AUTH_STORE["2. Pinia authStore (stores/auth.ts)"]
+        CalcPerms["hasPermission(code)"] --> DirectMatch{"code == '*' ИЛИ user.permissions.includes(code)?"}
+        DirectMatch -- "Да" --> ReturnTrue["return true"]
+        DirectMatch -- "Нет" --> DomainCheck{"code заканчивается на '.view'?"}
+        DomainCheck -- "Да: domain.view" --> ManageCheck{"user.permissions.includes(domain.manage)?"}
+        ManageCheck -- "Да: manage дает view в том же домене" --> ReturnTrue
+        ManageCheck -- "Нет" --> ReturnFalse["return false"]
+        DomainCheck -- "Нет: domain.manage" --> ReturnFalse
+    end
+
+    subgraph SIDEBAR["3. Навигация и меню (AppSidebar.vue / SettingsNav.vue)"]
+        SIDEBAR_RENDER["Рендеринг разделов меню"]
+        SIDEBAR_RENDER --> NAV_MOD["Модули: v-if='canViewModules' (modules.view)"]
+        SIDEBAR_RENDER --> NAV_USR["Пользователи: v-if='canViewUsers' (users.view)"]
+        SIDEBAR_RENDER --> NAV_ACC["Безопасность: v-if='canViewAccess' (access.view)"]
+        SIDEBAR_RENDER --> NAV_SYS["Система: v-if='canViewSystem' (system.view)"]
+    end
+
+    subgraph UI_ELEMENTS["4. Динамические элементы управления (Active Buttons & Actions)"]
+        UI_RENDER["Рендеринг компонентов страниц"]
+        
+        %% Modules
+        UI_RENDER --> UI_MOD["ModuleManagementView.vue<br/>v-if='canManageModules'"]
+        UI_MOD --> BTN_MOD_TOGGLE["Тумблеры включения/отключения плагинов<br/>(В таблице и боковой панели #footer)"]
+        
+        %% Users
+        UI_RENDER --> UI_USR["UsersManagementView.vue<br/>v-if='canManageUsers'"]
+        UI_USR --> BTN_ADD_USR["Кнопка 'Добавить пользователя'"]
+        UI_USR --> BTN_EDIT_USR["Кнопки 'Редактировать', 'Блокировать', 'Удалить'"]
+        
+        %% Access
+        UI_RENDER --> UI_ACC["AccessIdentityView.vue<br/>v-if='canManageAccess'"]
+        UI_ACC --> BTN_SAVE_MATRIX["Кнопка 'Применить изменения' матрицы"]
+        UI_ACC --> BTN_AUDIT_MANAGE["Кнопки 'Очистить журнал' и 'Импорт архива'"]
+        UI_ACC --> TOGGLE_SECURITY["Управление политиками 2FA и IP Whitelist"]
+        
+        %% System
+        UI_RENDER --> UI_SYS["SystemAdminView.vue<br/>v-if='canManageSystem'"]
+        UI_SYS --> BTN_BACKUP["Кнопки 'Скачать бэкап' и 'Восстановить из .db'"]
+        UI_SYS --> BTN_SESSIONS["Кнопки сброса глобальных сессий операторов"]
+        UI_SYS --> BTN_LOGS_MANAGE["Кнопки ротации и очистки системных логов"]
+    end
+
 
 
 
