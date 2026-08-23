@@ -30,12 +30,7 @@ async fn setup_backup_test_app() -> (axum::Router, AppState, String, TempDir) {
     let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler_service = Arc::new(SchedulerService::new(
-        db.clone(),
-        bus.clone(),
-        audit_service.clone(),
-        plugin_manager.clone(),
-    ));
+    let scheduler_service = Arc::new(SchedulerService::new(db.clone()));
     let backup_service = BackupService::new(db.clone(), backups_dir);
 
     user_service.ensure_default_admin().await.unwrap();

@@ -186,6 +186,19 @@ pub enum TaskAction {
     },
 }
 
+impl TaskAction {
+    /// Получить строковый идентификатор типа действия для реестра обработчиков (TaskHandler Registry)
+    pub fn action_kind(&self) -> &'static str {
+        match self {
+            Self::SystemAuditRotation => "system_audit_rotation",
+            Self::SystemHistoryCleanup => "system_history_cleanup",
+            Self::SystemDbBackup => "system_db_backup",
+            Self::PluginTimer { .. } => "plugin_timer",
+            Self::EventBusPublish { .. } => "event_publish",
+        }
+    }
+}
+
 /// Текущий оперативный статус задачи
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]

@@ -57,12 +57,7 @@ description: "Test module for API"
     };
     plugin_manager.register_plugin(package).await.unwrap();
 
-    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
-        db.clone(),
-        bus.clone(),
-        audit_service.clone(),
-        plugin_manager.clone(),
-    ));
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(db.clone()));
 
     let backup_service = aethercore_core::services::BackupService::new(
         db.clone(),

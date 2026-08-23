@@ -17,4 +17,4 @@ pub use audit::{AuditArchiveInfo, AuditLogRecord, AuditService};
 pub use backup::{BackupInfo, BackupService, RestoreResult};
 pub use logger::{LogEntry, LogLevel, LogProvider, LogQueryResult, LoggerConfig, LoggerService};
 pub use notify::{AlertMessage, AlertSeverity, NotifyService};
-pub use scheduler::SchedulerService;
+pub use scheduler::{handlers, SchedulerService, TaskHandler};

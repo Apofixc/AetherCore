@@ -132,12 +132,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let logger_service = LoggerService::with_log_file("data/aethercore.log");
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
-        db.clone(),
-        bus.clone(),
-        audit_service.clone(),
-        plugin_manager.clone(),
-    ));
     let backup_dir = config
         .database
         .path
@@ -145,6 +139,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|p| p.join("backups"))
         .unwrap_or_else(|| PathBuf::from("data/backups"));
     let backup_service = aethercore_core::services::BackupService::new(db.clone(), backup_dir);
+    let backup_service_arc = std::sync::Arc::new(backup_service.clone());
+
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(db.clone()));
+
+    // Регистрируем обработчики системных действий в планировщике (Handler Registry)
+    scheduler_service
+        .register_handler(
+            "system_db_backup",
+            std::sync::Arc::new(aethercore_core::services::handlers::BackupTaskHandler::new(
+                backup_service_arc,
+                db.clone(),
+            )),
+        )
+        .await;
+
+    let archive_dir = config
+        .database
+        .path
+        .parent()
+        .map(|p| p.join("archives"))
+        .unwrap_or_else(|| PathBuf::from("data/archives"));
+    scheduler_service
+        .register_handler(
+            "system_audit_rotation",
+            std::sync::Arc::new(aethercore_core::services::handlers::AuditTaskHandler::new(
+                audit_service.clone(),
+                db.clone(),
+                archive_dir,
+            )),
+        )
+        .await;
+
+    scheduler_service
+        .register_handler(
+            "system_history_cleanup",
+            std::sync::Arc::new(aethercore_core::services::handlers::HistoryCleanupTaskHandler::new(
+                db.clone(),
+            )),
+        )
+        .await;
+
+    scheduler_service
+        .register_handler(
+            "plugin_timer",
+            std::sync::Arc::new(aethercore_core::services::handlers::PluginTimerHandler::new(
+                plugin_manager.clone(),
+                bus.clone(),
+            )),
+        )
+        .await;
+
+    scheduler_service
+        .register_handler(
+            "event_publish",
+            std::sync::Arc::new(aethercore_core::services::handlers::EventPublishHandler::new(
+                bus.clone(),
+            )),
+        )
+        .await;
+
+    scheduler_service.seed_default_tasks().await?;
 
     // 4. Проверяем наличие дефолтного администратора
     user_service.ensure_default_admin().await?;

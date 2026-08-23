@@ -1,7 +1,7 @@
 use aethercore_common::config::AppConfig;
 use aethercore_common::models::scheduler::{
     ConcurrencyPolicy, CreateTaskDto, ExecutionStatus, MisfirePolicy, ScheduledTask,
-    TaskAction, TaskExecutionRecord, TaskSchedule, UpdateTaskDto,
+    TaskAction, TaskExecutionRecord, TaskSchedule,
 };
 use aethercore_core::auth::JwtManager;
 use aethercore_core::bus::EventBus;
@@ -27,12 +27,14 @@ async fn setup_test_app() -> (axum::Router, AppState, String) {
     let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler_service = Arc::new(SchedulerService::new(
-        db.clone(),
-        bus.clone(),
-        audit_service.clone(),
-        plugin_manager.clone(),
-    ));
+    let scheduler_service = Arc::new(SchedulerService::new(db.clone()));
+    scheduler_service
+        .register_handler(
+            "system_history_cleanup",
+            Arc::new(aethercore_core::services::handlers::HistoryCleanupTaskHandler::new(db.clone())),
+        )
+        .await;
+    scheduler_service.seed_default_tasks().await.unwrap();
 
     let backup_service = aethercore_core::services::BackupService::new(
         db.clone(),

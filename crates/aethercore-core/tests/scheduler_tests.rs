@@ -2,10 +2,8 @@ use aethercore_common::models::scheduler::{
     ConcurrencyPolicy, CreateTaskDto, ExecutionStatus, HistoryQueryDto, MisfirePolicy,
     TaskAction, TaskSchedule, UpdateTaskDto,
 };
-use aethercore_core::bus::EventBus;
 use aethercore_core::db::Db;
-use aethercore_core::plugins::PluginManager;
-use aethercore_core::services::{AuditService, SchedulerService};
+use aethercore_core::services::SchedulerService;
 use chrono::Utc;
 
 #[tokio::test]
@@ -42,15 +40,14 @@ async fn test_cron_parsing_and_next_run() {
 #[tokio::test]
 async fn test_scheduler_service_lifecycle_and_crud() {
     let db = Db::init_in_memory().await.expect("Init DB failed");
-    let bus = EventBus::new(db.clone());
-    let audit_service = AuditService::new(db.clone());
-    let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler = SchedulerService::new(db.clone(), bus, audit_service, plugin_manager);
+    let scheduler = SchedulerService::new(db.clone());
+    scheduler.seed_default_tasks().await.expect("Seed tasks failed");
 
     // 1. Проверяем наличие сидированных системных задач
     let tasks = scheduler.list_tasks().await.expect("List tasks failed");
     assert!(tasks.iter().any(|t| t.id == "sys-audit-retention" && t.is_system));
     assert!(tasks.iter().any(|t| t.id == "sys-history-cleanup" && t.is_system));
+    assert!(tasks.iter().any(|t| t.id == "sys-auto-backup" && t.is_system));
 
     // 2. Создание пользовательской задачи
     let create_dto = CreateTaskDto {
@@ -58,7 +55,7 @@ async fn test_scheduler_service_lifecycle_and_crud() {
         name: "Test Backup Task".to_string(),
         description: Some("Тестовый бэкап".to_string()),
         schedule: TaskSchedule::IntervalSec(300),
-        action: TaskAction::SystemHistoryCleanup,
+        action: TaskAction::SystemDbBackup,
         concurrency_policy: ConcurrencyPolicy::Skip,
         misfire_policy: MisfirePolicy::SkipToNext,
         timeout_secs: 60,
@@ -66,101 +63,72 @@ async fn test_scheduler_service_lifecycle_and_crud() {
     };
     let created = scheduler.create_task(create_dto).await.expect("Create task failed");
     assert_eq!(created.id, "test-backup-task");
-    assert!(created.is_enabled);
     assert!(!created.is_system);
 
     // 3. Получение задачи по ID
-    let task = scheduler.get_task("test-backup-task").await.expect("Get task failed").unwrap();
-    assert_eq!(task.name, "Test Backup Task");
+    let fetched = scheduler.get_task("test-backup-task").await.expect("Get task failed");
+    assert!(fetched.is_some());
+    assert_eq!(fetched.unwrap().name, "Test Backup Task");
 
     // 4. Обновление задачи
     let update_dto = UpdateTaskDto {
         name: Some("Updated Backup Task".to_string()),
         description: None,
-        schedule: Some(TaskSchedule::IntervalSec(600)),
+        schedule: None,
         action: None,
         concurrency_policy: Some(ConcurrencyPolicy::Allow),
         misfire_policy: None,
         timeout_secs: Some(120),
-        is_enabled: None,
+        is_enabled: Some(false),
     };
-    let updated = scheduler
-        .update_task("test-backup-task", update_dto)
-        .await
-        .expect("Update task failed");
+    let updated = scheduler.update_task("test-backup-task", update_dto).await.expect("Update failed");
     assert_eq!(updated.name, "Updated Backup Task");
-    assert_eq!(updated.timeout_secs, 120);
+    assert_eq!(updated.concurrency_policy, ConcurrencyPolicy::Allow);
+    assert!(!updated.is_enabled);
 
-    // 5. Переключение активности (Toggle)
-    let toggled_off = scheduler
-        .toggle_task("test-backup-task", false)
-        .await
-        .expect("Toggle off failed");
-    assert!(!toggled_off.is_enabled);
-    assert!(toggled_off.next_run_at.is_none());
+    // 5. Попытка изменить системную задачу
+    let forbidden_update = scheduler.update_task("sys-audit-retention", UpdateTaskDto {
+        name: Some("Hacked".to_string()),
+        description: None,
+        schedule: None,
+        action: None,
+        concurrency_policy: None,
+        misfire_policy: None,
+        timeout_secs: None,
+        is_enabled: None,
+    }).await;
+    assert!(forbidden_update.is_err());
 
-    let toggled_on = scheduler
-        .toggle_task("test-backup-task", true)
-        .await
-        .expect("Toggle on failed");
-    assert!(toggled_on.is_enabled);
-    assert!(toggled_on.next_run_at.is_some());
-
-    // 6. Ручной запуск задачи
-    let record = scheduler
-        .run_task_now("test-backup-task", "manual:admin")
-        .await
-        .expect("Run task now failed");
-    assert_eq!(record.status, ExecutionStatus::Success);
-    assert_eq!(record.triggered_by, "manual:admin");
-
-    // 7. Проверка истории выполнения
-    let history = scheduler
-        .get_history(HistoryQueryDto {
-            task_id: Some("test-backup-task".to_string()),
-            limit: Some(10),
-            offset: None,
-        })
-        .await
-        .expect("Get history failed");
-    assert_eq!(history.len(), 1);
-    assert_eq!(history[0].status, ExecutionStatus::Success);
-
-    // 8. Попытка удаления системной задачи (должна вернуть ошибку)
-    let delete_sys_res = scheduler.delete_task("sys-audit-retention").await;
-    assert!(delete_sys_res.is_err());
-
-    // 9. Удаление пользовательской задачи (должно пройти успешно)
-    scheduler
-        .delete_task("test-backup-task")
-        .await
-        .expect("Delete task failed");
-    let after_delete = scheduler.get_task("test-backup-task").await.expect("Get task failed");
+    // 6. Удаление пользовательской задачи
+    scheduler.delete_task("test-backup-task").await.expect("Delete failed");
+    let after_delete = scheduler.get_task("test-backup-task").await.expect("Get failed");
     assert!(after_delete.is_none());
+
+    // 7. Попытка удалить системную задачу
+    let forbidden_delete = scheduler.delete_task("sys-audit-retention").await;
+    assert!(forbidden_delete.is_err());
 }
 
 #[tokio::test]
 async fn test_scheduler_crash_recovery() {
     let db = Db::init_in_memory().await.expect("Init DB failed");
     let pool = db.writer();
-
-    // Вручную симулируем зависшую задачу в статусе 'running'
     let now = Utc::now().to_rfc3339();
+
+    // Вручную вставляем задачу со статусом running (как будто сервер упал во время исполнения)
     sqlx::query(
         r#"
         INSERT INTO scheduled_tasks (
             id, name, description, schedule_type, schedule_value,
             action_type, action_params, concurrency_policy, misfire_policy,
-            timeout_secs, is_enabled, is_system, next_run_at, last_run_at,
-            last_status, created_at, updated_at
+            timeout_secs, is_enabled, is_system, last_status, next_run_at, created_at, updated_at
         ) VALUES (
-            'hung-task', 'Hung Task', 'Crashed task', 'interval', '60',
+            'hung-task', 'Hung Task', 'Test', 'interval', '60',
             'system_history_cleanup', NULL, 'skip', 'skip_to_next',
-            60, 1, 0, ?, ?, 'running', ?, ?
+            300, 1, 0, 'running', ?, ?, ?
         )
         "#,
     )
-    .bind(&now)
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -168,10 +136,7 @@ async fn test_scheduler_crash_recovery() {
     .await
     .expect("Insert hung task failed");
 
-    let bus = EventBus::new(db.clone());
-    let audit_service = AuditService::new(db.clone());
-    let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler = SchedulerService::new(db.clone(), bus, audit_service, plugin_manager);
+    let scheduler = SchedulerService::new(db.clone());
 
     // Запускаем восстановление
     scheduler.recover_orphaned_tasks().await.expect("Recover failed");

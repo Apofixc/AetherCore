@@ -26,12 +26,7 @@ async fn setup_test_app() -> (axum::Router, AppState) {
     let logger_service = LoggerService::new();
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
-    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(
-        db.clone(),
-        bus.clone(),
-        audit_service.clone(),
-        plugin_manager.clone(),
-    ));
+    let scheduler_service = std::sync::Arc::new(aethercore_core::services::SchedulerService::new(db.clone()));
 
     let backup_service = aethercore_core::services::BackupService::new(
         db.clone(),

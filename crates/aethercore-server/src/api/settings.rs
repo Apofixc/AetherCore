@@ -532,54 +532,8 @@ fn default_permissions_matrix() -> serde_json::Value {
 // 4. Системное обслуживание и администрирование
 // ---------------------------------------------------------------------------
 
-fn default_true() -> bool {
-    true
-}
-
 /// DTO настроек системного обслуживания и резервного копирования
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaintenanceSettingsDto {
-    /// Флаг автобэкапа базы данных
-    #[serde(default = "default_true")]
-    pub auto_backup: bool,
-    /// Интервал автобэкапа в часах
-    #[serde(default = "default_backup_interval")]
-    pub backup_interval_hours: u32,
-    /// Срок хранения бэкапов в днях
-    #[serde(default = "default_backup_retention")]
-    pub backup_retention_days: u32,
-    /// Срок хранения журнала аудита в днях
-    #[serde(default = "default_audit_retention")]
-    pub audit_retention_days: u32,
-    /// Уровень системного логирования по умолчанию
-    #[serde(default = "default_log_level")]
-    pub default_log_level: String,
-}
-
-fn default_backup_interval() -> u32 {
-    24
-}
-fn default_backup_retention() -> u32 {
-    30
-}
-fn default_audit_retention() -> u32 {
-    90
-}
-fn default_log_level() -> String {
-    "INFO".to_string()
-}
-
-impl Default for MaintenanceSettingsDto {
-    fn default() -> Self {
-        Self {
-            auto_backup: true,
-            backup_interval_hours: default_backup_interval(),
-            backup_retention_days: default_backup_retention(),
-            audit_retention_days: default_audit_retention(),
-            default_log_level: default_log_level(),
-        }
-    }
-}
+pub use aethercore_common::models::settings::MaintenanceSettings as MaintenanceSettingsDto;
 
 /// GET /api/v1/settings/maintenance
 async fn get_maintenance_settings_handler(

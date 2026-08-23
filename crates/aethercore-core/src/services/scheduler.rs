@@ -7,8 +7,6 @@
 use crate::bus::EventBus;
 use crate::db::kv::KvStore;
 use crate::db::Db;
-use crate::plugins::PluginManager;
-use crate::services::AuditService;
 use aethercore_common::error::{AppError, Result};
 use aethercore_common::models::events::EventMessage;
 use aethercore_common::models::scheduler::{
@@ -17,45 +15,37 @@ use aethercore_common::models::scheduler::{
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Трейт для обработчиков действий задач планировщика (Action Handler)
+#[async_trait::async_trait]
+pub trait TaskHandler: Send + Sync {
+    /// Выполнить действие задачи и вернуть опциональное текстовое сообщение результата
+    async fn execute(&self, action: &TaskAction) -> Result<Option<String>>;
+}
 
 /// Центральный сервис планировщика задач платформы AetherCore
 ///
 /// Управляет жизненным циклом запланированных операций ядра и WASM-модулей,
-/// контролирует политики наложения (Skip, Allow, Queue) и изолирует ошибки.
+/// контролирует политики наложения (Skip, Allow, Queue), делегирует выполнение зарегистрированным обработчикам
+/// и изолирует ошибки.
 #[derive(Clone)]
 pub struct SchedulerService {
     db: Db,
-    bus: EventBus,
-    audit_service: AuditService,
-    plugin_manager: PluginManager,
+    bus: Option<EventBus>,
+    /// Реестр зарегистрированных обработчиков типов действий
+    handlers: Arc<RwLock<HashMap<String, Arc<dyn TaskHandler>>>>,
     /// Множество ID задач, выполняющихся в данный момент в памяти
     running_tasks: Arc<Mutex<HashSet<String>>>,
     /// Уведомление для плавной остановки фонового воркера
     shutdown_notify: Arc<Notify>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RetentionConfig {
-    #[serde(default = "default_audit_retention_days")]
-    audit_retention_days: u32,
-    #[serde(default = "default_backup_retention_days")]
-    backup_retention_days: u32,
-}
-
-fn default_audit_retention_days() -> u32 {
-    90
-}
-
-fn default_backup_retention_days() -> u32 {
-    30
 }
 
 #[derive(sqlx::FromRow)]
@@ -98,23 +88,25 @@ impl SchedulerService {
     ///
     /// # Аргументы
     /// * `db` — Экземпляр базы данных SQLite ([`Db`]).
-    /// * `bus` — Шина событий платформы ([`EventBus`]).
-    /// * `audit_service` — Сервис системного аудита ([`AuditService`]).
-    /// * `plugin_manager` — Менеджер WASM-плагинов ([`PluginManager`]).
-    pub fn new(
-        db: Db,
-        bus: EventBus,
-        audit_service: AuditService,
-        plugin_manager: PluginManager,
-    ) -> Self {
+    pub fn new(db: Db) -> Self {
         Self {
             db,
-            bus,
-            audit_service,
-            plugin_manager,
+            bus: None,
+            handlers: Arc::new(RwLock::new(HashMap::new())),
             running_tasks: Arc::new(Mutex::new(HashSet::new())),
             shutdown_notify: Arc::new(Notify::new()),
         }
+    }
+
+    /// Добавить шину событий для публикации телеметрии о выполнении задач
+    pub fn with_bus(mut self, bus: EventBus) -> Self {
+        self.bus = Some(bus);
+        self
+    }
+
+    /// Зарегистрировать обработчик для типа действия (Action Handler)
+    pub async fn register_handler(&self, kind: impl Into<String>, handler: Arc<dyn TaskHandler>) {
+        self.handlers.write().await.insert(kind.into(), handler);
     }
 
     /// Восстановление зависших задач при перезапуске сервера (Crash Recovery)
@@ -431,6 +423,10 @@ impl SchedulerService {
             .await?
             .ok_or_else(|| AppError::not_found(format!("Scheduled task '{}'", id)))?;
 
+        if existing.is_system && (dto.name.is_some() || dto.action.is_some()) {
+            return Err(AppError::forbidden("Cannot modify name or action of a system task"));
+        }
+
         if let Some(ref schedule) = dto.schedule {
             schedule.validate()?;
         }
@@ -665,19 +661,20 @@ impl SchedulerService {
         .await;
 
         // 3. Публикация события о старте задачи в шину
-        let _ = self
-            .bus
-            .publish(EventMessage::reliable(
-                "scheduler.task.started",
-                "scheduler",
-                serde_json::json!({
-                    "task_id": task_id,
-                    "task_name": task_name,
-                    "triggered_by": triggered_by,
-                    "started_at": started_at_str,
-                }),
-            ))
-            .await;
+        if let Some(bus) = &self.bus {
+            let _ = bus
+                .publish(EventMessage::reliable(
+                    "scheduler.task.started",
+                    "scheduler",
+                    serde_json::json!({
+                        "task_id": task_id,
+                        "task_name": task_name,
+                        "triggered_by": triggered_by,
+                        "started_at": started_at_str,
+                    }),
+                ))
+                .await;
+        }
 
         let start_instant = Instant::now();
         let timeout_duration = Duration::from_secs(task.timeout_secs as u64);
@@ -773,20 +770,21 @@ impl SchedulerService {
         } else {
             "scheduler.task.failed"
         };
-        let _ = self
-            .bus
-            .publish(EventMessage::reliable(
-                event_topic,
-                "scheduler",
-                serde_json::json!({
-                    "task_id": task_id,
-                    "task_name": task_name,
-                    "status": status.to_string(),
-                    "duration_ms": duration_ms,
-                    "error": error_message,
-                }),
-            ))
-            .await;
+        if let Some(bus) = &self.bus {
+            let _ = bus
+                .publish(EventMessage::reliable(
+                    event_topic,
+                    "scheduler",
+                    serde_json::json!({
+                        "task_id": task_id,
+                        "task_name": task_name,
+                        "status": status.to_string(),
+                        "duration_ms": duration_ms,
+                        "error": error_message,
+                    }),
+                ))
+                .await;
+        }
 
         Ok(TaskExecutionRecord {
             id: history_id,
@@ -801,98 +799,129 @@ impl SchedulerService {
         })
     }
 
-    /// Диспетчеризация и непосредственное выполнение действия
+    /// Диспетчеризация и непосредственное выполнение действия через зарегистрированные обработчики (TaskHandler Registry)
     async fn execute_action(&self, action: &TaskAction) -> Result<Option<String>> {
-        match action {
-            TaskAction::SystemAuditRotation => {
-                let kv = KvStore::system(self.db.clone());
-                let retention_days = match kv.get::<RetentionConfig>("maintenance_settings").await {
-                    Ok(Some(cfg)) => cfg.audit_retention_days,
-                    _ => 90,
-                };
-                let archive_dir = PathBuf::from("data/archives");
-                let (pruned, archive_opt) = self
-                    .audit_service
-                    .archive_and_prune(retention_days, true, &archive_dir)
-                    .await?;
-                let msg = format!(
-                    "Audit rotated: pruned {} records (archive: {:?})",
-                    pruned, archive_opt
-                );
-                info!("{}", msg);
-                Ok(Some(msg))
-            }
-            TaskAction::SystemHistoryCleanup => {
-                let deleted = self.prune_history(30).await?;
-                let msg = format!("Scheduler history pruned: {} old records removed", deleted);
-                info!("{}", msg);
-                Ok(Some(msg))
-            }
-            TaskAction::SystemDbBackup => {
-                let kv = KvStore::system(self.db.clone());
-                let retention_days = match kv.get::<RetentionConfig>("maintenance_settings").await {
-                    Ok(Some(cfg)) => cfg.backup_retention_days,
-                    _ => 30,
-                };
-                let backup_dir = PathBuf::from("data/backups");
-                let backup_svc = super::backup::BackupService::new(self.db.clone(), backup_dir);
-                let backup_info = backup_svc.create_backup("auto").await?;
-                let pruned = backup_svc.prune_backups(retention_days).await.unwrap_or(0);
+        let kind = action.action_kind();
+        let handler_opt = {
+            let handlers = self.handlers.read().await;
+            handlers.get(kind).cloned()
+        };
 
-                let msg = format!(
-                    "Database auto backup created ({}, {} bytes), pruned {} outdated backups",
-                    backup_info.filename, backup_info.size_bytes, pruned
-                );
-                info!("{}", msg);
-                Ok(Some(msg))
-            }
-            TaskAction::PluginTimer {
-                module_id,
-                timer_id,
-            } => {
-                // Проверяем активность плагина перед запуском
-                let is_active = self
-                    .plugin_manager
-                    .get_plugin(module_id)
-                    .map(|p| p.is_enabled)
-                    .unwrap_or(false);
-
-                if !is_active {
-                    return Err(AppError::validation(
-                        "module_id",
-                        format!("Plugin '{}' is not installed or disabled", module_id),
-                    ));
-                }
-
-                // Публикуем тик события в шину для гостевого потребителя
-                self.bus
-                    .publish(EventMessage::reliable(
-                        format!("{}.timer", module_id),
-                        "scheduler",
-                        serde_json::json!({
-                            "module_id": module_id,
-                            "timer_id": timer_id,
-                            "timestamp": Utc::now().to_rfc3339()
-                        }),
-                    ))
-                    .await?;
-
-                Ok(Some(format!(
-                    "Dispatched timer '{}' for plugin '{}'",
-                    timer_id, module_id
-                )))
-            }
-            TaskAction::EventBusPublish { topic, payload } => {
-                self.bus
-                    .publish(EventMessage::reliable(
-                        topic,
-                        "scheduler",
-                        payload.clone(),
-                    ))
-                    .await?;
-                Ok(Some(format!("Published event to topic '{}'", topic)))
-            }
+        if let Some(handler) = handler_opt {
+            handler.execute(action).await
+        } else {
+            Err(AppError::validation(
+                "action",
+                format!("No handler registered for task action '{}'", kind),
+            ))
         }
+    }
+
+    /// Зарегистрировать системные регламентные задачи по умолчанию (сидирование)
+    pub async fn seed_default_tasks(&self) -> Result<()> {
+        let pool = self.db.writer();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // 1. Системная задача ротации аудита раз в сутки (в полночь: 0 0 * * *)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-audit-retention',
+                'Ротация и архивация журнала аудита',
+                'Автоматическое архивирование и очистка записей аудита старше установленного срока',
+                'cron',
+                '0 0 * * *',
+                'system_audit_rotation',
+                NULL,
+                'skip',
+                'skip_to_next',
+                600,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // 2. Системная задача очистки старой истории планировщика раз в сутки (в 03:00)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-history-cleanup',
+                'Очистка журнала выполнения планировщика',
+                'Автоматическое удаление записей истории выполнения задач старше 30 дней',
+                'cron',
+                '0 3 * * *',
+                'system_history_cleanup',
+                NULL,
+                'skip',
+                'skip_to_next',
+                300,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // 3. Системная задача автоматического бэкапа SQLite раз в сутки (в 04:00)
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO scheduled_tasks (
+                id, name, description, schedule_type, schedule_value,
+                action_type, action_params, concurrency_policy, misfire_policy,
+                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
+            ) VALUES (
+                'sys-auto-backup',
+                'Автоматическое резервное копирование БД',
+                'Создание ежедневного снимка SQLite и ротация устаревших копий',
+                'cron',
+                '0 4 * * *',
+                'system_db_backup',
+                NULL,
+                'skip',
+                'skip_to_next',
+                600,
+                1,
+                1,
+                ?,
+                ?,
+                ?
+            )
+            "#,
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Получить историю выполнения задач с пагинацией и фильтрацией
@@ -1198,6 +1227,221 @@ impl SchedulerService {
                 })
             }
             _ => Err(AppError::validation("action_type", format!("Unknown action type '{}'", atype))),
+        }
+    }
+}
+
+/// Стандартные обработчики системных задач ядра и плагинов
+pub mod handlers {
+    use super::*;
+    use aethercore_common::models::settings::MaintenanceSettings;
+
+    /// Обработчик автоматического резервного копирования базы данных SQLite
+    pub struct BackupTaskHandler {
+        backup_service: Arc<super::super::backup::BackupService>,
+        db: Db,
+    }
+
+    impl BackupTaskHandler {
+        /// Создать экземпляр обработчика автобэкапа
+        pub fn new(backup_service: Arc<super::super::backup::BackupService>, db: Db) -> Self {
+            Self { backup_service, db }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskHandler for BackupTaskHandler {
+        async fn execute(&self, _action: &TaskAction) -> Result<Option<String>> {
+            let kv = KvStore::system(self.db.clone());
+            let maint = kv
+                .get::<MaintenanceSettings>("maintenance_settings")
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+            let backup_info = self.backup_service.create_backup("auto").await?;
+            let pruned = self
+                .backup_service
+                .prune_backups(maint.backup_retention_days)
+                .await
+                .unwrap_or(0);
+
+            let msg = format!(
+                "Database auto backup created ({}, {} bytes), pruned {} outdated backups",
+                backup_info.filename, backup_info.size_bytes, pruned
+            );
+            info!("{}", msg);
+            Ok(Some(msg))
+        }
+    }
+
+    /// Обработчик ротации и архивации журнала аудита
+    pub struct AuditTaskHandler {
+        audit_service: super::super::AuditService,
+        db: Db,
+        archive_dir: PathBuf,
+    }
+
+    impl AuditTaskHandler {
+        /// Создать экземпляр обработчика ротации аудита
+        pub fn new(audit_service: super::super::AuditService, db: Db, archive_dir: PathBuf) -> Self {
+            Self {
+                audit_service,
+                db,
+                archive_dir,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskHandler for AuditTaskHandler {
+        async fn execute(&self, _action: &TaskAction) -> Result<Option<String>> {
+            let kv = KvStore::system(self.db.clone());
+            let maint = kv
+                .get::<MaintenanceSettings>("maintenance_settings")
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+            let (pruned, archive_opt) = self
+                .audit_service
+                .archive_and_prune(maint.audit_retention_days, true, &self.archive_dir)
+                .await?;
+
+            let msg = format!(
+                "Audit rotated: pruned {} records (archive: {:?})",
+                pruned, archive_opt
+            );
+            info!("{}", msg);
+            Ok(Some(msg))
+        }
+    }
+
+    /// Обработчик очистки устаревшей истории планировщика
+    pub struct HistoryCleanupTaskHandler {
+        db: Db,
+    }
+
+    impl HistoryCleanupTaskHandler {
+        /// Создать экземпляр обработчика очистки истории планировщика
+        pub fn new(db: Db) -> Self {
+            Self { db }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskHandler for HistoryCleanupTaskHandler {
+        async fn execute(&self, _action: &TaskAction) -> Result<Option<String>> {
+            let kv = KvStore::system(self.db.clone());
+            let maint = kv
+                .get::<MaintenanceSettings>("maintenance_settings")
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+            let cutoff = Utc::now() - chrono::Duration::days(maint.history_retention_days as i64);
+            let cutoff_str = cutoff.to_rfc3339();
+
+            let res = sqlx::query("DELETE FROM task_execution_history WHERE started_at < ?")
+                .bind(cutoff_str)
+                .execute(self.db.writer())
+                .await
+                .map_err(|e| AppError::database(format!("Failed to prune scheduler history: {}", e)))?;
+
+            let deleted = res.rows_affected();
+            let msg = format!("Scheduler history pruned: {} old records removed", deleted);
+            info!("{}", msg);
+            Ok(Some(msg))
+        }
+    }
+
+    /// Обработчик таймеров плагинов
+    pub struct PluginTimerHandler {
+        plugin_manager: crate::plugins::PluginManager,
+        bus: crate::bus::EventBus,
+    }
+
+    impl PluginTimerHandler {
+        /// Создать экземпляр обработчика таймеров плагинов
+        pub fn new(plugin_manager: crate::plugins::PluginManager, bus: crate::bus::EventBus) -> Self {
+            Self {
+                plugin_manager,
+                bus,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskHandler for PluginTimerHandler {
+        async fn execute(&self, action: &TaskAction) -> Result<Option<String>> {
+            if let TaskAction::PluginTimer { module_id, timer_id } = action {
+                let is_active = self
+                    .plugin_manager
+                    .get_plugin(module_id)
+                    .map(|p| p.is_enabled)
+                    .unwrap_or(false);
+
+                if !is_active {
+                    return Err(AppError::validation(
+                        "module_id",
+                        format!("Plugin '{}' is not installed or disabled", module_id),
+                    ));
+                }
+
+                self.bus
+                    .publish(EventMessage::reliable(
+                        format!("{}.timer", module_id),
+                        "scheduler",
+                        serde_json::json!({
+                            "module_id": module_id,
+                            "timer_id": timer_id,
+                            "timestamp": Utc::now().to_rfc3339()
+                        }),
+                    ))
+                    .await?;
+
+                let msg = format!("Dispatched timer '{}' for plugin '{}'", timer_id, module_id);
+                info!("{}", msg);
+                Ok(Some(msg))
+            } else {
+                Err(AppError::validation("action", "Invalid action for PluginTimerHandler"))
+            }
+        }
+    }
+
+    /// Обработчик публикации событий в EventBus
+    pub struct EventPublishHandler {
+        bus: crate::bus::EventBus,
+    }
+
+    impl EventPublishHandler {
+        /// Создать экземпляр обработчика публикации событий
+        pub fn new(bus: crate::bus::EventBus) -> Self {
+            Self { bus }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskHandler for EventPublishHandler {
+        async fn execute(&self, action: &TaskAction) -> Result<Option<String>> {
+            if let TaskAction::EventBusPublish { topic, payload } = action {
+                self.bus
+                    .publish(EventMessage::reliable(
+                        topic,
+                        "scheduler",
+                        payload.clone(),
+                    ))
+                    .await?;
+
+                let msg = format!("Published event to topic '{}'", topic);
+                info!("{}", msg);
+                Ok(Some(msg))
+            } else {
+                Err(AppError::validation("action", "Invalid action for EventPublishHandler"))
+            }
         }
     }
 }

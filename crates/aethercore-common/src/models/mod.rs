@@ -6,8 +6,10 @@
 
 pub mod events;
 pub mod scheduler;
+pub mod settings;
 pub mod user;
 
 pub use events::*;
 pub use scheduler::*;
+pub use settings::*;
 pub use user::*;

@@ -435,7 +435,6 @@ impl Db {
 
         // Сидирование стандартных ролей и прав
         self.seed_default_rbac().await?;
-        self.seed_default_tasks().await?;
 
         Ok(())
     }
@@ -535,113 +534,6 @@ impl Db {
             .await
             .map_err(|e| AppError::database(e.to_string()))?;
         }
-
-        Ok(())
-    }
-
-    /// Сидировать стандартные системные задачи планировщика по умолчанию
-    async fn seed_default_tasks(&self) -> Result<()> {
-        let pool = &self.writer_pool;
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // 1. Системная задача ротации аудита раз в сутки (в полночь: 0 0 * * *)
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO scheduled_tasks (
-                id, name, description, schedule_type, schedule_value,
-                action_type, action_params, concurrency_policy, misfire_policy,
-                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
-            ) VALUES (
-                'sys-audit-retention',
-                'Ротация и архивация журнала аудита',
-                'Автоматическое архивирование и очистка записей аудита старше установленного срока',
-                'cron',
-                '0 0 * * *',
-                'system_audit_rotation',
-                NULL,
-                'skip',
-                'skip_to_next',
-                600,
-                1,
-                1,
-                ?,
-                ?,
-                ?
-            )
-            "#,
-        )
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::database(e.to_string()))?;
-
-        // 2. Системная задача очистки старой истории планировщика раз в сутки (в 03:00)
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO scheduled_tasks (
-                id, name, description, schedule_type, schedule_value,
-                action_type, action_params, concurrency_policy, misfire_policy,
-                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
-            ) VALUES (
-                'sys-history-cleanup',
-                'Очистка журнала выполнения планировщика',
-                'Автоматическое удаление записей истории выполнения задач старше 30 дней',
-                'cron',
-                '0 3 * * *',
-                'system_history_cleanup',
-                NULL,
-                'skip',
-                'skip_to_next',
-                300,
-                1,
-                1,
-                ?,
-                ?,
-                ?
-            )
-            "#,
-        )
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::database(e.to_string()))?;
-
-        // 3. Системная задача автоматического бэкапа SQLite раз в сутки (в 04:00)
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO scheduled_tasks (
-                id, name, description, schedule_type, schedule_value,
-                action_type, action_params, concurrency_policy, misfire_policy,
-                timeout_secs, is_enabled, is_system, next_run_at, created_at, updated_at
-            ) VALUES (
-                'sys-auto-backup',
-                'Автоматическое резервное копирование БД',
-                'Создание ежедневного снимка SQLite и ротация устаревших копий',
-                'cron',
-                '0 4 * * *',
-                'system_db_backup',
-                NULL,
-                'skip',
-                'skip_to_next',
-                600,
-                1,
-                1,
-                ?,
-                ?,
-                ?
-            )
-            "#,
-        )
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await
-        .map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(())
     }
