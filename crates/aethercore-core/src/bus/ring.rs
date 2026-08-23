@@ -19,6 +19,9 @@ pub struct EventRingBuffer {
 
 impl EventRingBuffer {
     /// Создать новый кольцевой буфер заданной емкости
+    ///
+    /// # Аргументы
+    /// * `capacity` — Максимальное количество удерживаемых событий (минимум 16).
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity: capacity.max(16),
@@ -30,6 +33,12 @@ impl EventRingBuffer {
     ///
     /// Если буфер заполнен, самое старое событие вытесняется и возвращается (`Some(ev)`),
     /// что позволяет направить его в L2 хранилище (Spillover).
+    ///
+    /// # Аргументы
+    /// * `event` — Добавляемое событие платформы.
+    ///
+    /// # Возвращаемое значение
+    /// Вытесненное старое событие (`Some(EventMessage)`), если буфер был заполнен.
     pub fn push(&self, event: EventMessage) -> Option<EventMessage> {
         let mut guard = self.inner.write().unwrap();
         let evicted = if guard.len() >= self.capacity {
@@ -42,6 +51,13 @@ impl EventRingBuffer {
     }
 
     /// Запросить непросроченные события из буфера памяти с опциональным префиксным фильтром
+    ///
+    /// # Аргументы
+    /// * `topic_filter` — Опциональный строковый префикс темы (например, `"devices."`).
+    /// * `limit` — Максимальное количество возвращаемых событий.
+    ///
+    /// # Возвращаемое значение
+    /// Список событий в хронологическом порядке (от старых к новым).
     pub fn query(&self, topic_filter: Option<&str>, limit: usize) -> Vec<EventMessage> {
         let guard = self.inner.read().unwrap();
         let limit = limit.max(1);

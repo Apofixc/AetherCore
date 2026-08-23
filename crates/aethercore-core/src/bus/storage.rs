@@ -91,6 +91,12 @@ impl EventStorage {
     }
 
     /// Поставить событие в очередь персистентной записи
+    ///
+    /// # Аргументы
+    /// * `event` — Сохраняемое событие ([`EventMessage`]).
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::internal`], если очередь воркера закрыта.
     pub async fn persist(&self, event: EventMessage) -> Result<()> {
         self.tx.send(event).await.map_err(|e| {
             AppError::internal(format!("Event storage queue closed: {}", e))
@@ -98,6 +104,17 @@ impl EventStorage {
     }
 
     /// Запросить исторические события из базы данных
+    ///
+    /// # Аргументы
+    /// * `topic_filter` — Опциональный префикс темы.
+    /// * `after_id` — ID последней прочитанной записи для постраничной пагинации.
+    /// * `limit` — Максимальное число возвращаемых записей (ограничивается диапазоном 1..=1000).
+    ///
+    /// # Возвращаемое значение
+    /// Список сохраненных записей журнала [`ReliableEventRecord`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::database`] при сбое выполнения SQL-запроса.
     pub async fn query(
         &self,
         topic_filter: Option<&str>,
@@ -166,7 +183,17 @@ impl EventStorage {
         Ok(records)
     }
 
-    /// Ручная ротация и очистка устаревших записей
+    /// Ручная ротация и очистка устаревших записей журнала
+    ///
+    /// # Аргументы
+    /// * `max_age` — Опциональный максимальный возраст сохраняемых записей ([`Duration`]).
+    /// * `max_count` — Опциональное максимальное число записей в таблице.
+    ///
+    /// # Возвращаемое значение
+    /// Общее количество удаленных записей.
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::database`] при сбое выполнения SQL-команд удаления.
     pub async fn prune(&self, max_age: Option<Duration>, max_count: Option<usize>) -> Result<u64> {
         let mut total_deleted = 0u64;
 

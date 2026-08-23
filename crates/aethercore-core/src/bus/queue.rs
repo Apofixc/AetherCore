@@ -42,6 +42,12 @@ impl Clone for PriorityQueueSender {
 
 impl PriorityQueueSender {
     /// Поместить сообщение в соответствующую очередь приоритета
+    ///
+    /// # Аргументы
+    /// * `event` — Событие платформы с указанным [`EventPriority`].
+    ///
+    /// # Ошибки
+    /// Возвращает [`AppError::internal`], если канал соответствующего приоритета закрыт.
     pub async fn enqueue(&self, event: EventMessage) -> Result<()> {
         let sender = match event.priority {
             EventPriority::Critical => &self.critical_tx,
@@ -58,12 +64,12 @@ impl PriorityQueueSender {
         Ok(())
     }
 
-    /// Текущая суммарная длина очередей
+    /// Текущая суммарная длина очередей по всем уровням приоритета
     pub fn len(&self) -> usize {
         self.queue_len.load(Ordering::Relaxed)
     }
 
-    /// Проверить, пуста ли очередь
+    /// Проверить, пуста ли очередь диспетчера
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -88,106 +94,102 @@ impl PriorityQueueReceiver {
     ///
     /// Гарантирует выборку по квотам 8 Critical : 4 High : 2 Normal : 1 Low за раунд.
     pub async fn dequeue(&mut self) -> Option<EventMessage> {
-        loop {
-            // Если все квоты раунда исчерпаны — начинаем новый раунд
-            if self.critical_quota == 0
-                && self.high_quota == 0
-                && self.normal_quota == 0
-                && self.low_quota == 0
-            {
-                self.critical_quota = CRITICAL_WEIGHT;
-                self.high_quota = HIGH_WEIGHT;
-                self.normal_quota = NORMAL_WEIGHT;
-                self.low_quota = LOW_WEIGHT;
-            }
-
-            // 1. Critical
-            if self.critical_quota > 0 {
-                match self.critical_rx.try_recv() {
-                    Ok(msg) => {
-                        self.critical_quota -= 1;
-                        self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                        return Some(msg);
-                    }
-                    Err(_) => {
-                        self.critical_quota = 0; // Очередь пуста, переходим к следующему уровню
-                    }
-                }
-            }
-
-            // 2. High
-            if self.high_quota > 0 {
-                match self.high_rx.try_recv() {
-                    Ok(msg) => {
-                        self.high_quota -= 1;
-                        self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                        return Some(msg);
-                    }
-                    Err(_) => {
-                        self.high_quota = 0;
-                    }
-                }
-            }
-
-            // 3. Normal
-            if self.normal_quota > 0 {
-                match self.normal_rx.try_recv() {
-                    Ok(msg) => {
-                        self.normal_quota -= 1;
-                        self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                        return Some(msg);
-                    }
-                    Err(_) => {
-                        self.normal_quota = 0;
-                    }
-                }
-            }
-
-            // 4. Low
-            if self.low_quota > 0 {
-                match self.low_rx.try_recv() {
-                    Ok(msg) => {
-                        self.low_quota -= 1;
-                        self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                        return Some(msg);
-                    }
-                    Err(_) => {
-                        self.low_quota = 0;
-                    }
-                }
-            }
-
-            // Если за полный круг ни одной очереди не удалось вычитать — сбрасываем квоты и ждем
+        // Если все квоты раунда исчерпаны — начинаем новый раунд
+        if self.critical_quota == 0
+            && self.high_quota == 0
+            && self.normal_quota == 0
+            && self.low_quota == 0
+        {
             self.critical_quota = CRITICAL_WEIGHT;
             self.high_quota = HIGH_WEIGHT;
             self.normal_quota = NORMAL_WEIGHT;
             self.low_quota = LOW_WEIGHT;
+        }
 
-            tokio::select! {
-                Some(msg) = self.critical_rx.recv() => {
-                    self.critical_quota = self.critical_quota.saturating_sub(1);
+        // 1. Critical
+        if self.critical_quota > 0 {
+            match self.critical_rx.try_recv() {
+                Ok(msg) => {
+                    self.critical_quota -= 1;
                     self.queue_len.fetch_sub(1, Ordering::Relaxed);
                     return Some(msg);
                 }
-                Some(msg) = self.high_rx.recv() => {
-                    self.high_quota = self.high_quota.saturating_sub(1);
-                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                    return Some(msg);
-                }
-                Some(msg) = self.normal_rx.recv() => {
-                    self.normal_quota = self.normal_quota.saturating_sub(1);
-                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                    return Some(msg);
-                }
-                Some(msg) = self.low_rx.recv() => {
-                    self.low_quota = self.low_quota.saturating_sub(1);
-                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
-                    return Some(msg);
-                }
-                else => {
-                    return None;
+                Err(_) => {
+                    self.critical_quota = 0; // Очередь пуста, переходим к следующему уровню
                 }
             }
+        }
+
+        // 2. High
+        if self.high_quota > 0 {
+            match self.high_rx.try_recv() {
+                Ok(msg) => {
+                    self.high_quota -= 1;
+                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                    return Some(msg);
+                }
+                Err(_) => {
+                    self.high_quota = 0;
+                }
+            }
+        }
+
+        // 3. Normal
+        if self.normal_quota > 0 {
+            match self.normal_rx.try_recv() {
+                Ok(msg) => {
+                    self.normal_quota -= 1;
+                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                    return Some(msg);
+                }
+                Err(_) => {
+                    self.normal_quota = 0;
+                }
+            }
+        }
+
+        // 4. Low
+        if self.low_quota > 0 {
+            match self.low_rx.try_recv() {
+                Ok(msg) => {
+                    self.low_quota -= 1;
+                    self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                    return Some(msg);
+                }
+                Err(_) => {
+                    self.low_quota = 0;
+                }
+            }
+        }
+
+        // Если за круг ни одной очереди не удалось вычитать — сбрасываем квоты и ждем в select
+        self.critical_quota = CRITICAL_WEIGHT;
+        self.high_quota = HIGH_WEIGHT;
+        self.normal_quota = NORMAL_WEIGHT;
+        self.low_quota = LOW_WEIGHT;
+
+        tokio::select! {
+            Some(msg) = self.critical_rx.recv() => {
+                self.critical_quota = self.critical_quota.saturating_sub(1);
+                self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                Some(msg)
+            }
+            Some(msg) = self.high_rx.recv() => {
+                self.high_quota = self.high_quota.saturating_sub(1);
+                self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                Some(msg)
+            }
+            Some(msg) = self.normal_rx.recv() => {
+                self.normal_quota = self.normal_quota.saturating_sub(1);
+                self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                Some(msg)
+            }
+            Some(msg) = self.low_rx.recv() => {
+                self.low_quota = self.low_quota.saturating_sub(1);
+                self.queue_len.fetch_sub(1, Ordering::Relaxed);
+                Some(msg)
+            }
+            else => None,
         }
     }
 }

@@ -149,7 +149,13 @@ impl TopicRouter {
         }
     }
 
-    /// Создать новую подписку на указанные темы
+    /// Создать новую подписку на указанные темы и шаблоны масок
+    ///
+    /// # Аргументы
+    /// * `patterns` — Набор шаблонов топиков (например, `&["devices.*.status", "alarms.#"]`).
+    ///
+    /// # Возвращаемое значение
+    /// RAII-дескриптор [`SubscriptionHandle`], удаляющий подписку при `Drop`.
     pub fn subscribe(&self, patterns: &[&str]) -> SubscriptionHandle {
         let sub_id = SUB_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(SUBSCRIBER_QUEUE_CAPACITY);
@@ -183,6 +189,10 @@ impl TopicRouter {
     }
 
     /// Динамически добавить шаблон топика к активной подписке
+    ///
+    /// # Аргументы
+    /// * `sub_id` — Идентификатор активной подписки ([`SubscriptionId`]).
+    /// * `pattern` — Добавляемый шаблон топика.
     pub fn add_topic(&self, sub_id: SubscriptionId, pattern: &str) {
         let pat_str = pattern.trim();
         if pat_str.is_empty() {
@@ -199,6 +209,10 @@ impl TopicRouter {
     }
 
     /// Динамически удалить шаблон топика из активной подписки
+    ///
+    /// # Аргументы
+    /// * `sub_id` — Идентификатор активной подписки ([`SubscriptionId`]).
+    /// * `pattern` — Удаляемый шаблон топика.
     pub fn remove_topic(&self, sub_id: SubscriptionId, pattern: &str) {
         let pat_str = pattern.trim();
         if pat_str.is_empty() {
@@ -214,7 +228,10 @@ impl TopicRouter {
         }
     }
 
-    /// Полностью удалить подписчика (вызывается из `SubscriptionHandle::drop`)
+    /// Полностью удалить подписчика (вызывается автоматически из [`SubscriptionHandle::drop`])
+    ///
+    /// # Аргументы
+    /// * `sub_id` — Идентификатор удаляемой подписки.
     pub fn unsubscribe(&self, sub_id: SubscriptionId) {
         let mut guard = self.inner.write().unwrap();
         if let Some(entry) = guard.subscribers.remove(&sub_id) {
@@ -225,9 +242,13 @@ impl TopicRouter {
         }
     }
 
-    /// Отправить событие всем подходящим подписчикам
+    /// Отправить событие всем подходящим подписчикам по дереву топиков
     ///
-    /// Возвращает количество подписчиков, которым было доставлено событие.
+    /// # Аргументы
+    /// * `event` — Доставляемое событие платформы ([`EventMessage`]).
+    ///
+    /// # Возвращаемое значение
+    /// Количество подписчиков, в чьи очереди было успешно помещено событие.
     pub fn dispatch(&self, event: &EventMessage) -> usize {
         let segments: Vec<&str> = event.topic.split('.').collect();
         let mut target_ids = HashSet::new();
@@ -262,7 +283,7 @@ impl TopicRouter {
         delivered
     }
 
-    /// Получить количество активных подписчиков
+    /// Получить текущее количество активных зарегистрированных подписчиков
     pub fn subscriber_count(&self) -> usize {
         self.inner.read().unwrap().subscribers.len()
     }
@@ -270,7 +291,7 @@ impl TopicRouter {
 
 /// RAII-дескриптор подписки на события шины
 ///
-/// Автоматически удаляет регистрацию топиков из маршрутизатора при выходе из области видимости.
+/// Автоматически удаляет регистрацию топиков из маршрутизатора при выходе из области видимости (`Drop`).
 pub struct SubscriptionHandle {
     id: SubscriptionId,
     rx: mpsc::Receiver<EventMessage>,
@@ -278,27 +299,35 @@ pub struct SubscriptionHandle {
 }
 
 impl SubscriptionHandle {
-    /// Получить идентификатор подписки
+    /// Получить уникальный идентификатор подписки
     pub fn id(&self) -> SubscriptionId {
         self.id
     }
 
     /// Асинхронно прочитать следующее событие из очереди
+    ///
+    /// Возвращает `None`, если шина событий была остановлена.
     pub async fn recv(&mut self) -> Option<EventMessage> {
         self.rx.recv().await
     }
 
-    /// Попробовать прочитать событие без ожидания
+    /// Попробовать прочитать следующее событие без блокировки
     pub fn try_recv(&mut self) -> std::result::Result<EventMessage, mpsc::error::TryRecvError> {
         self.rx.try_recv()
     }
 
-    /// Динамически добавить топик или маску подписки
+    /// Динамически добавить топик или маску к данной подписке
+    ///
+    /// # Аргументы
+    /// * `pattern` — Шаблон топика (например, `"alarms.fire"`).
     pub fn add_topic(&self, pattern: impl AsRef<str>) {
         self.router.add_topic(self.id, pattern.as_ref());
     }
 
-    /// Динамически удалить топик или маску подписки
+    /// Динамически удалить топик или маску из данной подписки
+    ///
+    /// # Аргументы
+    /// * `pattern` — Шаблон топика для удаления.
     pub fn remove_topic(&self, pattern: impl AsRef<str>) {
         self.router.remove_topic(self.id, pattern.as_ref());
     }
