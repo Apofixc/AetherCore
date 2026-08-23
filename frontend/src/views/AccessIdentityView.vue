@@ -532,8 +532,8 @@ function clearFilters() {
               variant="primary"
               size="sm"
               icon="save"
-              :disabled="!authStore.canManageSecurity && !authStore.canManageRoles"
-              :title="(!authStore.canManageSecurity && !authStore.canManageRoles) ? t('users.noPermission') : ''"
+              :disabled="!authStore.canManageAccess"
+              :title="!authStore.canManageAccess ? t('users.noPermission') : ''"
               @click="applyChanges"
             >
               {{ t('accessIdentity.applyChanges') }}
@@ -1034,7 +1034,7 @@ function clearFilters() {
                 @change="handleImportFileSelected"
               />
               <button
-                v-if="authStore.isSuperuser || authStore.canManageSecurity"
+                v-if="authStore.canManageAccess || authStore.canManageSystem"
                 type="button"
                 class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary-fixed-dim hover:bg-surface-variant transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
                 :title="t('accessIdentity.importArchive')"
@@ -1045,7 +1045,7 @@ function clearFilters() {
 
               <!-- Clear Logs Button -->
               <button
-                v-if="authStore.isSuperuser || authStore.canManageSecurity"
+                v-if="authStore.canManageAccess || authStore.canManageSystem"
                 type="button"
                 class="h-8 w-8 bg-surface-container-highest border border-outline-variant rounded-lg text-on-surface-variant hover:text-error hover:bg-error/10 hover:border-error/30 transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
                 :title="t('accessIdentity.clearLogs')"

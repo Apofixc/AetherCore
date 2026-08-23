@@ -367,3 +367,283 @@ async fn test_role_hierarchy_escalation_and_permissions_matrix() {
         "Оператор должен динамически получить право modules.manage из обновленной матрицы ролей"
     );
 }
+
+#[tokio::test]
+async fn test_e2e_rbac_positive_and_negative_matrix_flows() {
+    let (app, state) = setup_test_app().await;
+
+    // 1. Root Superuser вход
+    let root_login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "username": "root",
+                "password": "root"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.clone().oneshot(root_login_req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let root_login: LoginResponse = serde_json::from_slice(&body).unwrap();
+    let root_token = root_login.token;
+
+    // 2. Создаем Viewer и Operator пользователей
+    let _viewer = state
+        .user_service
+        .create_user(CreateUserDto {
+            username: "viewer_user".into(),
+            password: "ViewerPassword123!".into(),
+            roles: Some(vec!["viewer".into()]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let _operator = state
+        .user_service
+        .create_user(CreateUserDto {
+            username: "operator_user".into(),
+            password: "OperatorPassword123!".into(),
+            roles: Some(vec!["operator".into()]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Логинимся под Viewer
+    let viewer_login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "username": "viewer_user",
+                "password": "ViewerPassword123!"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let resp = app.clone().oneshot(viewer_login_req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let viewer_login: LoginResponse = serde_json::from_slice(&body).unwrap();
+    let viewer_token = viewer_login.token;
+
+    // Логинимся под Operator
+    let op_login_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "username": "operator_user",
+                "password": "OperatorPassword123!"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let resp = app.clone().oneshot(op_login_req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let op_login: LoginResponse = serde_json::from_slice(&body).unwrap();
+    let op_token = op_login.token;
+
+    // ----------------------------------------------------
+    // ТЕСТ 1: Проверка прав Viewer (Позитивные и Негативные)
+    // ----------------------------------------------------
+    // Позитивный: Viewer может читать модули (modules.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/modules")
+        .header(header::AUTHORIZATION, format!("Bearer {}", viewer_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "Viewer должен иметь доступ к GET /modules");
+
+    // Негативный: Viewer НЕ может читать список пользователей (нет users.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", viewer_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Viewer НЕ должен иметь доступ к GET /users");
+
+    // Негативный: Viewer НЕ может читать политики безопасности (нет access.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/settings/security")
+        .header(header::AUTHORIZATION, format!("Bearer {}", viewer_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Viewer НЕ должен иметь доступ к GET /settings/security");
+
+    // Негативный: Viewer НЕ может менять политики безопасности (нет access.manage)
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/settings/security")
+        .header(header::AUTHORIZATION, format!("Bearer {}", viewer_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::json!({ "min_password_length": 8 }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Viewer НЕ должен иметь доступ к PUT /settings/security");
+
+    // Позитивный: Viewer может читать логи сервера (system.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/system/logs")
+        .header(header::AUTHORIZATION, format!("Bearer {}", viewer_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "Viewer должен иметь доступ к GET /system/logs");
+
+    // ----------------------------------------------------
+    // ТЕСТ 2: Проверка прав Operator (Позитивные и Негативные)
+    // ----------------------------------------------------
+    // Позитивный: Operator может читать логи системы (system.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/system/logs")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "Operator должен иметь доступ к GET /system/logs");
+
+    // Позитивный: Operator может читать аудит (access.view или system.view)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/system/audit")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "Operator должен иметь доступ к GET /system/audit");
+
+    // Негативный: Operator НЕ может очистить журнал аудита (нет access.manage или system.manage)
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/system/audit")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Operator НЕ должен иметь доступ к DELETE /system/audit");
+
+    // Негативный: Operator НЕ может создавать пользователей (нет users.manage)
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::json!({
+            "username": "hacked_user",
+            "password": "Password123!"
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Operator НЕ должен иметь доступ к POST /users");
+
+    // ----------------------------------------------------
+    // ТЕСТ 3: Динамическая переконфигурация прав матрицы
+    // Выдаем оператору `users.view`, `users.manage`, но забираем `modules.view`
+    // ----------------------------------------------------
+    let reconfig_matrix = serde_json::json!([
+        {
+            "id": "modules",
+            "name": "Modules",
+            "icon": "view_in_ar",
+            "items": [
+                { "id": "modules_view", "name": "View Modules", "code": "modules.view", "description": "", "admin": true, "operator": false, "viewer": true },
+                { "id": "modules_manage", "name": "Manage Modules", "code": "modules.manage", "description": "", "admin": true, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "users",
+            "name": "Users",
+            "icon": "group",
+            "items": [
+                { "id": "users_view", "name": "View Users", "code": "users.view", "description": "", "admin": true, "operator": true, "viewer": false },
+                { "id": "users_manage", "name": "Manage Users", "code": "users.manage", "description": "", "admin": true, "operator": true, "viewer": false }
+            ]
+        },
+        {
+            "id": "access",
+            "name": "Access",
+            "icon": "vpn_key",
+            "items": [
+                { "id": "access_view", "name": "View Access", "code": "access.view", "description": "", "admin": true, "operator": true, "viewer": false },
+                { "id": "access_manage", "name": "Manage Access", "code": "access.manage", "description": "", "admin": true, "operator": false, "viewer": false }
+            ]
+        },
+        {
+            "id": "system",
+            "name": "System",
+            "icon": "dns",
+            "items": [
+                { "id": "system_view", "name": "View System", "code": "system.view", "description": "", "admin": true, "operator": true, "viewer": false },
+                { "id": "system_manage", "name": "Manage System", "code": "system.manage", "description": "", "admin": true, "operator": false, "viewer": false }
+            ]
+        }
+    ]);
+
+    let update_req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/settings/permissions")
+        .header(header::AUTHORIZATION, format!("Bearer {}", root_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&reconfig_matrix).unwrap()))
+        .unwrap();
+    let resp = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Operator логинится заново и получает новый токен с обновленными правами из БД
+    let op_relogin_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "username": "operator_user",
+                "password": "OperatorPassword123!"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let resp = app.clone().oneshot(op_relogin_req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let op_new_login: LoginResponse = serde_json::from_slice(&body).unwrap();
+    let op_new_token = op_new_login.token;
+
+    // Позитивный: Operator ТЕПЕРЬ МОЖЕТ создавать пользователей (users.manage выдан!)
+    let create_user_by_op = Request::builder()
+        .method("POST")
+        .uri("/api/v1/users")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_new_token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::json!({
+            "username": "created_by_operator",
+            "password": "NewUserPassword123!",
+            "roles": ["viewer"]
+        }).to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(create_user_by_op).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "Operator с выданным users.manage должен успешно создать пользователя");
+
+    // Негативный: Operator ТЕПЕРЬ НЕ МОЖЕТ читать модули (modules.view отозван!)
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/v1/modules")
+        .header(header::AUTHORIZATION, format!("Bearer {}", op_new_token))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "Operator с отозванным modules.view должен получить 403 Forbidden");
+}

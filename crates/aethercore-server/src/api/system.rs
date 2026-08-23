@@ -115,9 +115,19 @@ pub struct AuditCountResponse {
 async fn audit_count_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    _auth: AuthUser,
+    AuthUser(claims): AuthUser,
     Query(query): Query<AuditQuery>,
 ) -> Result<Json<AuditCountResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser
+        && check_permission(&claims, "access.view").is_err()
+        && check_permission(&claims, "system.view").is_err()
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(AppError::forbidden("access.view or system.view").to_api_response(locale)),
+        ));
+    }
+
     let total = state
         .audit_service
         .count_logs(query.search.as_deref())
@@ -490,8 +500,14 @@ async fn download_audit_archive_handler(
 async fn log_providers_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    _auth: AuthUser,
+    AuthUser(claims): AuthUser,
 ) -> Result<Json<Vec<LogProvider>>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
     let providers = state.logger_service.list_providers().map_err(|e| {
         (
             StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
@@ -530,9 +546,15 @@ pub struct LogQueryParams {
 async fn logs_query_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    _auth: AuthUser,
+    AuthUser(claims): AuthUser,
     Query(params): Query<LogQueryParams>,
 ) -> Result<Json<LogQueryResult>, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
     let provider_id = params.provider.as_deref().unwrap_or("system");
     let limit = params.limit.unwrap_or(200);
     let min_level = params.level.as_deref().and_then(LogLevel::from_str_loose);
@@ -569,9 +591,14 @@ pub struct LogDownloadParams {
 async fn logs_download_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    _auth: AuthUser,
+    AuthUser(claims): AuthUser,
     Query(params): Query<LogDownloadParams>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    if !claims.is_superuser {
+        check_permission(&claims, "system.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
     let provider_id = params.provider.as_deref().unwrap_or("system");
 
     let (bytes, filename) = state

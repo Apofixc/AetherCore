@@ -232,8 +232,14 @@ pub use aethercore_common::models::user::SecurityPoliciesDto;
 async fn get_security_policies_handler(
     State(state): State<AppState>,
     RequestLocale(locale): RequestLocale,
-    AuthUser(_claims): AuthUser,
+    AuthUser(claims): AuthUser,
 ) -> ApiResult<SecurityPoliciesDto> {
+    if !claims.is_superuser {
+        check_permission(&claims, "access.view").map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
+        })?;
+    }
+
     let kv = KvStore::system(state.db.clone());
     let policies: Option<SecurityPoliciesDto> = kv.get("security_policies").await.map_err(|e| {
         (
@@ -253,7 +259,7 @@ async fn update_security_policies_handler(
     Json(dto): Json<SecurityPoliciesDto>,
 ) -> ApiResult<SecurityPoliciesDto> {
     if !claims.is_superuser {
-        check_permission(&claims, "settings.manage").map_err(|e| {
+        check_permission(&claims, "access.manage").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
     }
@@ -563,7 +569,7 @@ async fn get_maintenance_settings_handler(
     AuthUser(claims): AuthUser,
 ) -> ApiResult<MaintenanceSettingsDto> {
     if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
+        check_permission(&claims, "system.view").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
     }
@@ -587,7 +593,7 @@ async fn update_maintenance_settings_handler(
     Json(dto): Json<MaintenanceSettingsDto>,
 ) -> ApiResult<MaintenanceSettingsDto> {
     if !claims.is_superuser {
-        check_permission(&claims, "system.admin").map_err(|e| {
+        check_permission(&claims, "system.manage").map_err(|e| {
             (StatusCode::FORBIDDEN, Json(e.to_api_response(locale)))
         })?;
     }

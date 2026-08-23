@@ -519,8 +519,9 @@ onUnmounted(() => {
             />
 
             <!-- Action Buttons -->
-            <div class="flex flex-wrap gap-sm pt-1">
+            <div v-if="authStore.canManageSystem || authStore.canManageAccess" class="flex flex-wrap gap-sm pt-1">
               <AppButton
+                v-if="authStore.canManageSystem"
                 variant="primary"
                 size="sm"
                 icon="download"
@@ -529,6 +530,7 @@ onUnmounted(() => {
                 {{ t('system.downloadBackup') }}
               </AppButton>
               <AppButton
+                v-if="authStore.canManageSystem"
                 variant="outline"
                 size="sm"
                 icon="upload_file"
@@ -537,6 +539,7 @@ onUnmounted(() => {
                 {{ t('system.restoreFromFile') }}
               </AppButton>
               <AppButton
+                v-if="authStore.canManageSystem || authStore.canManageAccess"
                 variant="outline"
                 size="sm"
                 icon="history"
@@ -577,6 +580,7 @@ onUnmounted(() => {
           >
             <template #headerActions>
               <AppButton
+                v-if="authStore.canManageSystem"
                 variant="danger"
                 size="xs"
                 icon="security"
@@ -585,6 +589,7 @@ onUnmounted(() => {
                 {{ t('system.terminateOthers') }}
               </AppButton>
               <AppButton
+                v-if="authStore.canManageSystem"
                 variant="outline"
                 size="xs"
                 icon="logout"
@@ -621,7 +626,7 @@ onUnmounted(() => {
                 <div class="flex items-center gap-2.5">
                   <span class="text-[10px] font-mono text-on-surface-variant">{{ s.time }}</span>
                   <AppButton
-                    v-if="!s.isCurrent"
+                    v-if="!s.isCurrent && authStore.canManageSystem"
                     variant="danger"
                     size="xs"
                     @click="requestRevokeSession(s)"
@@ -725,6 +730,7 @@ onUnmounted(() => {
                   @click="refreshLogs"
                 />
                 <AppButton
+                  v-if="authStore.canManageSystem"
                   variant="outline"
                   size="xs"
                   icon="cleaning_services"
@@ -739,6 +745,7 @@ onUnmounted(() => {
                   @click="showServiceStatusModal = true"
                 />
                 <AppButton
+                  v-if="authStore.canManageSystem"
                   variant="outline"
                   size="xs"
                   icon="download"

@@ -38,10 +38,10 @@ pub fn check_permission(claims: &JwtClaims, required_permission: &str) -> Result
         return Ok(());
     }
 
-    // 2. Иерархическое наследование (manage дает доступ к view)
+    // 2. Иерархическое наследование (manage в том же домене дает доступ к view)
     if let Some(domain) = required_permission.strip_suffix(".view") {
         let manage_perm = format!("{}.manage", domain);
-        if claims.permissions.iter().any(|p| p == &manage_perm || p == "system.manage" || p == "system.admin") {
+        if claims.permissions.iter().any(|p| p == &manage_perm) {
             return Ok(());
         }
     }
