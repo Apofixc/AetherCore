@@ -16,6 +16,7 @@ import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { systemApi, type SystemInfo, type LogProvider } from '@/api/system'
 import { settingsApi } from '@/api/settings'
+import SchedulerManager from '@/components/system/SchedulerManager.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -635,6 +636,9 @@ onUnmounted(() => {
             </div>
           </BaseCard>
         </div>
+
+        <!-- Task Scheduler Management Section -->
+        <SchedulerManager />
 
         <!-- Card 3: System Logs Viewer -->
         <div
