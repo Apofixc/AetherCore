@@ -538,9 +538,21 @@ function requestAllLogout() {
   showConfirmModal.value = true
 }
 
-function handleConfirmModal() {
-  confirmModalConfig.value.action()
-  showConfirmModal.value = false
+const isExecutingConfirm = ref(false)
+
+async function handleConfirmModal() {
+  if (isExecutingConfirm.value) return
+  try {
+    isExecutingConfirm.value = true
+    if (confirmModalConfig.value.action) {
+      await confirmModalConfig.value.action()
+    }
+    showConfirmModal.value = false
+  } catch (err: any) {
+    console.error('Failed to execute confirm action:', err)
+  } finally {
+    isExecutingConfirm.value = false
+  }
 }
 
 function parseLogLine(rawLine: string, index: number): LogEntry {
@@ -1152,6 +1164,7 @@ onUnmounted(() => {
       :variant="confirmModalConfig.variant"
       :icon="confirmModalConfig.icon"
       :confirm-text="confirmModalConfig.confirmText"
+      :loading="isExecutingConfirm"
       @confirm="handleConfirmModal"
     />
 

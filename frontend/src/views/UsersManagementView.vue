@@ -17,9 +17,11 @@ import { settingsApi, type SecurityPolicies } from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/api/auth'
 import { getUserInitials } from '@/utils/user'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const toast = useToast()
 
 interface OperatorItem {
   id: string
@@ -451,10 +453,12 @@ async function handleCreateUser() {
       initials
     })
 
+    toast.success(t('users.createSuccess') || t('common.changesApplied'))
     showAddModal.value = false
   } catch (err: any) {
     console.error('Failed to create user via API:', err)
     formError.value = err.message || t('users.createError')
+    toast.error(formError.value || t('users.createError'))
   } finally {
     isSubmitting.value = false
   }
@@ -499,16 +503,20 @@ async function handleSaveEdit() {
         must_change_password: editUserForm.value.password.trim() ? editUserForm.value.must_change_password : operators.value[index].must_change_password
       }
     }
+    toast.success(t('users.updateSuccess') || t('common.changesApplied'))
     showEditModal.value = false
   } catch (err: any) {
     console.error('Backend update failed:', err)
     editFormError.value = err.message || t('users.updateError')
+    toast.error(editFormError.value || t('users.updateError'))
   } finally {
     isSubmitting.value = false
   }
 }
 
 // Delete User
+const isDeletingUser = ref(false)
+
 function promptDeleteUser(op: OperatorItem) {
   if (isProtectedUser(op)) return
   userToDelete.value = op
@@ -518,19 +526,26 @@ function promptDeleteUser(op: OperatorItem) {
 async function confirmDeleteUser() {
   if (userToDelete.value) {
     const id = userToDelete.value.id
+    isDeletingUser.value = true
     try {
       await usersApi.delete(id)
       operators.value = operators.value.filter((op) => op.id !== id)
       selectedUserIds.value = selectedUserIds.value.filter((uid) => uid !== id)
+      toast.success(t('users.deleteSuccess') || t('common.changesApplied'))
+      showDeleteModal.value = false
+      userToDelete.value = null
     } catch (err: any) {
       console.error('Backend delete failed:', err)
+      toast.error(err?.message || t('users.deleteError') || 'Delete failed')
+    } finally {
+      isDeletingUser.value = false
     }
   }
-  showDeleteModal.value = false
-  userToDelete.value = null
 }
 
 // Toggle Lock
+const isTogglingLock = ref(false)
+
 function handleToggleLock(op: OperatorItem) {
   if (isProtectedUser(op)) return
   selectedUserForAction.value = op
@@ -540,6 +555,7 @@ function handleToggleLock(op: OperatorItem) {
 async function confirmToggleLock() {
   if (selectedUserForAction.value) {
     const newActiveState = !selectedUserForAction.value.is_active
+    isTogglingLock.value = true
     try {
       await usersApi.update(selectedUserForAction.value.id, {
         is_active: newActiveState
@@ -548,11 +564,15 @@ async function confirmToggleLock() {
       if (!newActiveState) {
         selectedUserForAction.value.is_online = false
       }
+      toast.success(newActiveState ? (t('users.unlockedSuccess') || t('common.active')) : (t('users.lockedSuccess') || t('common.disabled')))
+      showLockModal.value = false
     } catch (err: any) {
       console.error('Backend lock toggle failed:', err)
+      toast.error(err?.message || 'Lock toggle failed')
+    } finally {
+      isTogglingLock.value = false
     }
   }
-  showLockModal.value = false
 }
 
 // Bulk Actions
@@ -568,6 +588,7 @@ async function handleBulkLock(lockState: boolean) {
       }
     }
   }
+  toast.success(t('common.changesApplied'))
 }
 
 function handleBulkExport(format: 'csv' | 'json') {
@@ -576,6 +597,8 @@ function handleBulkExport(format: 'csv' | 'json') {
   else handleExportJson(selectedList)
 }
 
+const isBulkDeleting = ref(false)
+
 function promptBulkDelete() {
   showBulkDeleteModal.value = true
 }
@@ -583,20 +606,28 @@ function promptBulkDelete() {
 async function confirmBulkDelete() {
   const idsToDelete = [...selectedUserIds.value]
   const successfullyDeleted: string[] = []
-  for (const id of idsToDelete) {
-    const op = operators.value.find((u) => u.id === id)
-    if (op && !isProtectedUser(op)) {
-      try {
-        await usersApi.delete(id)
-        successfullyDeleted.push(id)
-      } catch (err) {
-        console.warn(`Failed to delete user ${id}:`, err)
+  isBulkDeleting.value = true
+  try {
+    for (const id of idsToDelete) {
+      const op = operators.value.find((u) => u.id === id)
+      if (op && !isProtectedUser(op)) {
+        try {
+          await usersApi.delete(id)
+          successfullyDeleted.push(id)
+        } catch (err) {
+          console.warn(`Failed to delete user ${id}:`, err)
+        }
       }
     }
+    operators.value = operators.value.filter((op) => !successfullyDeleted.includes(op.id))
+    selectedUserIds.value = selectedUserIds.value.filter((id) => !successfullyDeleted.includes(id))
+    toast.success(t('users.deleteBulkSuccess', { count: successfullyDeleted.length }) || t('common.changesApplied'))
+    showBulkDeleteModal.value = false
+  } catch (err: any) {
+    toast.error(err?.message || 'Bulk delete failed')
+  } finally {
+    isBulkDeleting.value = false
   }
-  operators.value = operators.value.filter((op) => !successfullyDeleted.includes(op.id))
-  selectedUserIds.value = selectedUserIds.value.filter((id) => !successfullyDeleted.includes(id))
-  showBulkDeleteModal.value = false
 }
 
 const statusOptions = computed(() => [
@@ -1333,6 +1364,7 @@ const editRoleOptions = computed(() => {
       :variant="selectedUserForAction?.is_active ? 'danger' : 'primary'"
       :confirm-text="selectedUserForAction?.is_active ? t('users.lockUserAction') : t('users.unlockUserAction')"
       :cancel-text="t('users.cancel')"
+      :loading="isTogglingLock"
       @confirm="confirmToggleLock"
     >
       <p v-if="selectedUserForAction">
@@ -1348,6 +1380,7 @@ const editRoleOptions = computed(() => {
       :confirm-text="t('users.deleteUser')"
       :cancel-text="t('users.cancel')"
       icon="delete"
+      :loading="isDeletingUser"
       @confirm="confirmDeleteUser"
     >
       <p v-if="userToDelete">
@@ -1363,6 +1396,7 @@ const editRoleOptions = computed(() => {
       :confirm-text="t('users.bulkDelete')"
       :cancel-text="t('users.cancel')"
       icon="delete_forever"
+      :loading="isBulkDeleting"
       @confirm="confirmBulkDelete"
     >
       <p>

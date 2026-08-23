@@ -274,11 +274,13 @@ function handlePhotoUpload(event: Event) {
         try {
           await settingsApi.updateUserPreferences({ avatar: dataUrl })
           avatarStatus.value = t('profile.photoUpdated')
+          toast.success(t('profile.photoUpdated'))
           setTimeout(() => {
             avatarStatus.value = null
           }, 3000)
-        } catch (err) {
+        } catch (err: any) {
           console.error('Failed to save avatar:', err)
+          toast.error(err?.message || 'Failed to save avatar')
         }
       }
     }
@@ -295,11 +297,13 @@ async function handleResetPhoto() {
   try {
     await settingsApi.updateUserPreferences({ avatar: '' })
     avatarStatus.value = t('profile.photoRemoved')
+    toast.success(t('profile.photoRemoved'))
     setTimeout(() => {
       avatarStatus.value = null
     }, 3000)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to reset avatar:', err)
+    toast.error(err?.message || 'Failed to reset avatar')
   }
 }
 
@@ -350,14 +354,15 @@ async function handleSaveProfile() {
   // Сохраняем на сервере в SQLite (kv_store)
   try {
     await settingsApi.updateUserPreferences(prefsPayload)
-  } catch (err) {
+    savedNotice.value = true
+    toast.success(t('profile.savedChanges'))
+    setTimeout(() => {
+      savedNotice.value = false
+    }, 3000)
+  } catch (err: any) {
     console.error('Could not save user preferences to server:', err)
+    toast.error(err?.message || 'Failed to save preferences')
   }
-
-  savedNotice.value = true
-  setTimeout(() => {
-    savedNotice.value = false
-  }, 3000)
 }
 
 async function handleChangePassword() {
@@ -379,6 +384,7 @@ async function handleChangePassword() {
       })
       passwordStatus.value = t('auth.passwordChangeSuccess')
       isPasswordError.value = false
+      toast.success(t('auth.passwordChangeSuccess'))
       currentPassword.value = ''
       newPassword.value = ''
       confirmPassword.value = ''
@@ -395,6 +401,7 @@ async function handleChangePassword() {
       } else {
         passwordStatus.value = errMsg || t('auth.passwordChangeError')
       }
+      toast.error(passwordStatus.value || t('auth.passwordChangeError'))
     }
   }
 }
@@ -952,9 +959,21 @@ function requestRevokeUserSession(s: UserSessionItem) {
   showSessionConfirmModal.value = true
 }
 
-function handleSessionConfirm() {
-  sessionConfirmConfig.value.action()
-  showSessionConfirmModal.value = false
+const isConfirmingSession = ref(false)
+
+async function handleSessionConfirm() {
+  if (isConfirmingSession.value) return
+  try {
+    isConfirmingSession.value = true
+    if (sessionConfirmConfig.value.action) {
+      await sessionConfirmConfig.value.action()
+    }
+    showSessionConfirmModal.value = false
+  } catch (err: any) {
+    console.error('Failed to execute session action:', err)
+  } finally {
+    isConfirmingSession.value = false
+  }
 }
 </script>
 
@@ -1921,6 +1940,7 @@ function handleSessionConfirm() {
         <AppButton
           :variant="sessionConfirmConfig.variant"
           size="sm"
+          :loading="isConfirmingSession"
           @click="handleSessionConfirm"
         >
           {{ sessionConfirmConfig.confirmText }}
