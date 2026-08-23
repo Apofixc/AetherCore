@@ -300,10 +300,13 @@ async fn login_handler(
             )
             .await;
 
+        let mut user_dto = UserResponseDto::from(user);
+        user_dto.is_online = true;
+
         return Ok(Json(LoginResponse {
             success: true,
             token,
-            user: Some(user.into()),
+            user: Some(user_dto),
             requires_2fa: false,
             temp_token: None,
             backup_codes_left: backup_left,
@@ -357,10 +360,13 @@ async fn login_handler(
         )
         .await;
 
+    let mut user_dto = UserResponseDto::from(user);
+    user_dto.is_online = true;
+
     Ok(Json(LoginResponse {
         success: true,
         token,
-        user: Some(user.into()),
+        user: Some(user_dto),
         requires_2fa: false,
         temp_token: None,
         backup_codes_left: None,
@@ -487,10 +493,13 @@ async fn verify_login_2fa_handler(
         )
         .await;
 
+    let mut user_dto = UserResponseDto::from(user);
+    user_dto.is_online = true;
+
     Ok(Json(LoginResponse {
         success: true,
         token,
-        user: Some(user.into()),
+        user: Some(user_dto),
         requires_2fa: false,
         temp_token: None,
         backup_codes_left: backup_left,
@@ -783,7 +792,9 @@ async fn me_handler(
             (status, Json(e.to_api_response(locale)))
         })?;
 
-    Ok(Json(user.into()))
+    let mut dto = UserResponseDto::from(user);
+    dto.is_online = true;
+    Ok(Json(dto))
 }
 
 /// GET /api/v1/auth/sessions

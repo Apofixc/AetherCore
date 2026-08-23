@@ -219,3 +219,128 @@ async fn test_sessions_api_full_flow() {
         .unwrap();
     assert_eq!(admin_after_all_res.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn test_user_is_online_status() {
+    let (app, state) = setup_test_app().await;
+
+    // Создаем пользователя offline_op, который пока НЕ залогинен
+    let offline_op = state
+        .user_service
+        .create_user(CreateUserDto {
+            username: "offline_op".into(),
+            password: "Password123!".into(),
+            full_name: Some("Offline Operator".into()),
+            roles: Some(vec!["operator".into()]),
+            is_active: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // 1. Логинимся под root
+    let admin_login_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    json!({ "username": "root", "password": "root" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(admin_login_res.status(), StatusCode::OK);
+    let admin_body = admin_login_res.into_body().collect().await.unwrap().to_bytes();
+    let admin_json: Value = serde_json::from_slice(&admin_body).unwrap();
+    let admin_token = admin_json["token"].as_str().unwrap().to_string();
+
+    // 2. Запрашиваем список пользователей
+    let list_users_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/users")
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(list_users_res.status(), StatusCode::OK);
+    let users_body = list_users_res.into_body().collect().await.unwrap().to_bytes();
+    let users_json: Vec<Value> = serde_json::from_slice(&users_body).unwrap();
+
+    let root_item = users_json.iter().find(|u| u["username"] == "root").unwrap();
+    let offline_item = users_json.iter().find(|u| u["username"] == "offline_op").unwrap();
+
+    // root активен и в сети (is_online: true)
+    assert_eq!(root_item["is_active"], true);
+    assert_eq!(root_item["is_online"], true);
+
+    // offline_op активен (is_active: true), но НЕ в сети (is_online: false)
+    assert_eq!(offline_item["is_active"], true);
+    assert_eq!(offline_item["is_online"], false);
+
+    // Проверяем получение конкретного пользователя GET /api/v1/users/{id}
+    let get_user_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/users/{}", offline_op.id))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_user_res.status(), StatusCode::OK);
+    let user_body = get_user_res.into_body().collect().await.unwrap().to_bytes();
+    let user_json: Value = serde_json::from_slice(&user_body).unwrap();
+    assert_eq!(user_json["is_online"], false);
+
+    // 3. Логинимся под offline_op
+    let op_login_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    json!({ "username": "offline_op", "password": "Password123!" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(op_login_res.status(), StatusCode::OK);
+
+    // 4. Теперь снова запрашиваем список пользователей - offline_op теперь online!
+    let list_users_again = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/users")
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let users_again_body = list_users_again.into_body().collect().await.unwrap().to_bytes();
+    let users_again_json: Vec<Value> = serde_json::from_slice(&users_again_body).unwrap();
+    let op_now_online = users_again_json.iter().find(|u| u["username"] == "offline_op").unwrap();
+    assert_eq!(op_now_online["is_online"], true);
+}

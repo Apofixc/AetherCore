@@ -207,7 +207,7 @@ async function loadUsers() {
           email: u.email || `${u.username}@aethercore.local`,
           department: u.department,
           role,
-          is_online: Boolean(u.is_active),
+          is_online: Boolean(u.is_online),
           is_active: Boolean(u.is_active),
           must_change_password: Boolean(u.must_change_password),
           is_totp_enabled: Boolean(u.is_totp_enabled),
@@ -443,7 +443,7 @@ async function handleCreateUser() {
       email: created.email || `${created.username}@aethercore.local`,
       department: created.department,
       role,
-      is_online: true,
+      is_online: Boolean(created.is_online),
       is_active: true,
       must_change_password: Boolean(created.must_change_password),
       is_totp_enabled: false,
@@ -545,7 +545,9 @@ async function confirmToggleLock() {
         is_active: newActiveState
       })
       selectedUserForAction.value.is_active = newActiveState
-      selectedUserForAction.value.is_online = newActiveState
+      if (!newActiveState) {
+        selectedUserForAction.value.is_online = false
+      }
     } catch (err: any) {
       console.error('Backend lock toggle failed:', err)
     }

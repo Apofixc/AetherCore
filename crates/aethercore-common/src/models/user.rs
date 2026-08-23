@@ -246,6 +246,9 @@ pub struct UserResponseDto {
     pub department: Option<String>,
     /// Флаг активности учетной записи
     pub is_active: bool,
+    /// Флаг нахождения пользователя в сети (наличие активной валидной сессии)
+    #[serde(default)]
+    pub is_online: bool,
     /// Флаг суперпользователя
     pub is_superuser: bool,
     /// Флаг обязательной смены пароля
@@ -277,6 +280,7 @@ impl From<User> for UserResponseDto {
             email: u.email,
             department: u.department,
             is_active: u.is_active,
+            is_online: false,
             is_superuser: u.is_superuser,
             must_change_password: u.must_change_password,
             is_username_locked: u.is_username_locked,

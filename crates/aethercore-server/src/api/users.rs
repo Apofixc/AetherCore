@@ -76,7 +76,23 @@ async fn list_users_handler(
         )
     })?;
 
-    let dtos = users.into_iter().map(UserResponseDto::from).collect();
+    let active_sessions = state
+        .session_service
+        .list_active_sessions()
+        .await
+        .unwrap_or_default();
+    let online_user_ids: std::collections::HashSet<Uuid> =
+        active_sessions.into_iter().map(|s| s.user_id).collect();
+
+    let dtos = users
+        .into_iter()
+        .map(|u| {
+            let is_online = online_user_ids.contains(&u.id);
+            let mut dto = UserResponseDto::from(u);
+            dto.is_online = is_online;
+            dto
+        })
+        .collect();
     Ok(Json(dtos))
 }
 
@@ -196,7 +212,16 @@ async fn get_user_handler(
         )
     })?;
 
-    Ok(Json(UserResponseDto::from(user)))
+    let is_online = state
+        .session_service
+        .list_active_sessions()
+        .await
+        .map(|sessions| sessions.iter().any(|s| s.user_id == user.id))
+        .unwrap_or(false);
+
+    let mut dto = UserResponseDto::from(user);
+    dto.is_online = is_online;
+    Ok(Json(dto))
 }
 
 /// PUT /api/v1/users/{id}
@@ -351,7 +376,16 @@ async fn update_user_handler(
         )
         .await;
 
-    Ok(Json(UserResponseDto::from(user)))
+    let is_online = state
+        .session_service
+        .list_active_sessions()
+        .await
+        .map(|sessions| sessions.iter().any(|s| s.user_id == user.id))
+        .unwrap_or(false);
+
+    let mut dto = UserResponseDto::from(user);
+    dto.is_online = is_online;
+    Ok(Json(dto))
 }
 
 /// DELETE /api/v1/users/{id}

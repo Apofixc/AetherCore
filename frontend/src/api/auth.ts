@@ -7,6 +7,7 @@ export interface User {
   email: string
   department?: string
   is_active: boolean
+  is_online?: boolean
   is_superuser: boolean
   must_change_password?: boolean
   is_username_locked?: boolean
