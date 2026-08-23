@@ -22,6 +22,7 @@ import {
   type BackupFileInfo
 } from '@/api/system'
 import { settingsApi } from '@/api/settings'
+import { modulesApi } from '@/api/modules'
 import SchedulerManager from '@/components/system/SchedulerManager.vue'
 
 const { t } = useI18n()
@@ -156,6 +157,34 @@ function scrollToBottom(smooth = true) {
       isUserScrolledUp.value = false
     }
   })
+}
+
+const modulesCount = ref({ active: 0, total: 0 })
+
+function formatUptime(seconds?: number): string {
+  if (!seconds || seconds <= 0) return t('system.lessThanMin')
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const parts: string[] = []
+  if (d > 0) parts.push(`${d} ${t('system.daysShort')}`)
+  if (h > 0) parts.push(`${h} ${t('system.hoursShort')}`)
+  if (m > 0) parts.push(`${m} ${t('system.minutesShort')}`)
+  if (parts.length === 0 || (d === 0 && h === 0 && s > 0)) parts.push(`${s} ${t('system.secondsShort')}`)
+  return parts.join(' ')
+}
+
+async function loadModulesStats() {
+  try {
+    const list = await modulesApi.list()
+    modulesCount.value = {
+      total: list.length,
+      active: list.filter((m) => m.is_active).length
+    }
+  } catch (err) {
+    // fallback
+  }
 }
 
 function formatBytes(bytes?: number): string {
@@ -487,7 +516,8 @@ async function loadSystemData() {
     const [info, providers, _] = await Promise.all([
       systemApi.getInfo().catch(() => null),
       systemApi.getProviders().catch(() => []),
-      loadDbStats().catch(() => null)
+      loadDbStats().catch(() => null),
+      loadModulesStats().catch(() => null)
     ])
     if (info) {
       systemInfo.value = info
@@ -586,18 +616,27 @@ function renderHighlightedText(text: string) {
 
 const logFileOptions = computed(() => {
   if (logProviders.value.length > 0) {
-    return logProviders.value.map((p) => ({
-      value: p.id,
-      label: `[${p.category || p.kind || 'system'}] ${p.name}`
-    }))
+    return logProviders.value.map((p) => {
+      let label = p.name
+      if (p.id === 'system') label = t('system.providerSystem')
+      else if (p.id === 'server') label = t('system.providerServer')
+      else if (p.id === 'scheduler') label = t('system.providerScheduler')
+      else if (p.id === 'auth') label = t('system.providerAuth')
+      else if (p.id === 'database') label = t('system.providerDatabase')
+      else if (p.id === 'plugins') label = t('system.providerPlugins')
+      return {
+        value: p.id,
+        label: `[${p.category || p.kind || 'system'}] ${label}`
+      }
+    })
   }
   return [
-    { value: 'system', label: '[system] Системный лог ядра' },
-    { value: 'server', label: '[server] HTTP & REST API' },
-    { value: 'scheduler', label: '[scheduler] Планировщик задач' },
-    { value: 'auth', label: '[auth] Аутентификация' },
-    { value: 'database', label: '[database] База данных' },
-    { value: 'plugins', label: '[plugins] WASM Модули' }
+    { value: 'system', label: `[system] ${t('system.providerSystem')}` },
+    { value: 'server', label: `[server] ${t('system.providerServer')}` },
+    { value: 'scheduler', label: `[scheduler] ${t('system.providerScheduler')}` },
+    { value: 'auth', label: `[auth] ${t('system.providerAuth')}` },
+    { value: 'database', label: `[database] ${t('system.providerDatabase')}` },
+    { value: 'plugins', label: `[plugins] ${t('system.providerPlugins')}` }
   ]
 })
 
@@ -1018,24 +1057,112 @@ onUnmounted(() => {
       v-model="showServiceStatusModal"
       :title="t('system.serviceStatusModalTitle')"
       icon="dns"
-      max-width="max-w-md"
+      max-width="max-w-lg"
     >
       <div class="flex flex-col gap-2.5 text-xs font-body-mono">
-        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-          <span>AetherCore Core Daemon</span>
-          <StatusBadge variant="success" size="xs">RUNNING (pid 4182)</StatusBadge>
+        <!-- 1. AetherCore Core Daemon -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">memory</span>
+              {{ t('system.serviceCoreDaemon') }} v{{ systemInfo?.version || '2.0.0' }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              {{ t('system.uptimeLabel') }}: <strong class="text-on-surface">{{ formatUptime(systemInfo?.uptime_seconds) }}</strong> • {{ systemInfo?.dev_mode ? t('system.modeDev') : (systemInfo?.safe_mode ? t('system.modeSafe') : t('system.modeProduction')) }}
+            </span>
+          </div>
+          <StatusBadge variant="success" size="xs" :pulse="true" :dot="true">
+            ONLINE
+          </StatusBadge>
         </div>
-        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-          <span>WASM Plugin Runtime</span>
-          <StatusBadge variant="success" size="xs">READY (4 active)</StatusBadge>
+
+        <!-- 2. WASM Plugin Runtime -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">extension</span>
+              {{ t('system.serviceWasmRuntime') }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              <template v-if="systemInfo?.safe_mode">
+                {{ t('system.pluginsDisabledSafeMode') }}
+              </template>
+              <template v-else>
+                {{ t('system.activeModulesOfTotal', { active: modulesCount.active, total: modulesCount.total }) }}
+              </template>
+            </span>
+          </div>
+          <StatusBadge
+            :variant="systemInfo?.safe_mode ? 'warning' : 'success'"
+            size="xs"
+            :dot="true"
+          >
+            {{ systemInfo?.safe_mode ? 'SAFE-MODE' : `READY (${modulesCount.active})` }}
+          </StatusBadge>
         </div>
-        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-          <span>IPC Message Bus</span>
-          <StatusBadge variant="success" size="xs">CONNECTED</StatusBadge>
+
+        <!-- 3. SQLite Embedded DB -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">database</span>
+              {{ t('system.serviceDbEngine') }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              {{ t('system.dbEngineInfo', { size: formatBytes(dbStats?.storage?.total_size_bytes), tables: dbStats?.storage?.tables_count ?? 6 }) }}
+            </span>
+          </div>
+          <StatusBadge variant="success" size="xs" :dot="true">
+            SYNCED (WAL)
+          </StatusBadge>
         </div>
-        <div class="flex items-center justify-between p-2 bg-surface-container-highest/60 rounded-lg border border-outline-variant/40">
-          <span>SQLite Embedded DB</span>
-          <StatusBadge variant="success" size="xs">SYNCED (WAL mode)</StatusBadge>
+
+        <!-- 4. Task Scheduler Engine -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">schedule</span>
+              {{ t('system.serviceSchedulerEngine') }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              {{ t('system.schedulerDesc') }}
+            </span>
+          </div>
+          <StatusBadge variant="success" size="xs" :dot="true">
+            ACTIVE
+          </StatusBadge>
+        </div>
+
+        <!-- 5. IPC Message Bus -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">hub</span>
+              {{ t('system.serviceIpcBus') }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              {{ t('system.ipcDesc') }}
+            </span>
+          </div>
+          <StatusBadge variant="success" size="xs" :dot="true">
+            CONNECTED
+          </StatusBadge>
+        </div>
+
+        <!-- 6. System Logging Service -->
+        <div class="flex items-center justify-between p-2.5 bg-surface-container-highest/60 rounded-xl border border-outline-variant/40 hover:border-outline-variant/70 transition-colors">
+          <div class="flex flex-col gap-0.5">
+            <span class="font-bold text-on-surface flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px] text-primary-fixed-dim">terminal</span>
+              {{ t('system.serviceLoggingService') }}
+            </span>
+            <span class="text-[11px] text-on-surface-variant font-mono">
+              {{ t('system.logBufferEventsInfo', { total: logCounts.total, errors: logCounts.errors, warns: logCounts.warns }) }}
+            </span>
+          </div>
+          <StatusBadge variant="success" size="xs" :dot="true">
+            CAPTURING
+          </StatusBadge>
         </div>
       </div>
 
