@@ -83,9 +83,43 @@ pub struct MaskingInterceptor {
 impl Default for MaskingInterceptor {
     fn default() -> Self {
         Self {
-            masked_keys: vec!["password", "secret", "token", "api_key", "private_key"],
+            masked_keys: vec![
+                "password",
+                "secret",
+                "token",
+                "api_key",
+                "private_key",
+            ],
         }
     }
+}
+
+impl MaskingInterceptor {
+    /// Создать перехватчик с пользовательским списком маскируемых ключей
+    pub fn new(masked_keys: Vec<&'static str>) -> Self {
+        Self { masked_keys }
+    }
+}
+
+/// Проверка ключа на конфиденциальность (регистронезависимо и по суффиксам/вхождениям)
+fn is_sensitive_key(key: &str, masked_keys: &[&str]) -> bool {
+    let lower = key.to_ascii_lowercase();
+    let normalized = lower.replace(['-', '_'], "");
+
+    for &pattern in masked_keys {
+        let pat_lower = pattern.to_ascii_lowercase();
+        let pat_normalized = pat_lower.replace(['-', '_'], "");
+
+        if lower == pat_lower
+            || normalized == pat_normalized
+            || lower.ends_with(&format!("_{}", pat_lower))
+            || lower.ends_with(&format!("-{}", pat_lower))
+            || normalized.ends_with(&pat_normalized)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Рекурсивное маскирование конфиденциальных ключей во вложенных структурах JSON
@@ -93,7 +127,7 @@ fn mask_json_value(val: &mut serde_json::Value, masked_keys: &[&str]) {
     match val {
         serde_json::Value::Object(map) => {
             for (k, v) in map.iter_mut() {
-                if masked_keys.contains(&k.as_str()) {
+                if is_sensitive_key(k, masked_keys) {
                     *v = serde_json::json!("***");
                 } else {
                     mask_json_value(v, masked_keys);
@@ -109,6 +143,7 @@ fn mask_json_value(val: &mut serde_json::Value, masked_keys: &[&str]) {
     }
 }
 
+
 #[async_trait]
 impl EventInterceptor for MaskingInterceptor {
     async fn pre_publish(&self, event: &mut EventMessage) -> Result<InterceptorAction> {
@@ -116,3 +151,4 @@ impl EventInterceptor for MaskingInterceptor {
         Ok(InterceptorAction::Continue)
     }
 }
+

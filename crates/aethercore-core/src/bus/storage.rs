@@ -9,75 +9,87 @@ use aethercore_common::models::events::{EventMessage, ReliableEventRecord};
 use chrono::{DateTime, Duration, Utc};
 use std::time::Duration as StdDuration;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Максимальное количество записей в одном микро-батче SQLite
 const BATCH_SIZE: usize = 50;
-/// Максимальное время ожидания микро-батча
+/// Максимальное время ожидания микро-батча после получения первого сообщения
 const BATCH_TIMEOUT: StdDuration = StdDuration::from_millis(30);
 /// Лимит записей в таблице журнала по умолчанию
 pub const DEFAULT_MAX_JOURNAL_RECORDS: usize = 5000;
+
+/// Конфигурация параметров постоянного хранилища L2
+#[derive(Debug, Clone)]
+pub struct EventStorageConfig {
+    /// Максимальное количество записей в журнале
+    pub max_records: usize,
+    /// Максимальный возраст сохраняемых записей при старте ядра
+    pub startup_prune_age: Option<Duration>,
+}
+
+impl Default for EventStorageConfig {
+    fn default() -> Self {
+        Self {
+            max_records: DEFAULT_MAX_JOURNAL_RECORDS,
+            startup_prune_age: Some(Duration::hours(24)),
+        }
+    }
+}
 
 /// Фоновый менеджер постоянного хранилища событий
 #[derive(Clone, Debug)]
 pub struct EventStorage {
     db: Db,
     tx: mpsc::Sender<EventMessage>,
+    config: EventStorageConfig,
 }
 
 impl EventStorage {
-    /// Инициализировать хранилище, выполнить очистку устаревших записей при старте и запустить воркер
+    /// Инициализировать хранилище с дефолтной конфигурацией
     pub fn new(db: Db) -> Self {
+        Self::with_config(db, EventStorageConfig::default())
+    }
+
+    /// Инициализировать хранилище с пользовательской конфигурацией
+    pub fn with_config(db: Db, config: EventStorageConfig) -> Self {
         let (tx, mut rx) = mpsc::channel(4096);
         let worker_db = db.clone();
+        let worker_config = config.clone();
 
         // 1. Асинхронный воркер микро-батчинга и записи
         tokio::spawn(async move {
             debug!("Event Storage L2 background worker started");
 
-            // Выполняем агрессивную очистку устаревших хвостов прошлого запуска
-            if let Err(e) = startup_prune(&worker_db).await {
-                error!("Failed to perform startup prune on event_journal: {}", e);
+            // Выполняем автоочистку устаревших записей при старте ядра
+            if let Some(prune_age) = worker_config.startup_prune_age {
+                if let Err(e) = startup_prune(&worker_db, prune_age).await {
+                    error!("Failed to perform startup prune on event_journal: {}", e);
+                }
             }
 
             let mut batch = Vec::with_capacity(BATCH_SIZE);
             let mut last_gc = tokio::time::Instant::now();
 
-            loop {
-                // Накапливаем микро-батч
-                let timeout = tokio::time::sleep(BATCH_TIMEOUT);
-                tokio::pin!(timeout);
+            // Цикл батчинга без пустых wake-up: ожидаем первое событие по rx.recv()
+            while let Some(first_event) = rx.recv().await {
+                batch.push(first_event);
 
-                tokio::select! {
-                    Some(event) = rx.recv() => {
-                        batch.push(event);
-                        if batch.len() >= BATCH_SIZE {
-                            if let Err(e) = flush_batch(&worker_db, &batch).await {
-                                error!("Failed to flush event batch to database: {}", e);
-                            }
-                            batch.clear();
-                        }
-                    }
-                    _ = &mut timeout => {
-                        if !batch.is_empty() {
-                            if let Err(e) = flush_batch(&worker_db, &batch).await {
-                                error!("Failed to flush event batch to database: {}", e);
-                            }
-                            batch.clear();
-                        }
-                    }
-                    else => {
-                        // Канал закрыт — сбрасываем остаток и выходим
-                        if !batch.is_empty() {
-                            let _ = flush_batch(&worker_db, &batch).await;
-                        }
-                        break;
+                // Добираем пачку до BATCH_SIZE с таймаутом BATCH_TIMEOUT
+                while batch.len() < BATCH_SIZE {
+                    match tokio::time::timeout(BATCH_TIMEOUT, rx.recv()).await {
+                        Ok(Some(ev)) => batch.push(ev),
+                        _ => break,
                     }
                 }
 
-                // Периодический сборщик мусора (раз в 5 минут)
+                if let Err(e) = flush_batch(&worker_db, &batch).await {
+                    error!("Failed to flush event batch to database: {}", e);
+                }
+                batch.clear();
+
+                // Периодический сборщик мусора (раз в 5 минут при наличии активности)
                 if last_gc.elapsed() >= StdDuration::from_secs(300) {
-                    if let Err(e) = run_periodic_gc(&worker_db).await {
+                    if let Err(e) = run_periodic_gc(&worker_db, worker_config.max_records).await {
                         error!("Event Storage periodic GC failed: {}", e);
                     }
                     last_gc = tokio::time::Instant::now();
@@ -87,34 +99,28 @@ impl EventStorage {
             info!("Event Storage worker terminated");
         });
 
-        Self { db, tx }
+        Self { db, tx, config }
     }
 
-    /// Поставить событие в очередь персистентной записи
-    ///
-    /// # Аргументы
-    /// * `event` — Сохраняемое событие ([`EventMessage`]).
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::internal`], если очередь воркера закрыта.
-    pub async fn persist(&self, event: EventMessage) -> Result<()> {
-        self.tx.send(event).await.map_err(|e| {
-            AppError::internal(format!("Event storage queue closed: {}", e))
+    /// Поставить событие в очередь персистентной записи (неблокирующая отправка)
+    pub fn try_persist(&self, event: EventMessage) -> Result<()> {
+        self.tx.try_send(event).map_err(|e| match e {
+            mpsc::error::TrySendError::Full(_) => {
+                warn!("Event storage queue is full, reliable event dropped from L2 queue");
+                AppError::internal("Event storage queue is full")
+            }
+            mpsc::error::TrySendError::Closed(_) => {
+                AppError::internal("Event storage queue closed")
+            }
         })
     }
 
+    /// Поставить событие в очередь персистентной записи
+    pub async fn persist(&self, event: EventMessage) -> Result<()> {
+        self.try_persist(event)
+    }
+
     /// Запросить исторические события из базы данных
-    ///
-    /// # Аргументы
-    /// * `topic_filter` — Опциональный префикс темы.
-    /// * `after_id` — ID последней прочитанной записи для постраничной пагинации.
-    /// * `limit` — Максимальное число возвращаемых записей (ограничивается диапазоном 1..=1000).
-    ///
-    /// # Возвращаемое значение
-    /// Список сохраненных записей журнала [`ReliableEventRecord`].
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::database`] при сбое выполнения SQL-запроса.
     pub async fn query(
         &self,
         topic_filter: Option<&str>,
@@ -126,12 +132,12 @@ impl EventStorage {
 
         let query_sql = match topic_filter {
             Some(prefix) if !prefix.is_empty() => {
-                let pattern = format!("{}%", prefix);
+                let pattern = format!("{}%", escape_sql_like(prefix));
                 sqlx::query_as::<_, (i64, String, String, String, String, String)>(
                     r#"
                     SELECT id, event_uuid, topic, source, payload_json, created_at
                     FROM event_journal
-                    WHERE id > ? AND topic LIKE ?
+                    WHERE id > ? AND topic LIKE ? ESCAPE '\'
                     ORDER BY id ASC
                     LIMIT ?
                     "#,
@@ -184,13 +190,6 @@ impl EventStorage {
     }
 
     /// Запросить самые свежие исторические записи (хвост истории)
-    ///
-    /// # Аргументы
-    /// * `topic_filter` — Опциональный префикс темы.
-    /// * `limit` — Максимальное число возвращаемых записей.
-    ///
-    /// # Возвращаемое значение
-    /// Список последних записей журнала в хронологическом порядке (от старых к новым).
     pub async fn query_recent(
         &self,
         topic_filter: Option<&str>,
@@ -200,12 +199,12 @@ impl EventStorage {
 
         let query_sql = match topic_filter {
             Some(prefix) if !prefix.is_empty() => {
-                let pattern = format!("{}%", prefix);
+                let pattern = format!("{}%", escape_sql_like(prefix));
                 sqlx::query_as::<_, (i64, String, String, String, String, String)>(
                     r#"
                     SELECT id, event_uuid, topic, source, payload_json, created_at
                     FROM event_journal
-                    WHERE topic LIKE ?
+                    WHERE topic LIKE ? ESCAPE '\'
                     ORDER BY id DESC
                     LIMIT ?
                     "#,
@@ -257,16 +256,6 @@ impl EventStorage {
     }
 
     /// Ручная ротация и очистка устаревших записей журнала
-    ///
-    /// # Аргументы
-    /// * `max_age` — Опциональный максимальный возраст сохраняемых записей ([`Duration`]).
-    /// * `max_count` — Опциональное максимальное число записей в таблице.
-    ///
-    /// # Возвращаемое значение
-    /// Общее количество удаленных записей.
-    ///
-    /// # Ошибки
-    /// Возвращает [`AppError::database`] при сбое выполнения SQL-команд удаления.
     pub async fn prune(&self, max_age: Option<Duration>, max_count: Option<usize>) -> Result<u64> {
         let mut total_deleted = 0u64;
 
@@ -280,7 +269,7 @@ impl EventStorage {
             total_deleted += res.rows_affected();
         }
 
-        let max_count = max_count.unwrap_or(DEFAULT_MAX_JOURNAL_RECORDS) as i64;
+        let max_count = max_count.unwrap_or(self.config.max_records) as i64;
         let res = sqlx::query(
             r#"
             DELETE FROM event_journal
@@ -299,10 +288,17 @@ impl EventStorage {
     }
 }
 
-/// Агрессивная автоочистка при старте ядра
-async fn startup_prune(db: &Db) -> Result<()> {
+/// Экранирование специальных символов SQL LIKE (`%`, `_`, `\`)
+fn escape_sql_like(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+/// Автоочистка устаревших записей при старте ядра
+async fn startup_prune(db: &Db, max_age: Duration) -> Result<()> {
     let now_str = Utc::now().to_rfc3339();
-    let one_day_ago = (Utc::now() - Duration::hours(24)).to_rfc3339();
+    let cutoff = (Utc::now() - max_age).to_rfc3339();
 
     sqlx::query(
         r#"
@@ -310,7 +306,7 @@ async fn startup_prune(db: &Db) -> Result<()> {
         WHERE created_at < ?
         "#,
     )
-    .bind(one_day_ago)
+    .bind(cutoff)
     .execute(db.writer())
     .await
     .map_err(|e| AppError::database(format!("Startup prune failed: {}", e)))?;
@@ -356,8 +352,8 @@ async fn flush_batch(db: &Db, batch: &[EventMessage]) -> Result<()> {
 }
 
 /// Периодический сборщик мусора
-async fn run_periodic_gc(db: &Db) -> Result<()> {
-    let max_count = DEFAULT_MAX_JOURNAL_RECORDS as i64;
+async fn run_periodic_gc(db: &Db, max_count: usize) -> Result<()> {
+    let max_records = max_count as i64;
     sqlx::query(
         r#"
         DELETE FROM event_journal
@@ -366,10 +362,11 @@ async fn run_periodic_gc(db: &Db) -> Result<()> {
         )
         "#,
     )
-    .bind(max_count)
+    .bind(max_records)
     .execute(db.writer())
     .await
     .map_err(|e| AppError::database(format!("Periodic event GC failed: {}", e)))?;
 
     Ok(())
 }
+

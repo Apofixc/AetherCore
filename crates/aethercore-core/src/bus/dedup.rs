@@ -83,10 +83,64 @@ impl EventDeduplicator {
         }
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, DedupInner> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, DedupInner> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// Проверить, является ли событие дубликатом, без фиксации ключей
+    pub fn is_duplicate(&self, event: &EventMessage) -> bool {
+        let now = Instant::now();
+        let mut guard = self.write_guard();
+        guard.clean_expired(now);
+
+        let custom_dup = event
+            .dedup_key
+            .as_ref()
+            .map_or(false, |k| guard.records.contains_key(&DedupKey::Custom(k.clone())));
+        let uuid_dup = guard.records.contains_key(&DedupKey::Uuid(event.id));
+
+        custom_dup || uuid_dup
+    }
+
+    /// Зафиксировать ключи события в окне дедупликатора
+    pub fn record(&self, event: &EventMessage) {
+        let now = Instant::now();
+        let mut guard = self.write_guard();
+        guard.clean_expired(now);
+
+        if let Some(ref custom_key) = event.dedup_key {
+            guard.insert_key(DedupKey::Custom(custom_key.clone()), now);
+        }
+        guard.insert_key(DedupKey::Uuid(event.id), now);
+    }
+
+    /// Удалить ключи события из дедупликатора (откат при ошибке публикации)
+    pub fn remove_event(&self, event: &EventMessage) {
+        let mut guard = self.write_guard();
+        if let Some(ref custom_key) = event.dedup_key {
+            let key = DedupKey::Custom(custom_key.clone());
+            guard.records.remove(&key);
+            guard.queue.retain(|(k, _)| k != &key);
+        }
+        let uuid_key = DedupKey::Uuid(event.id);
+        guard.records.remove(&uuid_key);
+        guard.queue.retain(|(k, _)| k != &uuid_key);
+    }
+
     /// Проверить, является ли событие дубликатом по business key или UUID, и зафиксировать его
     pub fn is_duplicate_event_or_record(&self, event: &EventMessage) -> bool {
         let now = Instant::now();
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         guard.clean_expired(now);
 
         // Фаза 1: Проверка на дубликат без модификации состояния
@@ -112,7 +166,7 @@ impl EventDeduplicator {
     /// Проверить, является ли событие дубликатом по UUID, и зафиксировать его
     pub fn is_duplicate_or_record(&self, id: &Uuid) -> bool {
         let now = Instant::now();
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         guard.clean_expired(now);
 
         let key = DedupKey::Uuid(*id);
@@ -126,7 +180,7 @@ impl EventDeduplicator {
 
     /// Текущее количество активных записей в дедупликаторе
     pub fn len(&self) -> usize {
-        self.inner.read().unwrap().records.len()
+        self.read_guard().records.len()
     }
 
     /// Проверить, пуст ли дедупликатор

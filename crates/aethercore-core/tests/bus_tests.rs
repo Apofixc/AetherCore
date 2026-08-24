@@ -874,6 +874,160 @@ async fn test_retained_not_saved_if_interceptor_drops() {
     assert_eq!(retained.len(), 0, "Dropped event must not be retained in cache");
 }
 
+#[tokio::test]
+async fn test_redrive_clears_expired_at_and_delivers() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("alarms.redrive");
+
+    // Создаем просроченное сообщение
+    let mut msg = EventMessage::telemetry("alarms.redrive", "sensor", serde_json::json!({"val": 99}));
+    msg.expires_at = Some(chrono::Utc::now() - chrono::Duration::seconds(10));
+
+    bus.publish(msg).await.unwrap();
+
+    // Ждем перемещения в DLQ
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let dead_letters = bus.dead_letters(10);
+    assert_eq!(dead_letters.len(), 1);
+    let dl_id = dead_letters[0].id;
+
+    // Выполняем redrive - expires_at должен быть сброшен в None и событие доставлено
+    bus.redrive_dead_letter(dl_id).await.unwrap();
+
+    let delivered = sub.recv().await.unwrap();
+    assert_eq!(delivered.topic, "alarms.redrive");
+    assert_eq!(delivered.expires_at, None);
+}
+
+#[tokio::test]
+async fn test_dedup_does_not_lock_on_interceptor_reject() {
+    use aethercore_core::bus::{EventInterceptor, InterceptorAction};
+    use aethercore_common::error::{AppError, Result};
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    struct RejectOnceInterceptor {
+        should_reject: AtomicBool,
+    }
+
+    #[async_trait]
+    impl EventInterceptor for RejectOnceInterceptor {
+        async fn pre_publish(&self, _event: &mut EventMessage) -> Result<InterceptorAction> {
+            if self.should_reject.swap(false, Ordering::SeqCst) {
+                Err(AppError::validation("test", "Intentional reject"))
+            } else {
+                Ok(InterceptorAction::Continue)
+            }
+        }
+    }
+
+    let mut bus = EventBus::in_memory();
+    bus.add_interceptor(Arc::new(RejectOnceInterceptor {
+        should_reject: AtomicBool::new(true),
+    }));
+    let mut sub = bus.subscribe();
+
+    let msg = EventMessage::telemetry("retry.topic", "service", serde_json::json!({"attempt": 1}));
+
+    // Попытка 1: интерцептор отклоняет
+    let err = bus.publish(msg.clone()).await;
+    assert!(err.is_err());
+
+    // Попытка 2 (retry): дедупликатор НЕ должен блокировать сообщение, так как первая попытка не прошла
+    let ok = bus.publish(msg.clone()).await;
+    assert!(ok.is_ok());
+
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(rec.topic, "retry.topic");
+}
+
+#[tokio::test]
+async fn test_expired_event_step0_dlq_does_not_pollute_ring() {
+    let bus = EventBus::in_memory();
+
+    let mut msg = EventMessage::telemetry("ttl.expired", "core", serde_json::json!({"val": 1}));
+    msg.expires_at = Some(chrono::Utc::now() - chrono::Duration::seconds(5));
+
+    bus.publish(msg).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // В RingBuffer ничего не должно попасть
+    let history = bus.query_history(None, 10).await.unwrap();
+    assert_eq!(history.len(), 0);
+
+    // Должно быть в DLQ
+    let dlq = bus.dead_letters(10);
+    assert_eq!(dlq.len(), 1);
+    assert_eq!(dlq[0].reason, aethercore_core::bus::DeadLetterReason::Expired);
+}
+
+#[tokio::test]
+async fn test_masking_interceptor_case_insensitive_and_suffixes() {
+    use aethercore_core::bus::MaskingInterceptor;
+    use std::sync::Arc;
+
+    let mut bus = EventBus::in_memory();
+    bus.add_interceptor(Arc::new(MaskingInterceptor::default()));
+    let mut sub = bus.subscribe();
+
+    let msg = EventMessage::telemetry(
+        "auth.tokens",
+        "auth",
+        serde_json::json!({
+            "apiKey": "12345",
+            "refresh_token": "secret_refresh_val",
+            "client_secret": "my_client_secret",
+            "userPassword": "pass",
+            "public_id": "safe_val"
+        }),
+    );
+
+    bus.publish(msg).await.unwrap();
+
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(rec.payload.get("apiKey").unwrap(), "***");
+    assert_eq!(rec.payload.get("refresh_token").unwrap(), "***");
+    assert_eq!(rec.payload.get("client_secret").unwrap(), "***");
+    assert_eq!(rec.payload.get("userPassword").unwrap(), "***");
+    assert_eq!(rec.payload.get("public_id").unwrap(), "safe_val");
+}
+
+#[tokio::test]
+async fn test_sql_like_escaping() {
+    let db = Db::init_in_memory().await.unwrap();
+    let bus = EventBus::new(db);
+
+    let ev1 = EventMessage::reliable("sensor_temp.1", "core", serde_json::json!({"t": 20}));
+    let ev2 = EventMessage::reliable("sensor.temp.1", "core", serde_json::json!({"t": 25}));
+
+    bus.publish(ev1).await.unwrap();
+    bus.publish(ev2).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    // Запрос по префиксу "sensor_" не должен сопоставлять "sensor." (символ '_' экранирован)
+    let journal = bus.query_journal(Some("sensor_"), None, 10).await.unwrap();
+    assert_eq!(journal.len(), 1);
+    assert_eq!(journal[0].topic, "sensor_temp.1");
+}
+
+#[tokio::test]
+async fn test_invalid_topic_patterns_validation() {
+    let bus = EventBus::in_memory();
+
+    // Некорректные шаблоны топиков (пустые сегменты, '#' не на конце) игнорируются при подписке
+    let mut sub = bus.subscribe_topics(&["valid.topic", "a..b", ".start", "mid.#.end"]);
+
+    let ev = EventMessage::telemetry("valid.topic", "core", serde_json::json!({"v": 1}));
+    bus.publish(ev).await.unwrap();
+
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(rec.topic, "valid.topic");
+}
+
+
 
 
 

@@ -143,31 +143,31 @@ impl EventBus {
             while let Some(event) = queue_rx.dequeue().await {
                 let start = std::time::Instant::now();
 
-                // 0. Фиксируем активность в топологии
-                dispatch_topology.record_publish(&event.source, &event.topic);
-
-                // 1. Сохраняем в горячий L1 кольцевой буфер
-                dispatch_ring.push(event.clone());
-
-                // 2. Сохраняем Retained-состояние (только реально прошедшие валидацию и перехватчики события)
-                if event.retain {
-                    dispatch_retained.put(event.clone());
-                }
-
-                // 3. Если событие типа Reliable — ставим в очередь сохранения L2
-                if event.event_type == EventType::Reliable {
-                    if let Some(ref st) = dispatch_storage {
-                        if let Err(e) = st.persist(event.clone()).await {
-                            error!("Failed to enqueue reliable event to L2 storage: {}", e);
-                        }
-                    }
-                }
-
-                // 4. Проверяем TTL сообщения перед доставкой подписчикам
+                // 0. Проверяем TTL сообщения перед любой обработкой и доставкой
                 if event.is_expired() {
                     trace!("Event '{}' expired (TTL), moved to DLQ", event.topic);
                     dispatch_dlq.push(event.clone(), DeadLetterReason::Expired);
                     continue;
+                }
+
+                // 1. Фиксируем активность в топологии
+                dispatch_topology.record_publish(&event.source, &event.topic);
+
+                // 2. Сохраняем в горячий L1 кольцевой буфер
+                dispatch_ring.push(event.clone());
+
+                // 3. Сохраняем Retained-состояние
+                if event.retain {
+                    dispatch_retained.put(event.clone());
+                }
+
+                // 4. Если событие типа Reliable — ставим в очередь сохранения L2 (non-blocking)
+                if event.event_type == EventType::Reliable {
+                    if let Some(ref st) = dispatch_storage {
+                        if let Err(e) = st.try_persist(event.clone()) {
+                            error!("Failed to enqueue reliable event to L2 storage: {}", e);
+                        }
+                    }
                 }
 
                 // 5. Доставляем всем подходящим подписчикам через TopicRouter
@@ -211,23 +211,26 @@ impl EventBus {
     /// # }
     /// ```
     pub async fn publish(&self, mut event: EventMessage) -> Result<()> {
-        // Проверка на дубликат по business key или UUID
-        if self.dedup.is_duplicate_event_or_record(&event) {
+        // 1. Проверка на дубликат по business key или UUID (без фиксации)
+        if self.dedup.is_duplicate(&event) {
             trace!("Ignoring duplicate event {}", event.id);
             return Ok(());
         }
 
-        // Выполнение конвейера перехватчиков (pre-publish)
+        // 2. Выполнение конвейера перехватчиков (pre-publish)
         match self.interceptors.execute_pre(&mut event).await? {
             InterceptorAction::Continue => {}
             InterceptorAction::DropSilently => return Ok(()),
             InterceptorAction::Reject(err) => return Err(err),
         }
 
-        // Постановка во взвешенную очередь диспетчера
+        // 3. Постановка во взвешенную очередь диспетчера
         self.queue_tx.enqueue(event.clone()).await?;
 
-        // Выполнение конвейера перехватчиков (post-publish)
+        // 4. Фиксация ключей в дедупликаторе только после успешной постановки в очередь
+        self.dedup.record(&event);
+
+        // 5. Выполнение конвейера перехватчиков (post-publish)
         self.interceptors.execute_post(&event).await;
 
         Ok(())
@@ -364,8 +367,10 @@ impl EventBus {
         max_initial_retained: usize,
     ) -> (SubscriptionHandle, Vec<EventMessage>) {
         let pat = pattern.as_ref();
-        let retained_msgs = self.retained.get_matching(pat, max_initial_retained);
+        // 1. Сначала создаем подписку, чтобы не потерять сообщения, пришедшие во время выборки
         let sub = self.subscribe_topic(pat);
+        // 2. Затем считываем накопленный снимок
+        let retained_msgs = self.retained.get_matching(pat, max_initial_retained);
         (sub, retained_msgs)
     }
 
@@ -572,8 +577,9 @@ impl EventBus {
 
         // 2. Если в памяти меньше limit и подключена БД — дочитываем из L2
         if let Some(ref st) = self.storage {
-            let needed = (limit - ram_events.len()) as u32;
-            let db_records = st.query_recent(topic_filter, needed + ram_events.len() as u32).await?;
+            let needed = limit.saturating_sub(ram_events.len());
+            let query_limit = ((needed + ram_events.len()) * 2).min(1000) as u32;
+            let db_records = st.query_recent(topic_filter, query_limit).await?;
 
             let ram_ids: std::collections::HashSet<_> = ram_events.iter().map(|e| e.id).collect();
 
@@ -681,9 +687,10 @@ impl EventBus {
     /// Повторно отправить (re-drive) сбойное сообщение из DLQ обратно в шину
     pub async fn redrive_dead_letter(&self, id: Uuid) -> Result<()> {
         if let Some(mut dead_letter) = self.dlq.remove(id) {
-            // Обновляем идентификатор и временную метку для успешного прохождения дедупликатора
+            // Обновляем идентификатор, временную метку и сбрасываем TTL для успешного прохождения
             dead_letter.event.id = Uuid::new_v4();
             dead_letter.event.timestamp = chrono::Utc::now();
+            dead_letter.event.expires_at = None;
             self.publish(dead_letter.event).await
         } else {
             Err(AppError::not_found("Dead letter entry not found"))

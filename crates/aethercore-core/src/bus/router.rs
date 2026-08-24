@@ -165,6 +165,24 @@ pub struct TopicRouter {
     inner: Arc<RwLock<TopicRouterInner>>,
 }
 
+/// Валидация и разбиение шаблона топика на сегменты
+fn parse_topic_segments(pattern: &str) -> Option<Vec<&str>> {
+    let pat = pattern.trim();
+    if pat.is_empty() {
+        return None;
+    }
+    let segments: Vec<&str> = pat.split('.').collect();
+    if segments.iter().any(|s| s.is_empty()) {
+        return None;
+    }
+    for (i, &seg) in segments.iter().enumerate() {
+        if seg == "#" && i != segments.len() - 1 {
+            return None;
+        }
+    }
+    Some(segments)
+}
+
 impl TopicRouter {
     /// Создать новый экземпляр роутера топиков
     pub fn new() -> Self {
@@ -173,20 +191,34 @@ impl TopicRouter {
         }
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, TopicRouterInner> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, TopicRouterInner> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
     /// Привязать трекер топологии к роутеру
     pub fn with_topology(self, topology: BusTopologyTracker) -> Self {
-        self.inner.write().unwrap().topology = Some(topology);
+        self.write_guard().topology = Some(topology);
         self
     }
 
     /// Установить трекер топологии
     pub fn set_topology(&self, topology: BusTopologyTracker) {
-        self.inner.write().unwrap().topology = Some(topology);
+        self.write_guard().topology = Some(topology);
     }
 
     /// Установить отображаемое имя подписчика в топологии
     pub fn set_subscriber_name(&self, sub_id: SubscriptionId, name: String) {
-        let guard = self.inner.read().unwrap();
+        let guard = self.read_guard();
         if let Some(ref top) = guard.topology {
             top.set_subscriber_name(sub_id, name);
         }
@@ -214,15 +246,14 @@ impl TopicRouter {
 
         let mut patterns_vec = Vec::new();
         {
-            let mut guard = self.inner.write().unwrap();
+            let mut guard = self.write_guard();
             let mut patterns_set = HashSet::new();
 
             for pat in patterns {
-                let pat_str = pat.trim();
-                if !pat_str.is_empty() {
-                    patterns_set.insert(pat_str.to_string());
-                    patterns_vec.push(pat_str.to_string());
-                    let segments: Vec<&str> = pat_str.split('.').collect();
+                if let Some(segments) = parse_topic_segments(pat) {
+                    let pat_str = pat.trim().to_string();
+                    patterns_set.insert(pat_str.clone());
+                    patterns_vec.push(pat_str);
                     guard.trie.insert(&segments, sub_id);
                 }
             }
@@ -253,7 +284,7 @@ impl TopicRouter {
 
     /// Установить предикат контентной фильтрации для активной подписки
     pub fn set_filter(&self, sub_id: SubscriptionId, filter: Option<EventFilter>) {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
             entry.filter = filter;
         }
@@ -265,18 +296,15 @@ impl TopicRouter {
     /// * `sub_id` — Идентификатор активной подписки ([`SubscriptionId`]).
     /// * `pattern` — Добавляемый шаблон топика.
     pub fn add_topic(&self, sub_id: SubscriptionId, pattern: &str) {
-        let pat_str = pattern.trim();
-        if pat_str.is_empty() {
-            return;
-        }
-
-        let mut guard = self.inner.write().unwrap();
-        if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
-            if entry.patterns.insert(pat_str.to_string()) {
-                let segments: Vec<&str> = pat_str.split('.').collect();
-                guard.trie.insert(&segments, sub_id);
-                if let Some(ref top) = guard.topology {
-                    top.add_subscriber_pattern(sub_id, pat_str.to_string());
+        if let Some(segments) = parse_topic_segments(pattern) {
+            let pat_str = pattern.trim().to_string();
+            let mut guard = self.write_guard();
+            if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
+                if entry.patterns.insert(pat_str.clone()) {
+                    guard.trie.insert(&segments, sub_id);
+                    if let Some(ref top) = guard.topology {
+                        top.add_subscriber_pattern(sub_id, pat_str);
+                    }
                 }
             }
         }
@@ -288,18 +316,15 @@ impl TopicRouter {
     /// * `sub_id` — Идентификатор активной подписки ([`SubscriptionId`]).
     /// * `pattern` — Удаляемый шаблон топика.
     pub fn remove_topic(&self, sub_id: SubscriptionId, pattern: &str) {
-        let pat_str = pattern.trim();
-        if pat_str.is_empty() {
-            return;
-        }
-
-        let mut guard = self.inner.write().unwrap();
-        if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
-            if entry.patterns.remove(pat_str) {
-                let segments: Vec<&str> = pat_str.split('.').collect();
-                guard.trie.remove(&segments, sub_id);
-                if let Some(ref top) = guard.topology {
-                    top.remove_subscriber_pattern(sub_id, pat_str);
+        if let Some(segments) = parse_topic_segments(pattern) {
+            let pat_str = pattern.trim();
+            let mut guard = self.write_guard();
+            if let Some(entry) = guard.subscribers.get_mut(&sub_id) {
+                if entry.patterns.remove(pat_str) {
+                    guard.trie.remove(&segments, sub_id);
+                    if let Some(ref top) = guard.topology {
+                        top.remove_subscriber_pattern(sub_id, pat_str);
+                    }
                 }
             }
         }
@@ -310,11 +335,12 @@ impl TopicRouter {
     /// # Аргументы
     /// * `sub_id` — Идентификатор удаляемой подписки.
     pub fn unsubscribe(&self, sub_id: SubscriptionId) {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         if let Some(entry) = guard.subscribers.remove(&sub_id) {
             for pattern in &entry.patterns {
-                let segments: Vec<&str> = pattern.split('.').collect();
-                guard.trie.remove(&segments, sub_id);
+                if let Some(segments) = parse_topic_segments(pattern) {
+                    guard.trie.remove(&segments, sub_id);
+                }
             }
             if let Some(ref top) = guard.topology {
                 top.unregister_subscriber(sub_id);
@@ -330,46 +356,53 @@ impl TopicRouter {
     /// # Возвращаемое значение
     /// Результат доставки ([`DispatchResult`]) с числом доставленных и сброшенных сообщений.
     pub fn dispatch(&self, event: &EventMessage) -> DispatchResult {
-        let segments: Vec<&str> = event.topic.split('.').collect();
+        let segments: Vec<&str> = event.topic.split('.').filter(|s| !s.is_empty()).collect();
         let mut target_ids = HashSet::new();
 
-        {
-            let guard = self.inner.read().unwrap();
+        let (targets, topology_tracker) = {
+            let guard = self.read_guard();
             guard.trie.match_segments(&segments, &mut target_ids);
-        }
 
-        if target_ids.is_empty() {
-            return DispatchResult::default();
-        }
+            if target_ids.is_empty() {
+                return DispatchResult::default();
+            }
+
+            let top = guard.topology.clone();
+            let mut list = Vec::with_capacity(target_ids.len());
+            for id in target_ids {
+                if let Some(entry) = guard.subscribers.get(&id) {
+                    list.push((id, entry.tx.clone(), entry.filter.clone()));
+                }
+            }
+            (list, top)
+        };
 
         let mut delivered = 0;
         let mut dropped = 0;
-        let guard = self.inner.read().unwrap();
-        for id in target_ids {
-            if let Some(entry) = guard.subscribers.get(&id) {
-                // Проверяем предикат контентной фильтрации подписчика
-                if let Some(ref predicate) = entry.filter {
-                    if !predicate(event) {
-                        continue;
+
+        for (id, tx, filter) in targets {
+            // Проверяем предикат контентной фильтрации подписчика вне блокировки роутера
+            if let Some(ref predicate) = filter {
+                if !predicate(event) {
+                    continue;
+                }
+            }
+
+            // Пытаемся отправить без блокировки (non-blocking try_send)
+            match tx.try_send(event.clone()) {
+                Ok(_) => {
+                    delivered += 1;
+                    if let Some(ref top) = topology_tracker {
+                        top.record_delivery(id);
                     }
                 }
-
-                // Пытаемся отправить без блокировки (non-blocking try_send)
-                // Если буфер подписчика переполнен, защищаем сервер от блокировки
-                match entry.tx.try_send(event.clone()) {
-                    Ok(_) => {
-                        delivered += 1;
-                        if let Some(ref top) = guard.topology {
-                            top.record_delivery(id);
-                        }
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        dropped += 1;
-                        trace!("Subscriber queue full for sub_id {}, dropped event {}", id, event.id);
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        trace!("Subscriber queue closed for sub_id {}", id);
-                    }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    dropped += 1;
+                    trace!("Subscriber queue full for sub_id {}, dropped event {}", id, event.id);
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    dropped += 1;
+                    trace!("Subscriber queue closed for sub_id {}, counted as dropped", id);
                 }
             }
         }
@@ -379,7 +412,7 @@ impl TopicRouter {
 
     /// Получить текущее количество активных зарегистрированных подписчиков
     pub fn subscriber_count(&self) -> usize {
-        self.inner.read().unwrap().subscribers.len()
+        self.read_guard().subscribers.len()
     }
 }
 

@@ -29,6 +29,20 @@ impl EventRingBuffer {
         }
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, VecDeque<EventMessage>> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, VecDeque<EventMessage>> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
     /// Добавить событие в кольцевой буфер.
     ///
     /// Если буфер заполнен, самое старое событие вытесняется и возвращается (`Some(ev)`),
@@ -40,7 +54,7 @@ impl EventRingBuffer {
     /// # Возвращаемое значение
     /// Вытесненное старое событие (`Some(EventMessage)`), если буфер был заполнен.
     pub fn push(&self, event: EventMessage) -> Option<EventMessage> {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         let evicted = if guard.len() >= self.capacity {
             guard.pop_front()
         } else {
@@ -59,7 +73,7 @@ impl EventRingBuffer {
     /// # Возвращаемое значение
     /// Список событий в хронологическом порядке (от старых к новым).
     pub fn query(&self, topic_filter: Option<&str>, limit: usize) -> Vec<EventMessage> {
-        let guard = self.inner.read().unwrap();
+        let guard = self.read_guard();
         let limit = limit.max(1);
 
         let mut results = Vec::new();
@@ -90,7 +104,7 @@ impl EventRingBuffer {
 
     /// Текущее количество элементов в буфере
     pub fn len(&self) -> usize {
-        self.inner.read().unwrap().len()
+        self.read_guard().len()
     }
 
     /// Проверить, пуст ли буфер
@@ -100,6 +114,7 @@ impl EventRingBuffer {
 
     /// Очистить буфер памяти
     pub fn clear(&self) {
-        self.inner.write().unwrap().clear();
+        self.write_guard().clear();
     }
 }
+

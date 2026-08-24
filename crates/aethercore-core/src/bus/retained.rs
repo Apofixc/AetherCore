@@ -148,25 +148,39 @@ impl RetainedStore {
         }
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, RetainedInner> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, RetainedInner> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
     /// Сохранить последнее актуальное состояние топика
     pub fn put(&self, event: EventMessage) {
         trace!("Retaining message for topic '{}'", event.topic);
-        self.inner.write().unwrap().put(event);
+        self.write_guard().put(event);
     }
 
     /// Удалить сохраненное состояние для топика
     pub fn remove(&self, topic: &str) -> Option<EventMessage> {
-        self.inner.write().unwrap().remove(topic)
+        self.write_guard().remove(topic)
     }
 
     /// Запросить сохраненные сообщения, подходящие под указанный топик или маску
     pub fn get_matching(&self, pattern: &str, limit: usize) -> Vec<EventMessage> {
-        self.inner.read().unwrap().get_matching(pattern, limit)
+        self.read_guard().get_matching(pattern, limit)
     }
 
     /// Текущее количество сохраненных состояний топиков
     pub fn len(&self) -> usize {
-        self.inner.read().unwrap().records.len()
+        self.read_guard().records.len()
     }
 
     /// Проверить, пусто ли хранилище
@@ -176,8 +190,9 @@ impl RetainedStore {
 
     /// Очистить кэш
     pub fn clear(&self) {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.write_guard();
         guard.records.clear();
         guard.lru_queue.clear();
     }
 }
+
