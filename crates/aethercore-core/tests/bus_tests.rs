@@ -529,3 +529,125 @@ async fn test_typed_pub_sub() {
     assert_eq!(received, payload);
 }
 
+#[tokio::test]
+async fn test_l2_eviction_double_persist_safety() {
+    let db = Db::init_in_memory().await.unwrap();
+    // Инициализируем шину с малым размером кольцевого буфера L1 (16 записей)
+    let bus = EventBus::with_options(Some(db.clone()), 16);
+
+    // Публикуем 25 надежных событий (первые 9 будут вытеснены из L1)
+    for i in 0..25 {
+        let msg = EventMessage::reliable(
+            "test.reliable.safety",
+            "tester",
+            serde_json::json!({"seq": i}),
+        );
+        bus.publish(msg).await.unwrap();
+    }
+
+    // Даем микропаузу воркеру на батч-сброс в SQLite
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // В журнале должно быть ровно 25 записей без отката транзакций
+    let journal = bus.query_journal(Some("test.reliable.safety"), None, 100).await.unwrap();
+    assert_eq!(journal.len(), 25);
+}
+
+#[tokio::test]
+async fn test_query_history_chronological_ordering() {
+    let db = Db::init_in_memory().await.unwrap();
+    let bus = EventBus::with_options(Some(db.clone()), 16);
+
+    for i in 0..25 {
+        let msg = EventMessage::reliable(
+            "test.history.order",
+            "tester",
+            serde_json::json!({"seq": i}),
+        );
+        bus.publish(msg).await.unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Запрашиваем 20 последних событий
+    let history = bus.query_history(Some("test.history.order"), 20).await.unwrap();
+    assert_eq!(history.len(), 20);
+
+    let seqs: Vec<i64> = history.iter().map(|e| e.payload.get("seq").unwrap().as_i64().unwrap()).collect();
+    assert_eq!(seqs[0], 5, "Oldest element in 20-window should be seq 5");
+    assert_eq!(seqs[19], 24, "Newest element should be seq 24");
+}
+
+#[tokio::test]
+async fn test_dedup_no_poisoning_on_uuid_collision() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe();
+
+    let shared_uuid = uuid::Uuid::new_v4();
+
+    // 1. Сообщение 1: shared_uuid + key_A
+    let mut msg1 = EventMessage::telemetry("topic.dedup.safe", "tester", serde_json::json!({"v": 1}));
+    msg1.id = shared_uuid;
+    msg1.dedup_key = Some("key_A".to_string());
+    bus.publish(msg1).await.unwrap();
+
+    let rec1 = sub.recv().await.unwrap();
+    assert_eq!(rec1.payload.get("v").unwrap(), 1);
+
+    // 2. Сообщение 2: shared_uuid + key_B (должно быть отклонено по UUID)
+    let mut msg2 = EventMessage::telemetry("topic.dedup.safe", "tester", serde_json::json!({"v": 2}));
+    msg2.id = shared_uuid;
+    msg2.dedup_key = Some("key_B".to_string());
+    bus.publish(msg2).await.unwrap();
+
+    // 3. Сообщение 3: new_uuid + key_B (должно успешно дойти!)
+    let mut msg3 = EventMessage::telemetry("topic.dedup.safe", "tester", serde_json::json!({"v": 3}));
+    msg3.id = uuid::Uuid::new_v4();
+    msg3.dedup_key = Some("key_B".to_string());
+    bus.publish(msg3).await.unwrap();
+
+    let rec3 = sub.recv().await.unwrap();
+    assert_eq!(rec3.payload.get("v").unwrap(), 3);
+}
+
+#[tokio::test]
+async fn test_expired_event_routed_to_dlq() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("expired.test");
+
+    let mut expired_msg = EventMessage::telemetry("expired.test", "tester", serde_json::json!({"state": "too_old"}));
+    expired_msg.expires_at = Some(chrono::Utc::now() - chrono::Duration::seconds(5));
+
+    bus.publish(expired_msg).await.unwrap();
+
+    // Подписчик не должен получить просроченное сообщение
+    tokio::select! {
+        _ = sub.recv() => panic!("Expired event should not be delivered!"),
+        _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+    }
+
+    // Сообщение должно быть зафиксировано в DLQ
+    let dls = bus.dead_letters(10);
+    assert_eq!(dls.len(), 1);
+    assert_eq!(dls[0].event.topic, "expired.test");
+    assert_eq!(dls[0].reason, aethercore_core::bus::DeadLetterReason::Expired);
+}
+
+#[tokio::test]
+async fn test_subscriber_dropped_metrics() {
+    let bus = EventBus::in_memory();
+    let _sub = bus.subscribe(); // Буфер 1024, не вычитываем
+
+    // Отправляем 1100 сообщений
+    for i in 0..1100 {
+        let msg = EventMessage::telemetry("flood.test", "tester", serde_json::json!({"i": i}));
+        bus.publish(msg).await.unwrap();
+    }
+
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let stats = bus.stats();
+    assert!(stats.dropped_total > 0, "Dropped total should be > 0, got {}", stats.dropped_total);
+}
+
+

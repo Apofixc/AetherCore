@@ -183,6 +183,79 @@ impl EventStorage {
         Ok(records)
     }
 
+    /// Запросить самые свежие исторические записи (хвост истории)
+    ///
+    /// # Аргументы
+    /// * `topic_filter` — Опциональный префикс темы.
+    /// * `limit` — Максимальное число возвращаемых записей.
+    ///
+    /// # Возвращаемое значение
+    /// Список последних записей журнала в хронологическом порядке (от старых к новым).
+    pub async fn query_recent(
+        &self,
+        topic_filter: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<ReliableEventRecord>> {
+        let limit = limit.min(1000).max(1) as i64;
+
+        let query_sql = match topic_filter {
+            Some(prefix) if !prefix.is_empty() => {
+                let pattern = format!("{}%", prefix);
+                sqlx::query_as::<_, (i64, String, String, String, String, String)>(
+                    r#"
+                    SELECT id, event_uuid, topic, source, payload_json, created_at
+                    FROM event_journal
+                    WHERE topic LIKE ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    "#,
+                )
+                .bind(pattern)
+                .bind(limit)
+                .fetch_all(self.db.reader())
+                .await
+            }
+            _ => {
+                sqlx::query_as::<_, (i64, String, String, String, String, String)>(
+                    r#"
+                    SELECT id, event_uuid, topic, source, payload_json, created_at
+                    FROM event_journal
+                    ORDER BY id DESC
+                    LIMIT ?
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(self.db.reader())
+                .await
+            }
+        };
+
+        let rows = query_sql.map_err(|e| {
+            AppError::database(format!("Failed to query recent events from journal: {}", e))
+        })?;
+
+        let mut records = Vec::with_capacity(rows.len());
+        for (id, uuid_str, topic, source, payload_json, created_at_str) in rows {
+            let event_uuid = uuid::Uuid::parse_str(&uuid_str).unwrap_or_default();
+            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            records.push(ReliableEventRecord {
+                id,
+                event_uuid,
+                topic,
+                source,
+                payload_json,
+                created_at,
+            });
+        }
+
+        // Переворачиваем в хронологический порядок
+        records.reverse();
+        Ok(records)
+    }
+
     /// Ручная ротация и очистка устаревших записей журнала
     ///
     /// # Аргументы
@@ -260,7 +333,7 @@ async fn flush_batch(db: &Db, batch: &[EventMessage]) -> Result<()> {
         let payload_str = serde_json::to_string(&event.payload).unwrap_or_else(|_| "{}".to_string());
         sqlx::query(
             r#"
-            INSERT INTO event_journal (event_uuid, topic, source, payload_json, created_at)
+            INSERT OR IGNORE INTO event_journal (event_uuid, topic, source, payload_json, created_at)
             VALUES (?, ?, ?, ?, ?)
             "#,
         )

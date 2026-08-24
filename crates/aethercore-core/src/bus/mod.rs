@@ -27,7 +27,7 @@ pub use interceptor::{EventInterceptor, InterceptorAction, InterceptorPipeline, 
 pub use queue::{create_priority_queue, PriorityQueueReceiver, PriorityQueueSender};
 pub use retained::{RetainedStore, DEFAULT_RETAINED_CAPACITY};
 pub use ring::EventRingBuffer;
-pub use router::{EventFilter, SubscriptionHandle, SubscriptionId, TopicRouter};
+pub use router::{DispatchResult, EventFilter, SubscriptionHandle, SubscriptionId, TopicRouter};
 pub use stats::{BusMetrics, BusStats};
 pub use storage::EventStorage;
 pub use topology::{BusTopologySnapshot, BusTopologyTracker, TopologyEdge, TopologyNode, TopologyNodeType};
@@ -136,6 +136,7 @@ impl EventBus {
         let dispatch_storage = storage.clone();
         let dispatch_metrics = metrics.clone();
         let dispatch_topology = topology.clone();
+        let dispatch_dlq = dlq.clone();
 
         tokio::spawn(async move {
             debug!("EventBus weighted fair queuing dispatcher started");
@@ -146,18 +147,9 @@ impl EventBus {
                 dispatch_topology.record_publish(&event.source, &event.topic);
 
                 // 1. Сохраняем в горячий L1 кольцевой буфер
-                let evicted = dispatch_ring.push(event.clone());
+                dispatch_ring.push(event.clone());
 
-                // 2. Если вытеснено надежное событие и есть L2 хранилище — сбрасываем в L2 Spillover
-                if let Some(evicted_msg) = evicted {
-                    if evicted_msg.event_type == EventType::Reliable {
-                        if let Some(ref st) = dispatch_storage {
-                            let _ = st.persist(evicted_msg).await;
-                        }
-                    }
-                }
-
-                // 3. Если событие типа Reliable — сразу ставим в очередь сохранения L2
+                // 2. Если событие типа Reliable — ставим в очередь сохранения L2
                 if event.event_type == EventType::Reliable {
                     if let Some(ref st) = dispatch_storage {
                         if let Err(e) = st.persist(event.clone()).await {
@@ -166,11 +158,22 @@ impl EventBus {
                     }
                 }
 
+                // 3. Проверяем TTL сообщения перед доставкой подписчикам
+                if event.is_expired() {
+                    trace!("Event '{}' expired (TTL), moved to DLQ", event.topic);
+                    dispatch_dlq.push(event.clone(), DeadLetterReason::Expired);
+                    continue;
+                }
+
                 // 4. Доставляем всем подходящим подписчикам через TopicRouter
-                let delivered = dispatch_router.dispatch(&event);
-                trace!("Dispatched event '{}' to {} subscribers", event.topic, delivered);
+                let res = dispatch_router.dispatch(&event);
+                trace!(
+                    "Dispatched event '{}' to {} subscribers (dropped {})",
+                    event.topic, res.delivered, res.dropped
+                );
 
                 dispatch_metrics.0.record_published(event.priority);
+                dispatch_metrics.0.record_dropped_count(res.dropped);
                 dispatch_metrics.0.record_dispatch_latency(start.elapsed());
             }
             debug!("EventBus dispatcher terminated");
@@ -546,10 +549,15 @@ impl EventBus {
         // 2. Если в памяти меньше limit и подключена БД — дочитываем из L2
         if let Some(ref st) = self.storage {
             let needed = (limit - ram_events.len()) as u32;
-            let db_records = st.query(topic_filter, None, needed).await?;
+            let db_records = st.query_recent(topic_filter, needed + ram_events.len() as u32).await?;
 
-            let mut combined = Vec::with_capacity(ram_events.len() + db_records.len());
+            let ram_ids: std::collections::HashSet<_> = ram_events.iter().map(|e| e.id).collect();
+
+            let mut db_events = Vec::new();
             for rec in db_records {
+                if ram_ids.contains(&rec.event_uuid) {
+                    continue; // Пропускаем дубликат, который еще присутствует в L1 RAM
+                }
                 let payload = serde_json::from_str(&rec.payload_json).unwrap_or(serde_json::Value::Null);
                 let msg = EventMessage {
                     id: rec.event_uuid,
@@ -566,8 +574,13 @@ impl EventBus {
                     correlation_id: None,
                     reply_to: None,
                 };
-                combined.push(msg);
+                db_events.push(msg);
             }
+
+            // Берем только недостающее количество с конца db_events
+            let take_db_count = limit.saturating_sub(ram_events.len());
+            let db_skip = db_events.len().saturating_sub(take_db_count);
+            let mut combined: Vec<EventMessage> = db_events.into_iter().skip(db_skip).collect();
             combined.extend(ram_events);
             return Ok(combined);
         }

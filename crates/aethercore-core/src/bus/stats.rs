@@ -67,6 +67,13 @@ impl MetricsCollector {
         self.dropped_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Учесть заданное количество сброшенных сообщений
+    pub fn record_dropped_count(&self, count: usize) {
+        if count > 0 {
+            self.dropped_total.fetch_add(count as u64, Ordering::Relaxed);
+        }
+    }
+
     /// Учесть задержку диспетчеризации события
     pub fn record_dispatch_latency(&self, duration: Duration) {
         let us = duration.as_micros() as u64;

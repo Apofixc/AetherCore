@@ -41,11 +41,7 @@ impl DedupInner {
         }
     }
 
-    fn check_and_insert(&mut self, key: DedupKey, now: Instant) -> bool {
-        if self.records.contains_key(&key) {
-            return true;
-        }
-
+    fn insert_key(&mut self, key: DedupKey, now: Instant) {
         // Если емкость исчерпана — вытесняем самый старый элемент
         if self.queue.len() >= self.capacity {
             if let Some((old_key, _)) = self.queue.pop_front() {
@@ -55,7 +51,6 @@ impl DedupInner {
 
         self.records.insert(key.clone(), now);
         self.queue.push_back((key, now));
-        false
     }
 }
 
@@ -94,15 +89,24 @@ impl EventDeduplicator {
         let mut guard = self.inner.write().unwrap();
         guard.clean_expired(now);
 
-        // 1. Проверяем бизнес-ключ дедупликации (если задан)
-        if let Some(ref custom_key) = event.dedup_key {
-            if guard.check_and_insert(DedupKey::Custom(custom_key.clone()), now) {
-                return true;
-            }
+        // Фаза 1: Проверка на дубликат без модификации состояния
+        let custom_dup = event
+            .dedup_key
+            .as_ref()
+            .map_or(false, |k| guard.records.contains_key(&DedupKey::Custom(k.clone())));
+        let uuid_dup = guard.records.contains_key(&DedupKey::Uuid(event.id));
+
+        if custom_dup || uuid_dup {
+            return true;
         }
 
-        // 2. Проверяем UUID события
-        guard.check_and_insert(DedupKey::Uuid(event.id), now)
+        // Фаза 2: Фиксация новых ключей в скользящем окне
+        if let Some(ref custom_key) = event.dedup_key {
+            guard.insert_key(DedupKey::Custom(custom_key.clone()), now);
+        }
+        guard.insert_key(DedupKey::Uuid(event.id), now);
+
+        false
     }
 
     /// Проверить, является ли событие дубликатом по UUID, и зафиксировать его
@@ -110,7 +114,14 @@ impl EventDeduplicator {
         let now = Instant::now();
         let mut guard = self.inner.write().unwrap();
         guard.clean_expired(now);
-        guard.check_and_insert(DedupKey::Uuid(*id), now)
+
+        let key = DedupKey::Uuid(*id);
+        if guard.records.contains_key(&key) {
+            return true;
+        }
+
+        guard.insert_key(key, now);
+        false
     }
 
     /// Текущее количество активных записей в дедупликаторе

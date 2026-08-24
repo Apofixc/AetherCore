@@ -150,6 +150,15 @@ struct TopicRouterInner {
     topology: Option<BusTopologyTracker>,
 }
 
+/// Результат маршрутизации и доставки события подписчикам
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DispatchResult {
+    /// Количество успешно доставленных сообщений подписчикам
+    pub delivered: usize,
+    /// Количество сброшенных сообщений из-за переполнения очередей подписчиков
+    pub dropped: usize,
+}
+
 /// Маршрутизатор топиков событий платформы
 #[derive(Clone, Default, Debug)]
 pub struct TopicRouter {
@@ -319,8 +328,8 @@ impl TopicRouter {
     /// * `event` — Доставляемое событие платформы ([`EventMessage`]).
     ///
     /// # Возвращаемое значение
-    /// Количество подписчиков, в чьи очереди было успешно помещено событие.
-    pub fn dispatch(&self, event: &EventMessage) -> usize {
+    /// Результат доставки ([`DispatchResult`]) с числом доставленных и сброшенных сообщений.
+    pub fn dispatch(&self, event: &EventMessage) -> DispatchResult {
         let segments: Vec<&str> = event.topic.split('.').collect();
         let mut target_ids = HashSet::new();
 
@@ -330,10 +339,11 @@ impl TopicRouter {
         }
 
         if target_ids.is_empty() {
-            return 0;
+            return DispatchResult::default();
         }
 
         let mut delivered = 0;
+        let mut dropped = 0;
         let guard = self.inner.read().unwrap();
         for id in target_ids {
             if let Some(entry) = guard.subscribers.get(&id) {
@@ -354,6 +364,7 @@ impl TopicRouter {
                         }
                     }
                     Err(mpsc::error::TrySendError::Full(_)) => {
+                        dropped += 1;
                         trace!("Subscriber queue full for sub_id {}, dropped event {}", id, event.id);
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -363,7 +374,7 @@ impl TopicRouter {
             }
         }
 
-        delivered
+        DispatchResult { delivered, dropped }
     }
 
     /// Получить текущее количество активных зарегистрированных подписчиков
