@@ -136,6 +136,7 @@ impl EventBus {
         let dispatch_metrics = metrics.clone();
         let dispatch_topology = topology.clone();
         let dispatch_dlq = dlq.clone();
+        let dispatch_retained = retained.clone();
 
         tokio::spawn(async move {
             debug!("EventBus weighted fair queuing dispatcher started");
@@ -148,7 +149,12 @@ impl EventBus {
                 // 1. Сохраняем в горячий L1 кольцевой буфер
                 dispatch_ring.push(event.clone());
 
-                // 2. Если событие типа Reliable — ставим в очередь сохранения L2
+                // 2. Сохраняем Retained-состояние (только реально прошедшие валидацию и перехватчики события)
+                if event.retain {
+                    dispatch_retained.put(event.clone());
+                }
+
+                // 3. Если событие типа Reliable — ставим в очередь сохранения L2
                 if event.event_type == EventType::Reliable {
                     if let Some(ref st) = dispatch_storage {
                         if let Err(e) = st.persist(event.clone()).await {
@@ -157,14 +163,14 @@ impl EventBus {
                     }
                 }
 
-                // 3. Проверяем TTL сообщения перед доставкой подписчикам
+                // 4. Проверяем TTL сообщения перед доставкой подписчикам
                 if event.is_expired() {
                     trace!("Event '{}' expired (TTL), moved to DLQ", event.topic);
                     dispatch_dlq.push(event.clone(), DeadLetterReason::Expired);
                     continue;
                 }
 
-                // 4. Доставляем всем подходящим подписчикам через TopicRouter
+                // 5. Доставляем всем подходящим подписчикам через TopicRouter
                 let res = dispatch_router.dispatch(&event);
                 trace!(
                     "Dispatched event '{}' to {} subscribers (dropped {})",
@@ -183,8 +189,8 @@ impl EventBus {
 
     /// Опубликовать событие в шину
     ///
-    /// Проверяет дедупликацию по `dedup_key` и UUID, обновляет кэш Retained-сообщений (если `retain: true`),
-    /// выполняет перехватчики `pre_publish` и ставит сообщение во взвешенную очередь диспетчера.
+    /// Проверяет дедупликацию по `dedup_key` и UUID, выполняет перехватчики `pre_publish`
+    /// и ставит сообщение во взвешенную очередь диспетчера (с сохранением Retained в диспетчере).
     ///
     /// # Аргументы
     /// * `event` — Публикуемое событие платформы ([`EventMessage`]).
@@ -209,11 +215,6 @@ impl EventBus {
         if self.dedup.is_duplicate_event_or_record(&event) {
             trace!("Ignoring duplicate event {}", event.id);
             return Ok(());
-        }
-
-        // Сохранение Retained-состояния при наличии флага
-        if event.retain {
-            self.retained.put(event.clone());
         }
 
         // Выполнение конвейера перехватчиков (pre-publish)

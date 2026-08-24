@@ -840,6 +840,40 @@ async fn test_topology_publisher_capping() {
     assert!(snap.publishers_count <= 1000, "Publishers count should be capped at 1000");
 }
 
+#[tokio::test]
+async fn test_retained_not_saved_if_interceptor_drops() {
+    use aethercore_core::bus::{EventInterceptor, InterceptorAction};
+    use aethercore_common::error::Result;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    struct DropAllInterceptor;
+    #[async_trait]
+    impl EventInterceptor for DropAllInterceptor {
+        async fn pre_publish(&self, _event: &mut EventMessage) -> Result<InterceptorAction> {
+            Ok(InterceptorAction::DropSilently)
+        }
+    }
+
+    let mut bus = EventBus::in_memory();
+    bus.add_interceptor(Arc::new(DropAllInterceptor));
+
+    let msg = EventMessage::telemetry(
+        "secret.state",
+        "agent",
+        serde_json::json!({"secret_data": 123}),
+    )
+    .with_retain(true);
+
+    bus.publish(msg).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // В RetainedStore не должно сохраниться фантомное отброшенное событие
+    let retained = bus.get_retained("secret.state", 10);
+    assert_eq!(retained.len(), 0, "Dropped event must not be retained in cache");
+}
+
 
 
 
