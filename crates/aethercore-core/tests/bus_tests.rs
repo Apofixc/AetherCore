@@ -1078,6 +1078,32 @@ async fn test_concurrent_publish_dedup_no_toctou() {
     }
 }
 
+#[tokio::test]
+async fn test_retained_out_of_order_timestamp_protection() {
+    let bus = EventBus::in_memory();
+
+    let now = chrono::Utc::now();
+    let mut ev_newer = EventMessage::telemetry("state.sensor", "core", serde_json::json!({"val": "new"})).with_retain(true);
+    ev_newer.timestamp = now;
+
+    let mut ev_older = EventMessage::telemetry("state.sensor", "core", serde_json::json!({"val": "old"})).with_retain(true);
+    ev_older.timestamp = now - chrono::Duration::seconds(10);
+
+    // Публикуем сначала более новое (например, Critical приоритет)
+    bus.publish(ev_newer.clone()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    // Затем публикуем более старое событие (например, задержавшееся в очереди Low)
+    bus.publish(ev_older).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(30)).await;
+
+    // В кэше должно остаться более новое состояние
+    let retained = bus.get_retained("state.sensor", 10);
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].payload.get("val").unwrap(), "new");
+}
+
+
 
 
 

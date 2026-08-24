@@ -106,7 +106,10 @@ impl PriorityQueueReceiver {
             self.low_quota = LOW_WEIGHT;
         }
 
-        // 1. Critical
+        // 1. Critical (WFQ квота 8 сообщений за раунд)
+        // ponytail: если Critical поступает посреди раунда после исчерпания/пустоты квоты,
+        // максимальное ожидание ограничено остатком квот (до 7 сообщений: 4 High + 2 Normal + 1 Low),
+        // что предотвращает голодание (starvation) низкоприоритетных очередей.
         if self.critical_quota > 0 {
             match self.critical_rx.try_recv() {
                 Ok(msg) => {

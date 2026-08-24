@@ -38,7 +38,17 @@ impl RetainedInner {
             return;
         }
 
-        if self.records.contains_key(&topic) {
+        if let Some(existing) = self.records.get(&topic) {
+            // Защита от переупорядочивания при разной задержке приоритетов (WFQ):
+            // обновляем топик только если новое событие не старше уже сохраненного
+            if event.timestamp < existing.timestamp {
+                trace!(
+                    "Ignoring out-of-order retained update for topic '{}' (existing: {}, incoming: {})",
+                    topic, existing.timestamp, event.timestamp
+                );
+                return;
+            }
+
             // Перемещаем топик в хвост очереди LRU
             self.lru_queue.retain(|t| t != &topic);
             self.lru_queue.push_back(topic.clone());
