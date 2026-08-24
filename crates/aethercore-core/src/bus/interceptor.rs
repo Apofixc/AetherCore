@@ -88,16 +88,31 @@ impl Default for MaskingInterceptor {
     }
 }
 
-#[async_trait]
-impl EventInterceptor for MaskingInterceptor {
-    async fn pre_publish(&self, event: &mut EventMessage) -> Result<InterceptorAction> {
-        if let serde_json::Value::Object(map) = &mut event.payload {
-            for key in &self.masked_keys {
-                if map.contains_key(*key) {
-                    map.insert((*key).to_string(), serde_json::json!("***"));
+/// Рекурсивное маскирование конфиденциальных ключей во вложенных структурах JSON
+fn mask_json_value(val: &mut serde_json::Value, masked_keys: &[&str]) {
+    match val {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map.iter_mut() {
+                if masked_keys.contains(&k.as_str()) {
+                    *v = serde_json::json!("***");
+                } else {
+                    mask_json_value(v, masked_keys);
                 }
             }
         }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                mask_json_value(item, masked_keys);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[async_trait]
+impl EventInterceptor for MaskingInterceptor {
+    async fn pre_publish(&self, event: &mut EventMessage) -> Result<InterceptorAction> {
+        mask_json_value(&mut event.payload, &self.masked_keys);
         Ok(InterceptorAction::Continue)
     }
 }

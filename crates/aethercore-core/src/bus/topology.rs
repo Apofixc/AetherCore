@@ -113,6 +113,11 @@ impl BusTopologyTracker {
 
     /// Зафиксировать публикацию сообщения от указанного источника в топик
     pub fn record_publish(&self, source: &str, topic: &str) {
+        // Игнорируем временные системные RPC-ответы для предотвращения засорения топологии
+        if topic.starts_with("_reply.") {
+            return;
+        }
+
         let now = Utc::now();
         if let Ok(mut inner) = self.inner.write() {
             // 1. Обновление статистики топика
@@ -139,12 +144,18 @@ impl BusTopologyTracker {
     pub fn register_subscriber(&self, sub_id: SubscriptionId, name: Option<String>, patterns: &[String]) {
         let now = Utc::now();
         let display_name = name.unwrap_or_else(|| format!("sub#{}", sub_id));
+        let filtered_patterns: Vec<String> = patterns
+            .iter()
+            .filter(|p| !p.starts_with("_reply."))
+            .cloned()
+            .collect();
+
         if let Ok(mut inner) = self.inner.write() {
             inner.subscribers.insert(
                 sub_id,
                 SubscriberState {
                     name: display_name,
-                    patterns: patterns.to_vec(),
+                    patterns: filtered_patterns,
                     received_count: 0,
                     last_active: now,
                 },
@@ -163,6 +174,9 @@ impl BusTopologyTracker {
 
     /// Добавить шаблон топика к зарегистрированной подписке
     pub fn add_subscriber_pattern(&self, sub_id: SubscriptionId, pattern: String) {
+        if pattern.starts_with("_reply.") {
+            return;
+        }
         if let Ok(mut inner) = self.inner.write() {
             if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
                 if !sub.patterns.contains(&pattern) {

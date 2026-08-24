@@ -650,4 +650,95 @@ async fn test_subscriber_dropped_metrics() {
     assert!(stats.dropped_total > 0, "Dropped total should be > 0, got {}", stats.dropped_total);
 }
 
+#[tokio::test]
+async fn test_topology_ignores_rpc_reply_topics() {
+    let bus = EventBus::in_memory();
+
+    let bus_clone = bus.clone();
+    let mut srv = bus_clone.subscribe_topic("echo.service");
+    tokio::spawn(async move {
+        while let Some(req) = srv.recv().await {
+            let _ = bus_clone.reply_to(&req, serde_json::json!({"ack": true})).await;
+        }
+    });
+
+    for i in 0..5 {
+        let _ = bus
+            .request("echo.service", serde_json::json!({"req": i}), Duration::from_millis(50))
+            .await;
+    }
+
+    tokio::time::sleep(Duration::from_millis(60)).await;
+
+    let topo = bus.topology();
+    let reply_nodes: Vec<_> = topo.nodes.iter().filter(|n| n.label.starts_with("_reply.")).collect();
+    assert_eq!(reply_nodes.len(), 0, "Topology should not contain ephemeral _reply. nodes");
+}
+
+#[tokio::test]
+async fn test_nested_masking_interceptor() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe();
+
+    let msg = EventMessage::telemetry(
+        "auth.nested",
+        "auth",
+        serde_json::json!({
+            "credentials": {
+                "password": "super_secret_password",
+                "api_key": "raw_secret_api_key"
+            },
+            "array_items": [
+                {"token": "jwt_secret_token", "name": "service1"}
+            ]
+        }),
+    );
+
+    bus.publish(msg).await.unwrap();
+
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(
+        rec.payload.pointer("/credentials/password").unwrap(),
+        "***"
+    );
+    assert_eq!(
+        rec.payload.pointer("/credentials/api_key").unwrap(),
+        "***"
+    );
+    assert_eq!(
+        rec.payload.pointer("/array_items/0/token").unwrap(),
+        "***"
+    );
+    assert_eq!(
+        rec.payload.pointer("/array_items/0/name").unwrap(),
+        "service1"
+    );
+}
+
+#[tokio::test]
+async fn test_retained_true_lru_eviction() {
+    use aethercore_core::bus::RetainedStore;
+    let store = RetainedStore::new(3);
+
+    // Добавляем A, B, C
+    store.put(EventMessage::telemetry("topic.A", "t", serde_json::json!({"v": 1})).with_retain(true));
+    store.put(EventMessage::telemetry("topic.B", "t", serde_json::json!({"v": 1})).with_retain(true));
+    store.put(EventMessage::telemetry("topic.C", "t", serde_json::json!({"v": 1})).with_retain(true));
+
+    // Обновляем A и B -> теперь C становится самым старым в LRU
+    store.put(EventMessage::telemetry("topic.A", "t", serde_json::json!({"v": 2})).with_retain(true));
+    store.put(EventMessage::telemetry("topic.B", "t", serde_json::json!({"v": 2})).with_retain(true));
+
+    // Добавляем D -> должен быть вытеснен C, а не A!
+    store.put(EventMessage::telemetry("topic.D", "t", serde_json::json!({"v": 1})).with_retain(true));
+
+    assert!(!store.get_matching("topic.A", 1).is_empty(), "Topic A should be retained");
+    assert!(!store.get_matching("topic.B", 1).is_empty(), "Topic B should be retained");
+    assert!(store.get_matching("topic.C", 1).is_empty(), "Topic C should have been evicted by LRU");
+    assert!(!store.get_matching("topic.D", 1).is_empty(), "Topic D should be retained");
+}
+
+
+
+
 

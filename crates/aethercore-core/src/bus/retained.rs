@@ -25,7 +25,7 @@ impl RetainedInner {
         Self {
             records: HashMap::with_capacity(capacity.min(256)),
             lru_queue: VecDeque::with_capacity(capacity.min(256)),
-            capacity: capacity.max(16),
+            capacity: capacity.max(1),
         }
     }
 
@@ -38,7 +38,11 @@ impl RetainedInner {
             return;
         }
 
-        if !self.records.contains_key(&topic) {
+        if self.records.contains_key(&topic) {
+            // Перемещаем топик в хвост очереди LRU
+            self.lru_queue.retain(|t| t != &topic);
+            self.lru_queue.push_back(topic.clone());
+        } else {
             // Если емкость исчерпана — вытесняем самый старый топик
             while self.records.len() >= self.capacity {
                 if let Some(old_topic) = self.lru_queue.pop_front() {

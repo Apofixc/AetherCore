@@ -426,8 +426,17 @@ impl SubscriptionHandle {
     /// Пропускает события не чаще одного раза в `min_interval` для каждого уникального топика,
     /// защищая подписчика от перегрузки при высокочастотных всплесках телеметрии.
     pub async fn recv_throttled(&mut self, min_interval: std::time::Duration) -> Option<EventMessage> {
+        const MAX_THROTTLE_ENTRIES: usize = 1024;
+
         while let Some(msg) = self.rx.recv().await {
             let now = std::time::Instant::now();
+
+            // Защита от неограниченного роста памяти: очистка устаревших топиков
+            if self.throttle_state.len() >= MAX_THROTTLE_ENTRIES {
+                self.throttle_state
+                    .retain(|_, last_time| now.duration_since(*last_time) < min_interval);
+            }
+
             let should_emit = match self.throttle_state.get(&msg.topic) {
                 Some(&last_time) => now.duration_since(last_time) >= min_interval,
                 None => true,
