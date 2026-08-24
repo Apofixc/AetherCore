@@ -86,15 +86,6 @@ impl EventBus {
     /// Инициализировать полностью In-Memory шину событий без дискового хранилища L2
     ///
     /// Идеально подходит для тестов, легковесных микросервисов и изолированных окружений.
-    ///
-    /// # Примеры
-    /// ```rust
-    /// use aethercore_core::bus::EventBus;
-    ///
-    /// # async fn run() {
-    /// let event_bus = EventBus::in_memory();
-    /// # }
-    /// ```
     pub fn in_memory() -> Self {
         Self::with_options(None, ring::DEFAULT_RING_CAPACITY)
     }
@@ -105,6 +96,29 @@ impl EventBus {
     /// * `db` — Опциональный пул базы данных для L2 хранилища.
     /// * `ring_capacity` — Емкость горячего L1 кольцевого буфера в оперативной памяти (в количестве сообщений).
     pub fn with_options(db: Option<Db>, ring_capacity: usize) -> Self {
+        Self::with_full_config(db, None, ring_capacity)
+    }
+
+    /// Инициализировать шину событий с пользовательской конфигурацией персистентного хранилища L2
+    ///
+    /// # Аргументы
+    /// * `db` — Пул базы данных SQLite.
+    /// * `storage_config` — Настройки емкости журнала и возраста автоочистки ([`storage::EventStorageConfig`]).
+    /// * `ring_capacity` — Емкость буфера оперативной памяти L1.
+    pub fn with_storage_config(
+        db: Db,
+        storage_config: storage::EventStorageConfig,
+        ring_capacity: usize,
+    ) -> Self {
+        Self::with_full_config(Some(db), Some(storage_config), ring_capacity)
+    }
+
+    /// Полный конструктор шины событий со всеми параметрами конфигурации
+    pub fn with_full_config(
+        db: Option<Db>,
+        storage_config: Option<storage::EventStorageConfig>,
+        ring_capacity: usize,
+    ) -> Self {
         let topology = BusTopologyTracker::new();
         let dlq = DeadLetterQueue::default();
         let router = TopicRouter::new().with_topology(topology.clone());
@@ -113,7 +127,10 @@ impl EventBus {
         let dedup = EventDeduplicator::default();
         let retained = RetainedStore::default();
         let interceptors = InterceptorPipeline::new();
-        let storage = db.map(EventStorage::new);
+        let storage = db.map(|d| match storage_config {
+            Some(cfg) => EventStorage::with_config(d, cfg),
+            None => EventStorage::new(d),
+        });
         let metrics = BusMetrics::default();
 
         let bus = Self {
@@ -189,48 +206,50 @@ impl EventBus {
 
     /// Опубликовать событие в шину
     ///
-    /// Проверяет дедупликацию по `dedup_key` и UUID, выполняет перехватчики `pre_publish`
-    /// и ставит сообщение во взвешенную очередь диспетчера (с сохранением Retained в диспетчере).
+    /// Атомарно проверяет и резервирует событие в дедупликаторе (защита от TOCTOU-гонок),
+    /// выполняет цепочку перехватчиков `pre_publish` и ставит сообщение в очередь диспетчера.
+    /// При ошибке интерцептора или очереди бронь дедупликатора автоматически снимается для повторных попыток (retry).
     ///
     /// # Аргументы
     /// * `event` — Публикуемое событие платформы ([`EventMessage`]).
     ///
     /// # Ошибки
     /// Возвращает [`AppError`], если перехватчик отклонил публикацию или очередь переполнена/закрыта.
-    ///
-    /// # Примеры
-    /// ```rust
-    /// use aethercore_core::bus::EventBus;
-    /// use aethercore_common::models::events::EventMessage;
-    /// use serde_json::json;
-    ///
-    /// # async fn run() {
-    /// let bus = EventBus::in_memory();
-    /// let event = EventMessage::telemetry("sensors.temp", "sensor-1", json!({"val": 22.4}));
-    /// bus.publish(event).await.unwrap();
-    /// # }
-    /// ```
     pub async fn publish(&self, mut event: EventMessage) -> Result<()> {
-        // 1. Проверка на дубликат по business key или UUID (без фиксации)
-        if self.dedup.is_duplicate(&event) {
+        // 1. Атомарная проверка и резервация в окне дедупликатора под локом (без TOCTOU)
+        if self.dedup.is_duplicate_event_or_record(&event) {
             trace!("Ignoring duplicate event {}", event.id);
             return Ok(());
         }
 
         // 2. Выполнение конвейера перехватчиков (pre-publish)
-        match self.interceptors.execute_pre(&mut event).await? {
+        let action = match self.interceptors.execute_pre(&mut event).await {
+            Ok(act) => act,
+            Err(err) => {
+                // При ошибке выполнения перехватчика откатываем бронь дедупликатора
+                self.dedup.remove_event(&event);
+                return Err(err);
+            }
+        };
+
+        match action {
             InterceptorAction::Continue => {}
             InterceptorAction::DropSilently => return Ok(()),
-            InterceptorAction::Reject(err) => return Err(err),
+            InterceptorAction::Reject(err) => {
+                // При отклонении перехватчиком откатываем бронь для возможности retry
+                self.dedup.remove_event(&event);
+                return Err(err);
+            }
         }
 
         // 3. Постановка во взвешенную очередь диспетчера
-        self.queue_tx.enqueue(event.clone()).await?;
+        if let Err(err) = self.queue_tx.enqueue(event.clone()).await {
+            // При сбое постановки в очередь откатываем бронь
+            self.dedup.remove_event(&event);
+            return Err(err);
+        }
 
-        // 4. Фиксация ключей в дедупликаторе только после успешной постановки в очередь
-        self.dedup.record(&event);
-
-        // 5. Выполнение конвейера перехватчиков (post-publish)
+        // 4. Выполнение конвейера перехватчиков (post-publish)
         self.interceptors.execute_post(&event).await;
 
         Ok(())
@@ -353,7 +372,15 @@ impl EventBus {
         self.retained.get_matching(pattern, limit)
     }
 
-    /// Создать подписку на топик с безопасным получением предварительно сохраненных Retained-состояний
+    /// Создать подписку на топик с получением предварительно сохраненных Retained-состояний
+    ///
+    /// # Гарантии и семантика
+    /// Подписка активируется **до** выборки сохраненных сообщений, что исключает потерю промежуточных
+    /// событий между моментом снимка и подпиской.
+    ///
+    /// **Важно**: сообщения, поступившие в шину во время выполнения этой функции, могут одновременно
+    /// присутствовать и в возвращаемом срезе `Vec<EventMessage>`, и в канале `SubscriptionHandle`.
+    /// Потребитель должен дедуплицировать начальные сообщения по их `event.id` (UUID).
     ///
     /// # Аргументы
     /// * `pattern` — Шаблон топика для подписки.
@@ -554,6 +581,11 @@ impl EventBus {
     ///
     /// Обеспечивает прозрачную двухуровневую выборку непросроченных событий.
     ///
+    /// # Ограничения архитектуры (Архитектурный компромисс)
+    /// Таблица L2 `event_journal` хранит облегченную схему записей (`id, uuid, topic, source, payload_json, created_at`).
+    /// При реконструкции исторических событий из БД поля `priority` (`Normal`), `dedup_key` (`None`), `correlation_id` (`None`)
+    /// заполняются значениями по умолчанию.
+    ///
     /// # Аргументы
     /// * `topic_filter` — Опциональный префикс темы для фильтрации.
     /// * `limit` — Максимальное количество возвращаемых событий.
@@ -578,6 +610,8 @@ impl EventBus {
         // 2. Если в памяти меньше limit и подключена БД — дочитываем из L2
         if let Some(ref st) = self.storage {
             let needed = limit.saturating_sub(ram_events.len());
+            // ponytail: эвристика выборки с запасом ((needed + ram) * 2).min(1000) компенсирует
+            // возможное пересечение свежих записей в БД с уже полученными из L1 RAM буфера
             let query_limit = ((needed + ram_events.len()) * 2).min(1000) as u32;
             let db_records = st.query_recent(topic_filter, query_limit).await?;
 

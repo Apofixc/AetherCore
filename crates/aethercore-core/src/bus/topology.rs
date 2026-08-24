@@ -116,6 +116,20 @@ impl BusTopologyTracker {
         Self::default()
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, TopologyTrackerInner> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, TopologyTrackerInner> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
     /// Зафиксировать публикацию сообщения от указанного источника в топик
     pub fn record_publish(&self, source: &str, topic: &str) {
         // Игнорируем временные системные RPC-ответы для предотвращения засорения топологии
@@ -124,55 +138,55 @@ impl BusTopologyTracker {
         }
 
         let now = Utc::now();
-        if let Ok(mut inner) = self.inner.write() {
-            // Защита от неограниченного роста памяти при динамических топиках
-            if !inner.topic_message_counts.contains_key(topic)
-                && inner.topic_message_counts.len() >= MAX_TOPOLOGY_TOPICS
+        let mut inner = self.write_guard();
+
+        // Защита от неограниченного роста памяти при динамических топиках
+        if !inner.topic_message_counts.contains_key(topic)
+            && inner.topic_message_counts.len() >= MAX_TOPOLOGY_TOPICS
+        {
+            if let Some(oldest_topic) = inner
+                .topic_last_active
+                .iter()
+                .min_by_key(|(_, dt)| **dt)
+                .map(|(t, _)| t.clone())
             {
-                if let Some(oldest_topic) = inner
-                    .topic_last_active
-                    .iter()
-                    .min_by_key(|(_, dt)| **dt)
-                    .map(|(t, _)| t.clone())
-                {
-                    inner.topic_message_counts.remove(&oldest_topic);
-                    inner.topic_last_active.remove(&oldest_topic);
-                    for pub_state in inner.publishers.values_mut() {
-                        pub_state.topics.remove(&oldest_topic);
-                    }
+                inner.topic_message_counts.remove(&oldest_topic);
+                inner.topic_last_active.remove(&oldest_topic);
+                for pub_state in inner.publishers.values_mut() {
+                    pub_state.topics.remove(&oldest_topic);
                 }
             }
-
-            // 1. Обновление статистики топика
-            let topic_count = inner.topic_message_counts.entry(topic.to_string()).or_insert(0);
-            *topic_count += 1;
-            inner.topic_last_active.insert(topic.to_string(), now);
-
-            // Защита от неограниченного роста памяти при динамических издателях (users, sessions)
-            if !inner.publishers.contains_key(source) && inner.publishers.len() >= MAX_TOPOLOGY_PUBLISHERS {
-                if let Some(oldest_publisher) = inner
-                    .publishers
-                    .iter()
-                    .min_by_key(|(_, state)| state.last_active)
-                    .map(|(k, _)| k.clone())
-                {
-                    inner.publishers.remove(&oldest_publisher);
-                }
-            }
-
-            // 2. Обновление статистики издателя
-            let pub_state = inner.publishers.entry(source.to_string()).or_insert_with(|| PublisherState {
-                name: source.to_string(),
-                topics: HashMap::new(),
-                total_messages: 0,
-                last_active: now,
-            });
-
-            pub_state.total_messages += 1;
-            pub_state.last_active = now;
-            let topic_pub_count = pub_state.topics.entry(topic.to_string()).or_insert(0);
-            *topic_pub_count += 1;
         }
+
+        // 1. Обновление статистики топика
+        let topic_count = inner.topic_message_counts.entry(topic.to_string()).or_insert(0);
+        *topic_count += 1;
+        inner.topic_last_active.insert(topic.to_string(), now);
+
+        // Защита от неограниченного роста памяти при динамических издателях (users, sessions)
+        if !inner.publishers.contains_key(source) && inner.publishers.len() >= MAX_TOPOLOGY_PUBLISHERS {
+            if let Some(oldest_publisher) = inner
+                .publishers
+                .iter()
+                .min_by_key(|(_, state)| state.last_active)
+                .map(|(k, _)| k.clone())
+            {
+                inner.publishers.remove(&oldest_publisher);
+            }
+        }
+
+        // 2. Обновление статистики издателя
+        let pub_state = inner.publishers.entry(source.to_string()).or_insert_with(|| PublisherState {
+            name: source.to_string(),
+            topics: HashMap::new(),
+            total_messages: 0,
+            last_active: now,
+        });
+
+        pub_state.total_messages += 1;
+        pub_state.last_active = now;
+        let topic_pub_count = pub_state.topics.entry(topic.to_string()).or_insert(0);
+        *topic_pub_count += 1;
     }
 
     /// Зарегистрировать активную подписку
@@ -185,25 +199,23 @@ impl BusTopologyTracker {
             .cloned()
             .collect();
 
-        if let Ok(mut inner) = self.inner.write() {
-            inner.subscribers.insert(
-                sub_id,
-                SubscriberState {
-                    name: display_name,
-                    patterns: filtered_patterns,
-                    received_count: 0,
-                    last_active: now,
-                },
-            );
-        }
+        let mut inner = self.write_guard();
+        inner.subscribers.insert(
+            sub_id,
+            SubscriberState {
+                name: display_name,
+                patterns: filtered_patterns,
+                received_count: 0,
+                last_active: now,
+            },
+        );
     }
 
     /// Обновить имя существующей подписки
     pub fn set_subscriber_name(&self, sub_id: SubscriptionId, name: String) {
-        if let Ok(mut inner) = self.inner.write() {
-            if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
-                sub.name = name;
-            }
+        let mut inner = self.write_guard();
+        if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
+            sub.name = name;
         }
     }
 
@@ -212,49 +224,42 @@ impl BusTopologyTracker {
         if pattern.starts_with("_reply.") {
             return;
         }
-        if let Ok(mut inner) = self.inner.write() {
-            if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
-                if !sub.patterns.contains(&pattern) {
-                    sub.patterns.push(pattern);
-                }
+        let mut inner = self.write_guard();
+        if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
+            if !sub.patterns.contains(&pattern) {
+                sub.patterns.push(pattern);
             }
         }
     }
 
     /// Удалить шаблон топика из зарегистрированной подписки
     pub fn remove_subscriber_pattern(&self, sub_id: SubscriptionId, pattern: &str) {
-        if let Ok(mut inner) = self.inner.write() {
-            if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
-                sub.patterns.retain(|p| p != pattern);
-            }
+        let mut inner = self.write_guard();
+        if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
+            sub.patterns.retain(|p| p != pattern);
         }
     }
 
     /// Удалить подписку при закрытии/деструкции (`Drop`)
     pub fn unregister_subscriber(&self, sub_id: SubscriptionId) {
-        if let Ok(mut inner) = self.inner.write() {
-            inner.subscribers.remove(&sub_id);
-        }
+        let mut inner = self.write_guard();
+        inner.subscribers.remove(&sub_id);
     }
 
     /// Зафиксировать доставку сообщения подписчику
     pub fn record_delivery(&self, sub_id: SubscriptionId) {
         let now = Utc::now();
-        if let Ok(mut inner) = self.inner.write() {
-            if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
-                sub.received_count += 1;
-                sub.last_active = now;
-            }
+        let mut inner = self.write_guard();
+        if let Some(sub) = inner.subscribers.get_mut(&sub_id) {
+            sub.received_count += 1;
+            sub.last_active = now;
         }
     }
 
     /// Получить моментальный снимок топологического графа для UI
     pub fn snapshot(&self) -> BusTopologySnapshot {
         let now = Utc::now();
-        let inner = match self.inner.read() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
+        let inner = self.read_guard();
 
         let mut nodes = Vec::new();
         let mut edges = Vec::new();

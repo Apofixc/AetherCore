@@ -67,6 +67,20 @@ impl DeadLetterQueue {
         }
     }
 
+    fn read_guard(&self) -> std::sync::RwLockReadGuard<'_, VecDeque<DeadLetter>> {
+        match self.inner.read() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    fn write_guard(&self) -> std::sync::RwLockWriteGuard<'_, VecDeque<DeadLetter>> {
+        match self.inner.write() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
     /// Добавить сбойное сообщение в DLQ
     pub fn push(&self, event: EventMessage, reason: DeadLetterReason) -> Uuid {
         let id = Uuid::new_v4();
@@ -77,58 +91,44 @@ impl DeadLetterQueue {
             failed_at: Utc::now(),
         };
 
-        if let Ok(mut deque) = self.inner.write() {
-            if deque.len() >= self.capacity {
-                deque.pop_front();
-            }
-            deque.push_back(entry);
+        let mut deque = self.write_guard();
+        if deque.len() >= self.capacity {
+            deque.pop_front();
         }
+        deque.push_back(entry);
         id
     }
 
     /// Получить список последних сбойных сообщений с ограничением количества
     pub fn list(&self, limit: usize) -> Vec<DeadLetter> {
-        let deque = match self.inner.read() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-
+        let deque = self.read_guard();
         deque.iter().rev().take(limit).cloned().collect()
     }
 
     /// Найти сбойную запись по ее уникальному идентификатору
     pub fn get(&self, id: Uuid) -> Option<DeadLetter> {
-        let deque = match self.inner.read() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-
+        let deque = self.read_guard();
         deque.iter().find(|item| item.id == id).cloned()
     }
 
     /// Извлечь и удалить запись из DLQ по идентификатору (для повторной отправки re-drive)
     pub fn remove(&self, id: Uuid) -> Option<DeadLetter> {
-        if let Ok(mut deque) = self.inner.write() {
-            if let Some(pos) = deque.iter().position(|item| item.id == id) {
-                return deque.remove(pos);
-            }
+        let mut deque = self.write_guard();
+        if let Some(pos) = deque.iter().position(|item| item.id == id) {
+            return deque.remove(pos);
         }
         None
     }
 
     /// Очистить все записи в очереди DLQ
     pub fn clear(&self) {
-        if let Ok(mut deque) = self.inner.write() {
-            deque.clear();
-        }
+        let mut deque = self.write_guard();
+        deque.clear();
     }
 
     /// Текущее количество сбойных сообщений в очереди
     pub fn len(&self) -> usize {
-        match self.inner.read() {
-            Ok(g) => g.len(),
-            Err(p) => p.into_inner().len(),
-        }
+        self.read_guard().len()
     }
 
     /// Проверить, пуста ли очередь

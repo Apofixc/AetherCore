@@ -1027,6 +1027,58 @@ async fn test_invalid_topic_patterns_validation() {
     assert_eq!(rec.topic, "valid.topic");
 }
 
+#[tokio::test]
+async fn test_storage_config_propagation() {
+    use aethercore_core::bus::storage::EventStorageConfig;
+    use chrono::Duration as ChronoDuration;
+
+    let db = Db::init_in_memory().await.unwrap();
+    let config = EventStorageConfig {
+        max_records: 100,
+        startup_prune_age: Some(ChronoDuration::hours(12)),
+    };
+    let bus = EventBus::with_storage_config(db, config, 1024);
+
+    let ev = EventMessage::reliable("custom.config", "core", serde_json::json!({"ok": true}));
+    bus.publish(ev).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    let journal = bus.query_journal(Some("custom."), None, 10).await.unwrap();
+    assert_eq!(journal.len(), 1);
+}
+
+#[tokio::test]
+async fn test_concurrent_publish_dedup_no_toctou() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe();
+
+    let msg = EventMessage::telemetry("concurrent.test", "core", serde_json::json!({"k": 1}));
+
+    // Запускаем 20 параллельных задач публикации одного и того же сообщения
+    let mut handles = Vec::new();
+    for _ in 0..20 {
+        let b = bus.clone();
+        let m = msg.clone();
+        handles.push(tokio::spawn(async move {
+            b.publish(m).await
+        }));
+    }
+
+    for h in handles {
+        h.await.unwrap().unwrap();
+    }
+
+    // Должно быть доставлено ровно 1 сообщение
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(rec.id, msg.id);
+
+    tokio::select! {
+        _ = sub.recv() => panic!("Duplicate event was delivered under concurrent publish!"),
+        _ = tokio::time::sleep(Duration::from_millis(60)) => {}
+    }
+}
+
+
 
 
 
