@@ -728,6 +728,7 @@ export const en = {
     triggeredBy: 'Triggered By',
     details: 'Details / Error',
     pruneHistory: 'Prune History Older Than',
+    daysUnit: 'days',
     pruneSuccess: 'Deleted {count} old execution records',
     scheduleTypeCron: 'Cron Expression',
     scheduleTypeInterval: 'Interval (sec)',

@@ -8,7 +8,8 @@ import {
   ConfirmModal,
   BaseInput,
   BaseSelect,
-  BaseSwitch
+  BaseSwitch,
+  NumberInput
 } from '@/components/common'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -547,18 +548,17 @@ onUnmounted(() => {
         <!-- Prune history controls -->
         <div
           v-if="authStore.canManageSystem"
-          class="flex items-center justify-between p-3 rounded-xl bg-surface-container-highest/40 border border-outline-variant/30 flex-wrap gap-2"
+          class="flex items-center justify-between p-3 rounded-xl bg-surface-container-highest/40 border border-outline-variant/30 flex-wrap gap-3"
         >
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-on-surface-variant">{{ t('scheduler.pruneHistory') }}:</span>
-            <input
-              v-model.number="pruneDays"
-              type="number"
-              min="1"
-              max="365"
-              class="w-16 px-2 py-1 text-xs rounded bg-surface-container-lowest border border-outline-variant font-mono text-on-surface outline-none"
+          <div class="flex items-center gap-2.5">
+            <span class="text-xs text-on-surface-variant font-medium">{{ t('scheduler.pruneHistory') }}:</span>
+            <NumberInput
+              v-model="pruneDays"
+              :min="1"
+              :max="365"
+              width-class="w-20"
             />
-            <span class="text-xs text-on-surface-variant">дней</span>
+            <span class="text-xs text-on-surface-variant">{{ t('scheduler.daysUnit') }}</span>
           </div>
           <AppButton
             variant="outline"

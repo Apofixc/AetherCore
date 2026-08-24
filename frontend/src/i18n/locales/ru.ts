@@ -728,6 +728,7 @@ export const ru = {
     triggeredBy: 'Инициатор',
     details: 'Детали / Ошибка',
     pruneHistory: 'Очистить историю старше',
+    daysUnit: 'дн.',
     pruneSuccess: 'Удалено {count} старых записей истории',
     scheduleTypeCron: 'Cron-выражение',
     scheduleTypeInterval: 'Интервал (сек)',
