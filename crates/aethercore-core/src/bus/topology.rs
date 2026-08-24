@@ -105,6 +105,9 @@ struct TopologyTrackerInner {
     topic_last_active: HashMap<String, DateTime<Utc>>,
 }
 
+/// Максимальное количество удерживаемых уникальных топиков в топологии
+pub const MAX_TOPOLOGY_TOPICS: usize = 2000;
+
 impl BusTopologyTracker {
     /// Создать новый экземпляр трекера топологии
     pub fn new() -> Self {
@@ -120,6 +123,24 @@ impl BusTopologyTracker {
 
         let now = Utc::now();
         if let Ok(mut inner) = self.inner.write() {
+            // Защита от неограниченного роста памяти при динамических топиках
+            if !inner.topic_message_counts.contains_key(topic)
+                && inner.topic_message_counts.len() >= MAX_TOPOLOGY_TOPICS
+            {
+                if let Some(oldest_topic) = inner
+                    .topic_last_active
+                    .iter()
+                    .min_by_key(|(_, dt)| **dt)
+                    .map(|(t, _)| t.clone())
+                {
+                    inner.topic_message_counts.remove(&oldest_topic);
+                    inner.topic_last_active.remove(&oldest_topic);
+                    for pub_state in inner.publishers.values_mut() {
+                        pub_state.topics.remove(&oldest_topic);
+                    }
+                }
+            }
+
             // 1. Обновление статистики топика
             let topic_count = inner.topic_message_counts.entry(topic.to_string()).or_insert(0);
             *topic_count += 1;

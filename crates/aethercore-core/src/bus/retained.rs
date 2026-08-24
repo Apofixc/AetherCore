@@ -63,7 +63,10 @@ impl RetainedInner {
     }
 
     fn get_matching(&self, pattern: &str, limit: usize) -> Vec<EventMessage> {
-        let limit = limit.min(MAX_INITIAL_RETAINED_LIMIT).max(1);
+        if limit == 0 {
+            return Vec::new();
+        }
+        let limit = limit.min(MAX_INITIAL_RETAINED_LIMIT);
         let mut results = Vec::new();
 
         // 1. Точное совпадение

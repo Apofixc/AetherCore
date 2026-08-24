@@ -344,6 +344,9 @@ impl EventBus {
     /// * `pattern` — Топик или маска (`*`, `#`).
     /// * `limit` — Максимальное количество возвращаемых сообщений.
     pub fn get_retained(&self, pattern: &str, limit: usize) -> Vec<EventMessage> {
+        if limit == 0 {
+            return Vec::new();
+        }
         self.retained.get_matching(pattern, limit)
     }
 
@@ -540,6 +543,10 @@ impl EventBus {
         topic_filter: Option<&str>,
         limit: usize,
     ) -> Result<Vec<EventMessage>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
         // 1. Читаем из горячего L1 кольцевого буфера
         let ram_events = self.ring.query(topic_filter, limit);
         if ram_events.len() >= limit || self.storage.is_none() {
@@ -603,6 +610,10 @@ impl EventBus {
         after_id: Option<i64>,
         limit: u32,
     ) -> Result<Vec<ReliableEventRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
         if let Some(ref st) = self.storage {
             st.query(topic_filter, after_id, limit).await
         } else {

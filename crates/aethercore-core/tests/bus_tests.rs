@@ -738,6 +738,63 @@ async fn test_retained_true_lru_eviction() {
     assert!(!store.get_matching("topic.D", 1).is_empty(), "Topic D should be retained");
 }
 
+#[tokio::test]
+async fn test_zero_limit_queries() {
+    let db = Db::init_in_memory().await.unwrap();
+    let bus = EventBus::new(db);
+
+    let ev = EventMessage::reliable("test.zero", "core", serde_json::json!({"x": 1})).with_retain(true);
+    bus.publish(ev).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(60)).await;
+
+    assert_eq!(bus.query_history(None, 0).await.unwrap().len(), 0);
+    assert_eq!(bus.query_journal(None, None, 0).await.unwrap().len(), 0);
+    assert_eq!(bus.get_retained("test.zero", 0).len(), 0);
+}
+
+#[tokio::test]
+async fn test_debounced_max_wait_under_continuous_flood() {
+    let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe_topic("flood.topic");
+
+    let bus_clone = bus.clone();
+    tokio::spawn(async move {
+        // Непрерывная отправка событий каждые 5ms (без пауз)
+        for i in 0..50 {
+            let _ = bus_clone
+                .publish(EventMessage::telemetry("flood.topic", "src", serde_json::json!({"i": i})))
+                .await;
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    });
+
+    // quiet_period = 30ms, max_wait = 50ms
+    // Поскольку паузы в 30ms нет, recv_debounced_max_wait обязан отдать промежуточное значение по max_wait (не зависая)
+    let start = std::time::Instant::now();
+    let msg = sub
+        .recv_debounced_max_wait(Duration::from_millis(30), Duration::from_millis(50))
+        .await
+        .expect("Should receive debounced event within max_wait");
+
+    assert!(start.elapsed() < Duration::from_millis(150));
+    assert_eq!(msg.topic, "flood.topic");
+}
+
+#[tokio::test]
+async fn test_topology_topic_capping() {
+    use aethercore_core::bus::BusTopologyTracker;
+    let topology = BusTopologyTracker::new();
+
+    // Записываем 2005 уникальных топиков
+    for i in 0..2005 {
+        topology.record_publish("test_pub", &format!("topic.item_{}", i));
+    }
+
+    let snap = topology.snapshot();
+    assert!(snap.topics_count <= 2000, "Topics count should be capped at 2000");
+}
+
 
 
 

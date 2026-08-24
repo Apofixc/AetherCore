@@ -453,11 +453,29 @@ impl SubscriptionHandle {
     /// Прочитать событие со сглаживанием всплесков и дребезга (Debouncing)
     ///
     /// При поступлении серии частых обновлений накапливает их и возвращает финальное
-    /// установившееся значение только после периода затишья `quiet_period`.
+    /// установившееся значение после периода затишья `quiet_period` либо по истечении максимального времени ожидания (10 * quiet_period).
     pub async fn recv_debounced(&mut self, quiet_period: std::time::Duration) -> Option<EventMessage> {
+        self.recv_debounced_max_wait(quiet_period, quiet_period.saturating_mul(10)).await
+    }
+
+    /// Прочитать событие со сглаживанием всплесков и заданным максимальным временем ожидания
+    ///
+    /// Гарантирует доставку промежуточного состояния не позднее `max_wait` даже при непрерывном шторме событий без пауз.
+    pub async fn recv_debounced_max_wait(
+        &mut self,
+        quiet_period: std::time::Duration,
+        max_wait: std::time::Duration,
+    ) -> Option<EventMessage> {
         let mut latest_msg = self.rx.recv().await?;
+        let start = tokio::time::Instant::now();
 
         loop {
+            let max_remaining = max_wait.saturating_sub(start.elapsed());
+            if max_remaining.is_zero() {
+                return Some(latest_msg);
+            }
+            let sleep_dur = quiet_period.min(max_remaining);
+
             tokio::select! {
                 next_opt = self.rx.recv() => {
                     match next_opt {
@@ -470,7 +488,7 @@ impl SubscriptionHandle {
                         }
                     }
                 }
-                _ = tokio::time::sleep(quiet_period) => {
+                _ = tokio::time::sleep(sleep_dur) => {
                     return Some(latest_msg);
                 }
             }
