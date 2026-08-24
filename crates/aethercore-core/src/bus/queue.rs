@@ -169,6 +169,8 @@ impl PriorityQueueReceiver {
         self.low_quota = LOW_WEIGHT;
 
         tokio::select! {
+            biased;
+
             Some(msg) = self.critical_rx.recv() => {
                 self.critical_quota = self.critical_quota.saturating_sub(1);
                 self.queue_len.fetch_sub(1, Ordering::Relaxed);

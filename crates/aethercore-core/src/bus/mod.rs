@@ -112,8 +112,7 @@ impl EventBus {
         let ring = EventRingBuffer::new(ring_capacity);
         let dedup = EventDeduplicator::default();
         let retained = RetainedStore::default();
-        let mut interceptors = InterceptorPipeline::new();
-        interceptors.register(Arc::new(MaskingInterceptor::default()));
+        let interceptors = InterceptorPipeline::new();
         let storage = db.map(EventStorage::new);
         let metrics = BusMetrics::default();
 
@@ -426,9 +425,19 @@ impl EventBus {
 
         loop {
             tokio::select! {
-                Some(reply) = sub.recv() => {
-                    if reply.correlation_id == Some(correlation_id) {
-                        return Ok(reply);
+                recv_res = sub.recv() => {
+                    match recv_res {
+                        Some(reply) => {
+                            if reply.correlation_id == Some(correlation_id) {
+                                return Ok(reply);
+                            }
+                        }
+                        None => {
+                            return Err(AppError::internal(format!(
+                                "Subscription channel closed while waiting for RPC response on topic '{}'",
+                                topic
+                            )));
+                        }
                     }
                 }
                 _ = &mut timeout_fut => {
@@ -482,11 +491,18 @@ impl EventBus {
 
         loop {
             tokio::select! {
-                Some(reply) = sub.recv() => {
-                    if reply.correlation_id == Some(correlation_id) {
-                        responses.push(reply);
-                        if responses.len() >= expected_count {
-                            return Ok(responses);
+                recv_res = sub.recv() => {
+                    match recv_res {
+                        Some(reply) => {
+                            if reply.correlation_id == Some(correlation_id) {
+                                responses.push(reply);
+                                if responses.len() >= expected_count {
+                                    return Ok(responses);
+                                }
+                            }
+                        }
+                        None => {
+                            break;
                         }
                     }
                 }
@@ -676,6 +692,11 @@ impl EventBus {
     /// Очистить очередь недоставленных сообщений
     pub fn clear_dead_letters(&self) {
         self.dlq.clear();
+    }
+
+    /// Зарегистрировать пользовательский перехватчик событий в конвейере шины
+    pub fn add_interceptor(&mut self, interceptor: Arc<dyn EventInterceptor>) {
+        self.interceptors.register(interceptor);
     }
 
     /// Получить снимок метрик и текущего состояния шины событий

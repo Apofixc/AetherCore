@@ -107,6 +107,8 @@ struct TopologyTrackerInner {
 
 /// Максимальное количество удерживаемых уникальных топиков в топологии
 pub const MAX_TOPOLOGY_TOPICS: usize = 2000;
+/// Максимальное количество удерживаемых уникальных издателей в топологии
+pub const MAX_TOPOLOGY_PUBLISHERS: usize = 1000;
 
 impl BusTopologyTracker {
     /// Создать новый экземпляр трекера топологии
@@ -145,6 +147,18 @@ impl BusTopologyTracker {
             let topic_count = inner.topic_message_counts.entry(topic.to_string()).or_insert(0);
             *topic_count += 1;
             inner.topic_last_active.insert(topic.to_string(), now);
+
+            // Защита от неограниченного роста памяти при динамических издателях (users, sessions)
+            if !inner.publishers.contains_key(source) && inner.publishers.len() >= MAX_TOPOLOGY_PUBLISHERS {
+                if let Some(oldest_publisher) = inner
+                    .publishers
+                    .iter()
+                    .min_by_key(|(_, state)| state.last_active)
+                    .map(|(k, _)| k.clone())
+                {
+                    inner.publishers.remove(&oldest_publisher);
+                }
+            }
 
             // 2. Обновление статистики издателя
             let pub_state = inner.publishers.entry(source.to_string()).or_insert_with(|| PublisherState {

@@ -166,8 +166,35 @@ async fn test_request_reply_rpc() {
 }
 
 #[tokio::test]
-async fn test_masking_interceptor() {
+async fn test_default_bus_does_not_mutate_payload() {
     let bus = EventBus::in_memory();
+    let mut sub = bus.subscribe();
+
+    let msg = EventMessage::telemetry(
+        "auth.login",
+        "auth",
+        serde_json::json!({
+            "username": "admin",
+            "password": "super_secret_password",
+            "token": "secret_jwt_token"
+        }),
+    );
+
+    bus.publish(msg).await.unwrap();
+
+    let rec = sub.recv().await.unwrap();
+    assert_eq!(rec.payload.get("username").unwrap(), "admin");
+    assert_eq!(rec.payload.get("password").unwrap(), "super_secret_password");
+    assert_eq!(rec.payload.get("token").unwrap(), "secret_jwt_token");
+}
+
+#[tokio::test]
+async fn test_masking_interceptor_explicit() {
+    use aethercore_core::bus::MaskingInterceptor;
+    use std::sync::Arc;
+
+    let mut bus = EventBus::in_memory();
+    bus.add_interceptor(Arc::new(MaskingInterceptor::default()));
     let mut sub = bus.subscribe();
 
     let msg = EventMessage::telemetry(
@@ -677,7 +704,11 @@ async fn test_topology_ignores_rpc_reply_topics() {
 
 #[tokio::test]
 async fn test_nested_masking_interceptor() {
-    let bus = EventBus::in_memory();
+    use aethercore_core::bus::MaskingInterceptor;
+    use std::sync::Arc;
+
+    let mut bus = EventBus::in_memory();
+    bus.add_interceptor(Arc::new(MaskingInterceptor::default()));
     let mut sub = bus.subscribe();
 
     let msg = EventMessage::telemetry(
@@ -793,6 +824,20 @@ async fn test_topology_topic_capping() {
 
     let snap = topology.snapshot();
     assert!(snap.topics_count <= 2000, "Topics count should be capped at 2000");
+}
+
+#[tokio::test]
+async fn test_topology_publisher_capping() {
+    use aethercore_core::bus::BusTopologyTracker;
+    let topology = BusTopologyTracker::new();
+
+    // Записываем 1005 уникальных издателей
+    for i in 0..1005 {
+        topology.record_publish(&format!("dynamic_pub_{}", i), "shared.topic");
+    }
+
+    let snap = topology.snapshot();
+    assert!(snap.publishers_count <= 1000, "Publishers count should be capped at 1000");
 }
 
 
