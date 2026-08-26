@@ -10,6 +10,7 @@ use aethercore_core::plugins::PluginManager;
 use aethercore_core::services::{AuditService, LoggerService, NotifyService, SessionService};
 use aethercore_core::users::UserService;
 use aethercore_server::state::AppState;
+use aethercore_server::ws::registry::WsConnectionRegistry;
 use aethercore_server::ws::session::WsSession;
 use aethercore_server::ws::types::{WsClientCommand, WsCodecFormat, WsServerMessage};
 use axum::extract::ws::Message;
@@ -27,9 +28,13 @@ async fn setup_test_state() -> AppState {
     let notify_service = NotifyService::new();
     let plugin_manager = PluginManager::new(db.clone(), bus.clone());
     let scheduler_service = std::sync::Arc::new(
-        aethercore_core::services::SchedulerService::new(db.clone(), bus.clone()),
+        aethercore_core::services::SchedulerService::new(db.clone()),
     );
-    let backup_service = aethercore_core::services::BackupService::new(db.clone());
+    let backup_service = aethercore_core::services::BackupService::new(
+        db.clone(),
+        std::path::PathBuf::from("/tmp/aethercore-test-backups"),
+    );
+    let ws_registry = WsConnectionRegistry::new();
 
     user_service.ensure_default_admin().await.unwrap();
 
@@ -46,6 +51,7 @@ async fn setup_test_state() -> AppState {
         plugin_manager,
         scheduler_service,
         backup_service,
+        ws_registry,
         start_time: Instant::now(),
     }
 }
@@ -147,12 +153,23 @@ async fn test_ws_server_messages_serialization() {
     let ev_msg = EventMessage::telemetry("plugin.chat.stream", "agent", serde_json::json!({ "delta": "Hello" }));
     let server_msg = WsServerMessage::Event {
         seq: 42,
-        event: ev_msg,
+        event: ev_msg.clone(),
     };
 
     let encoded = codec.encode(&server_msg).expect("Encode event failed");
     if let Message::Text(text) = encoded {
         assert!(text.contains("\"seq\":42"));
+        assert!(text.contains("plugin.chat.stream"));
+    } else {
+        panic!("Expected text frame");
+    }
+
+    let replay_msg = WsServerMessage::ReplayBatch {
+        events: vec![ev_msg],
+    };
+    let encoded_replay = codec.encode(&replay_msg).expect("Encode replay failed");
+    if let Message::Text(text) = encoded_replay {
+        assert!(text.contains("replay_batch"));
         assert!(text.contains("plugin.chat.stream"));
     } else {
         panic!("Expected text frame");
@@ -169,6 +186,86 @@ async fn test_ws_server_messages_serialization() {
     } else {
         panic!("Expected text frame");
     }
+}
+
+#[tokio::test]
+async fn test_ws_filter_and_rate_limit() {
+    let claims = JwtClaims {
+        sub: Uuid::new_v4(),
+        username: "user1".to_string(),
+        is_superuser: false,
+        roles: vec!["operator".to_string()],
+        permissions: vec!["events.view".to_string()],
+        exp: 9999999999,
+        iat: 1000000000,
+        session_id: None,
+    };
+    let session = WsSession::new(Some(claims), WsCodecFormat::Json, "127.0.0.1".into());
+
+    // 1. Проверка Rate Limit (макс 2 команды в сек)
+    assert!(session.check_rate_limit(2));
+    assert!(session.check_rate_limit(2));
+    assert!(!session.check_rate_limit(2)); // Третья команда отклонена
+
+    // 2. Проверка фильтра приоритетов
+    session.set_filters(Some(EventPriority::High), None, None).await;
+
+    let low_ev = EventMessage::telemetry("plugin.temp", "sensor", serde_json::json!({"t": 20}))
+        .with_priority(EventPriority::Low);
+    let high_ev = EventMessage::reliable("plugin.temp", "sensor", serde_json::json!({"t": 100}))
+        .with_priority(EventPriority::High);
+
+    assert!(!session.should_deliver_event(&low_ev).await);
+    assert!(session.should_deliver_event(&high_ev).await);
+}
+
+#[tokio::test]
+async fn test_ws_registry_and_connections_endpoint() {
+    use tower::ServiceExt;
+    let state = setup_test_state().await;
+
+    let claims = JwtClaims {
+        sub: Uuid::new_v4(),
+        username: "admin".to_string(),
+        is_superuser: true,
+        roles: vec!["superuser".to_string()],
+        permissions: vec!["system.manage".to_string()],
+        exp: 9999999999,
+        iat: 1000000000,
+        session_id: None,
+    };
+    let session = std::sync::Arc::new(WsSession::new(Some(claims.clone()), WsCodecFormat::Json, "192.168.1.50".into()));
+    let (tx, _rx) = tokio::sync::mpsc::channel(16);
+
+    // Регистрируем сокет в реестре
+    state.ws_registry.register(101, session, tx, vec!["devices.*".into()]).await;
+    assert_eq!(state.ws_registry.count().await, 1);
+
+    let token = state.jwt_manager.generate_token(
+        claims.sub,
+        &claims.username,
+        claims.is_superuser,
+        claims.roles.clone(),
+        claims.permissions.clone(),
+    ).unwrap();
+
+    let router = aethercore_server::create_app_router(state);
+
+    // Запрос списка соединений через REST API
+    let req = axum::http::Request::builder()
+        .method("GET")
+        .uri("/api/v1/system/ws/connections")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(axum::body::Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.expect("Router failed");
+    assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), 10240).await.unwrap();
+    let body_str = String::from_utf8_lossy(&body_bytes);
+    assert!(body_str.contains("192.168.1.50"));
+    assert!(body_str.contains("devices.*"));
 }
 
 #[tokio::test]

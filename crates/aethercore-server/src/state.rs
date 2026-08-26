@@ -45,6 +45,8 @@ pub struct AppState {
     pub scheduler_service: Arc<SchedulerService>,
     /// Сервис создания и восстановления резервных копий SQLite ([`BackupService`])
     pub backup_service: BackupService,
+    /// Реестр активных WebSocket-подключений шлюза
+    pub ws_registry: crate::ws::registry::WsConnectionRegistry,
     /// Точный момент времени запуска ядра для расчета `uptime`
     pub start_time: Instant,
 }

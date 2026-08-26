@@ -57,6 +57,7 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{id}", axum::routing::delete(revoke_session_handler))
         .route("/sessions/terminate-others", post(terminate_others_handler))
         .route("/sessions/terminate-all", post(terminate_all_handler))
+        .route("/ws/connections", get(ws_connections_handler))
 }
 
 /// Ответ REST API с метаинформацией о запущенном экземпляре ядра платформы
@@ -1147,4 +1148,24 @@ async fn terminate_all_handler(
         "terminated_count": count
     })))
 }
+
+/// Получить список активных WebSocket-соединений шлюза (`GET /api/v1/system/ws/connections`)
+pub async fn ws_connections_handler(
+    AuthUser(claims): AuthUser,
+    State(state): State<AppState>,
+    RequestLocale(locale): RequestLocale,
+) -> Result<Json<Vec<crate::ws::types::WsConnectionInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    check_permission(&claims, "system.view")
+        .or_else(|_| check_permission(&claims, "system.manage"))
+        .map_err(|e| {
+            (
+                StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::FORBIDDEN),
+                Json(e.to_api_response(locale)),
+            )
+        })?;
+
+    let list = state.ws_registry.list().await;
+    Ok(Json(list))
+}
+
 

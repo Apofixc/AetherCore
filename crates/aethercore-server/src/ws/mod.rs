@@ -2,13 +2,16 @@
 //!
 //! Обеспечивает двунаправленное подключение браузеров и внешних систем для
 //! получения событий шины ([`EventMessage`]) в реальном времени, вызова REST-over-WS,
-//! управления динамическими подписками, поддержки In-Band авторизации и форматов JSON/MessagePack.
+//! управления динамическими подписками, поддержки In-Band авторизации, фильтрации потока,
+//! дочитки пропущенных событий (Resume) и форматов JSON/MessagePack.
 
+pub mod registry;
 pub mod session;
 pub mod types;
 
+pub use registry::WsConnectionRegistry;
 pub use session::WsSession;
-pub use types::{WsAuthQuery, WsClientCommand, WsCodecFormat, WsServerMessage};
+pub use types::{WsAuthQuery, WsClientCommand, WsCodecFormat, WsConnectionInfo, WsServerMessage};
 
 use crate::middleware::{extract_client_ip, is_ip_allowed, AuthUser};
 use crate::state::AppState;
@@ -33,7 +36,7 @@ pub async fn ws_events_handler(
 ) -> impl IntoResponse {
     let client_ip = extract_client_ip(&headers);
 
-    // Проверка белого списка IP-адресов
+    // 1. Проверка белого списка IP-адресов
     if let Ok(Some(policies)) = aethercore_core::db::kv::KvStore::system(state.db.clone())
         .get::<aethercore_common::models::user::SecurityPoliciesDto>("security_policies")
         .await
@@ -44,7 +47,24 @@ pub async fn ws_events_handler(
         }
     }
 
-    // Согласование субпротокола (JSON или MessagePack)
+    // 2. Валидация заголовка Origin (защита от CSWSH)
+    let ws_cfg = &state.config.ws;
+    if !ws_cfg.allowed_origins.contains(&"*".to_string()) {
+        if let Some(origin) = headers.get("Origin").and_then(|h| h.to_str().ok()) {
+            if !ws_cfg.allowed_origins.iter().any(|o| o == origin) {
+                warn!("WebSocket rejected untrusted Origin: {}", origin);
+                return StatusCode::FORBIDDEN.into_response();
+            }
+        }
+    }
+
+    // 3. Проверка лимита максимального числа одновременных подключений
+    if state.ws_registry.count().await >= ws_cfg.max_connections {
+        warn!("WebSocket max connections limit reached ({})", ws_cfg.max_connections);
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
+    // 4. Согласование субпротокола (JSON или MessagePack)
     let requested_proto = headers
         .get("Sec-WebSocket-Protocol")
         .and_then(|h| h.to_str().ok())
@@ -58,7 +78,7 @@ pub async fn ws_events_handler(
         (WsCodecFormat::Json, None)
     };
 
-    // Валидация токена из Query-параметра (если передан)
+    // 5. Валидация токена из Query-параметра (если передан)
     let initial_claims = if let Some(token) = &query.token {
         match state.jwt_manager.verify_token(token) {
             Ok(claims) => {
@@ -78,6 +98,11 @@ pub async fn ws_events_handler(
     } else {
         None
     };
+
+    // 6. Строгая проверка обязательной авторизации (если allow_anonymous = false)
+    if !ws_cfg.allow_anonymous && initial_claims.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
 
     let initial_topics: Vec<String> = query
         .topics
@@ -127,7 +152,7 @@ async fn handle_socket(
     // Ограниченный канал отправки клиенту (Backpressure)
     let (tx, mut rx) = mpsc::channel::<WsServerMessage>(256);
 
-    // RAII подписка на шине
+    // RAII подписка на шине ядра
     let mut subscription = if initial_topics.is_empty() {
         state.bus.subscribe()
     } else {
@@ -135,6 +160,12 @@ async fn handle_socket(
         state.bus.subscribe_topics(&topic_refs)
     };
     let sub_id = subscription.id();
+
+    // Регистрация в реестре активных соединений
+    let topics_registry = state
+        .ws_registry
+        .register(sub_id, session.clone(), tx.clone(), initial_topics.clone())
+        .await;
 
     debug!(
         "WebSocket client connected to /ws/events (sub_id: {}, format: {:?})",
@@ -178,7 +209,7 @@ async fn handle_socket(
 
     // 1. Поток передачи сообщений из канала в физический WebSocket
     let session_out = session.clone();
-    let send_task = tokio::spawn(async move {
+    let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             let codec = session_out.get_format().await;
             match codec.encode(&msg) {
@@ -194,11 +225,10 @@ async fn handle_socket(
         }
     });
 
-    // 2. Серверный Heartbeat поток (Ping каждые 30 секунд)
+    // 2. Серверный Heartbeat поток (Ping каждые N секунд из конфигурации)
     let tx_heartbeat = tx.clone();
-    let heartbeat_interval_secs = state.config.server.port; // AppConfig fallback
-    let ping_interval = Duration::from_secs(30);
-    let heartbeat_task = tokio::spawn(async move {
+    let ping_interval = Duration::from_secs(state.config.ws.heartbeat_interval_secs.max(5));
+    let mut heartbeat_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(ping_interval);
         loop {
             interval.tick().await;
@@ -213,10 +243,10 @@ async fn handle_socket(
     let tx_bus = tx.clone();
     let session_bus = session.clone();
     let bus_state = state.clone();
-    let bus_task = tokio::spawn(async move {
+    let mut bus_task = tokio::spawn(async move {
         while let Some(event) = subscription.recv().await {
-            // Проверка прав пользователя на чтение топика
-            if !session_bus.can_read_topic(&event.topic).await {
+            // Проверка фильтрации потока (RBAC + min_priority + event_types + source)
+            if !session_bus.should_deliver_event(&event).await {
                 continue;
             }
 
@@ -248,8 +278,22 @@ async fn handle_socket(
     let tx_recv = tx.clone();
     let session_recv = session.clone();
     let state_recv = state.clone();
-    let recv_task = tokio::spawn(async move {
+    let topics_recv = topics_registry.clone();
+    let max_cmds_sec = state.config.ws.max_commands_per_sec;
+    let max_subs = state.config.ws.max_subscriptions_per_client;
+
+    let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_stream.next().await {
+            // Rate Limiter Guard
+            if !session_recv.check_rate_limit(max_cmds_sec) {
+                let _ = tx_recv.send(WsServerMessage::Error {
+                    code: "RATE_LIMITED".to_string(),
+                    message: format!("Command rate limit exceeded (max {} cmds/sec)", max_cmds_sec),
+                    request_id: None,
+                }).await;
+                continue;
+            }
+
             let codec = session_recv.get_format().await;
 
             match msg {
@@ -295,6 +339,16 @@ async fn handle_socket(
 
                                 // Динамическая подписка на топики
                                 WsClientCommand::Subscribe { topics, with_retained } => {
+                                    let current_count = topics_recv.read().await.len();
+                                    if current_count + topics.len() > max_subs {
+                                        let _ = tx_recv.send(WsServerMessage::Error {
+                                            code: "LIMIT_EXCEEDED".to_string(),
+                                            message: format!("Max subscriptions limit exceeded ({})", max_subs),
+                                            request_id: None,
+                                        }).await;
+                                        continue;
+                                    }
+
                                     let mut accepted_topics = Vec::new();
                                     for topic in &topics {
                                         if session_recv.can_read_topic(topic).await {
@@ -317,6 +371,8 @@ async fn handle_socket(
                                     }
 
                                     if !accepted_topics.is_empty() {
+                                        let mut guard = topics_recv.write().await;
+                                        guard.extend(accepted_topics.clone());
                                         let _ = tx_recv.send(WsServerMessage::Subscribed { topics: accepted_topics }).await;
                                     }
                                 }
@@ -326,7 +382,39 @@ async fn handle_socket(
                                     for topic in &topics {
                                         state_recv.bus.remove_subscription_topic(sub_id, topic);
                                     }
+                                    {
+                                        let mut guard = topics_recv.write().await;
+                                        guard.retain(|t| !topics.contains(t));
+                                    }
                                     let _ = tx_recv.send(WsServerMessage::Unsubscribed { topics }).await;
+                                }
+
+                                // Дочитка пропущенных событий при реконнекте (L1 RingBuffer / L2 SQLite)
+                                WsClientCommand::Resume { since_timestamp, topics, limit } => {
+                                    let target_topics = match topics {
+                                        Some(t) => t,
+                                        None => topics_recv.read().await.clone(),
+                                    };
+
+                                    let mut replayed_events = Vec::new();
+                                    for top in &target_topics {
+                                        if session_recv.can_read_topic(top).await {
+                                            let events = state_recv.bus.query_history(Some(top.as_str()), limit.min(200)).await.unwrap_or_default();
+                                            for ev in events {
+                                                if ev.timestamp > since_timestamp {
+                                                    replayed_events.push(ev);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    let _ = tx_recv.send(WsServerMessage::ReplayBatch { events: replayed_events }).await;
+                                }
+
+                                // Динамическая настройка фильтров клиента
+                                WsClientCommand::SetFilter { min_priority, event_types, source } => {
+                                    session_recv.set_filters(min_priority, event_types, source).await;
+                                    let _ = tx_recv.send(WsServerMessage::Pong).await;
                                 }
 
                                 // Публикация события / команды в шину ядра
@@ -485,6 +573,9 @@ async fn handle_socket(
         _ = &mut bus_task => {},
         _ = &mut heartbeat_task => {},
     }
+
+    // Удаление из реестра активных соединений
+    state.ws_registry.unregister(sub_id).await;
 
     // ГАРАНТИРОВАННЫЙ СБРОС И ОТМЕНА ФОНОВЫХ ЗАДАЧ (Фикс утечки тасок)
     send_task.abort();

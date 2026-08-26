@@ -121,3 +121,10 @@ impl MetricsCollector {
 /// Потокобезопасная ссылка на сборщик метрик
 #[derive(Clone, Default, Debug)]
 pub struct BusMetrics(pub Arc<MetricsCollector>);
+
+impl BusMetrics {
+    /// Учесть сброшенное сообщение
+    pub fn record_dropped(&self) {
+        self.0.record_dropped();
+    }
+}

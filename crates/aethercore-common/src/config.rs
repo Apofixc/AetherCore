@@ -38,6 +38,9 @@ pub struct AppConfig {
     /// Настройки интернационализации и языка по умолчанию ([`I18nConfig`])
     #[serde(default)]
     pub i18n: I18nConfig,
+    /// Настройки WebSocket шлюза событий ([`WsConfig`])
+    #[serde(default)]
+    pub ws: WsConfig,
 }
 
 /// Конфигурация HTTP/WS сервера платформы
@@ -207,3 +210,60 @@ impl Default for I18nConfig {
         }
     }
 }
+
+/// Конфигурация WebSocket-шлюза событий
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WsConfig {
+    /// Интервал отправки серверного пинга в секундах (по умолчанию 30)
+    #[serde(default = "default_ws_heartbeat")]
+    pub heartbeat_interval_secs: u64,
+    /// Максимальное число одновременных WebSocket подключений (по умолчанию 1000)
+    #[serde(default = "default_ws_max_connections")]
+    pub max_connections: usize,
+    /// Максимальное количество активных подписок на одного клиента (по умолчанию 100)
+    #[serde(default = "default_ws_max_subscriptions")]
+    pub max_subscriptions_per_client: usize,
+    /// Максимальное количество команд в секунду на клиента (Rate Limit, по умолчанию 100)
+    #[serde(default = "default_ws_max_commands_per_sec")]
+    pub max_commands_per_sec: u32,
+    /// Разрешать ли анонимные подключения без токена (по умолчанию false)
+    #[serde(default)]
+    pub allow_anonymous: bool,
+    /// Список разрешенных Origin заголовков (по умолчанию ["*"])
+    #[serde(default = "default_ws_allowed_origins")]
+    pub allowed_origins: Vec<String>,
+}
+
+fn default_ws_heartbeat() -> u64 {
+    30
+}
+
+fn default_ws_max_connections() -> usize {
+    1000
+}
+
+fn default_ws_max_subscriptions() -> usize {
+    100
+}
+
+fn default_ws_max_commands_per_sec() -> u32 {
+    100
+}
+
+fn default_ws_allowed_origins() -> Vec<String> {
+    vec!["*".to_string()]
+}
+
+impl Default for WsConfig {
+    fn default() -> Self {
+        Self {
+            heartbeat_interval_secs: default_ws_heartbeat(),
+            max_connections: default_ws_max_connections(),
+            max_subscriptions_per_client: default_ws_max_subscriptions(),
+            max_commands_per_sec: default_ws_max_commands_per_sec(),
+            allow_anonymous: false,
+            allowed_origins: default_ws_allowed_origins(),
+        }
+    }
+}
+

@@ -7,7 +7,7 @@
 
 import { onMounted, onUnmounted, ref } from 'vue'
 import { eventBus, type EventHandler } from '../services/eventBus'
-import type { EventMessage, EventPriority } from '../services/types'
+import type { EventMessage, EventPriority, EventType } from '../services/types'
 
 export interface UseEventBusOptions {
   /**
@@ -67,6 +67,16 @@ export function useEventBus(options?: UseEventBusOptions) {
      */
     getState: (patterns: string[], limitPerTopic?: number) =>
       eventBus.getState(patterns, limitPerTopic),
+    /**
+     * Возобновить сессию и дочитать пропущенные события
+     */
+    resume: (sinceTimestamp: string, topics?: string[], limit?: number) =>
+      eventBus.resume(sinceTimestamp, topics, limit),
+    /**
+     * Настроить фильтрацию потока
+     */
+    setFilter: (minPriority?: EventPriority, eventTypes?: EventType[], source?: string) =>
+      eventBus.setFilter(minPriority, eventTypes, source),
     /**
      * Принудительно переподключиться
      */

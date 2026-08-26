@@ -42,6 +42,18 @@ export type WsClientCommand =
       path: string
       body?: any
     }
+  | {
+      action: 'resume'
+      since_timestamp: string
+      topics?: string[]
+      limit?: number
+    }
+  | {
+      action: 'set_filter'
+      min_priority?: EventPriority
+      event_types?: EventType[]
+      source?: string
+    }
   | { action: 'get_state'; patterns: string[]; limit_per_topic?: number }
   | { action: 'ping' }
 
@@ -57,6 +69,10 @@ export type WsServerMessage =
       type: 'event'
       seq: number
       event: EventMessage
+    }
+  | {
+      type: 'replay_batch'
+      events: EventMessage[]
     }
   | {
       type: 'ack'
@@ -91,3 +107,13 @@ export type WsServerMessage =
       message: string
       request_id?: string
     }
+
+export interface WsConnectionInfo {
+  sub_id: number
+  user_id?: string | null
+  username: string
+  client_ip: string
+  uptime_secs: number
+  format: string
+  topics: string[]
+}

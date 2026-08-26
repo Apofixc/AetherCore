@@ -57,6 +57,7 @@ async fn setup_test_app() -> (axum::Router, AppState, String) {
         plugin_manager,
         scheduler_service,
         backup_service,
+        ws_registry: aethercore_server::ws::WsConnectionRegistry::new(),
         start_time: Instant::now(),
     };
 

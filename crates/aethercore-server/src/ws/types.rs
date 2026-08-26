@@ -4,7 +4,7 @@
 //! сервера ([`WsServerMessage`]) и кодек форматирования ([`WsCodecFormat`]) для поддержки
 //! текстового JSON и компактного бинарного MessagePack.
 
-use aethercore_common::models::events::{EventMessage, EventPriority};
+use aethercore_common::models::events::{EventMessage, EventPriority, EventType};
 use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -132,6 +132,29 @@ pub enum WsClientCommand {
         #[serde(default = "default_retained_limit")]
         limit_per_topic: usize,
     },
+    /// Возобновление сессии и дочитка пропущенных событий из L1 RingBuffer / L2 SQLite ядра
+    Resume {
+        /// Временная метка, с которой запросить пропущенные события
+        since_timestamp: chrono::DateTime<chrono::Utc>,
+        /// Опциональный список топиков (если не задан — берутся активные подписки)
+        #[serde(default)]
+        topics: Option<Vec<String>>,
+        /// Лимит событий
+        #[serde(default = "default_retained_limit")]
+        limit: usize,
+    },
+    /// Динамическая настройка фильтров потока на клиенте
+    SetFilter {
+        /// Минимальный приоритет доставляемых событий
+        #[serde(default)]
+        min_priority: Option<EventPriority>,
+        /// Фильтр по типам событий (Telemetry, Reliable)
+        #[serde(default)]
+        event_types: Option<Vec<EventType>>,
+        /// Фильтр по префиксу источника
+        #[serde(default)]
+        source: Option<String>,
+    },
     /// Heartbeat пинг
     Ping,
 }
@@ -161,6 +184,11 @@ pub enum WsServerMessage {
         seq: u64,
         /// Содержимое события шины
         event: EventMessage,
+    },
+    /// Пакет пропущенных событий при реконнекте (из L1 RingBuffer / L2 SQLite)
+    ReplayBatch {
+        /// Список пропущенных событий
+        events: Vec<EventMessage>,
     },
     /// Подтверждение успешной публикации команды/события
     Ack {
@@ -200,7 +228,7 @@ pub enum WsServerMessage {
     Pong,
     /// Ошибка протокола или авторизации
     Error {
-        /// Символьный код ошибки (UNAUTHORIZED, FORBIDDEN, NOT_FOUND, BAD_REQUEST)
+        /// Символьный код ошибки (UNAUTHORIZED, FORBIDDEN, NOT_FOUND, BAD_REQUEST, RATE_LIMITED)
         code: String,
         /// Описание ошибки
         message: String,
@@ -208,4 +236,23 @@ pub enum WsServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+}
+
+/// Информация об активном WebSocket-соединении для реестра и мониторинга
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WsConnectionInfo {
+    /// Идентификатор подписки на шине
+    pub sub_id: u64,
+    /// Идентификатор пользователя (если авторизован)
+    pub user_id: Option<Uuid>,
+    /// Имя пользователя
+    pub username: String,
+    /// IP-адрес клиента
+    pub client_ip: String,
+    /// Время непрерывного подключения в секундах
+    pub uptime_secs: u64,
+    /// Формат данных (Json или MessagePack)
+    pub format: String,
+    /// Список активных топиков подписки
+    pub topics: Vec<String>,
 }

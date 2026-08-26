@@ -78,6 +78,7 @@ description: "Test module for API"
         plugin_manager,
         scheduler_service,
         backup_service,
+        ws_registry: aethercore_server::ws::WsConnectionRegistry::new(),
         start_time: Instant::now(),
     };
 

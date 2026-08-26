@@ -6,13 +6,15 @@
  * - Компактный бинарный кодек MessagePack (@msgpack/msgpack) с автопереключением на JSON.
  * - In-Band JWT аутентификацию.
  * - Монотонный контроль порядка сообщений (seq).
+ * - Возобновление сессии и дочитку пропущенных событий (Resume).
+ * - Динамическую фильтрацию потока (SetFilter).
  * - Вызов методов REST API ядра через сокет (`call`) с мгновенным 0 RTT откликом.
  * - 100% Graceful Fallback на HTTP fetch при отсутствии WebSocket.
  */
 
 import { decode, encode } from '@msgpack/msgpack'
 import { api } from '../api/client'
-import type { EventMessage, EventPriority, WsClientCommand, WsServerMessage } from './types'
+import type { EventMessage, EventPriority, EventType, WsClientCommand, WsServerMessage } from './types'
 
 export type EventHandler = (event: EventMessage) => void
 
@@ -277,6 +279,34 @@ class EventBusService {
   }
 
   /**
+   * Возобновить сессию и дочитать пропущенные события из Ring Buffer ядра
+   */
+  public resume(sinceTimestamp: string, topics?: string[], limit = 50) {
+    if (this.isConnected) {
+      this.sendCommand({
+        action: 'resume',
+        since_timestamp: sinceTimestamp,
+        topics,
+        limit
+      })
+    }
+  }
+
+  /**
+   * Настроить фильтрацию потока событий на клиенте
+   */
+  public setFilter(minPriority?: EventPriority, eventTypes?: EventType[], source?: string) {
+    if (this.isConnected) {
+      this.sendCommand({
+        action: 'set_filter',
+        min_priority: minPriority,
+        event_types: eventTypes,
+        source
+      })
+    }
+  }
+
+  /**
    * Запросить пакет сохраненных состояний (Retained Store)
    */
   public getState(patterns: string[], limitPerTopic = 20) {
@@ -338,6 +368,13 @@ class EventBusService {
           }
           this.lastSeq = msg.seq
           this.dispatchToSubscribers(msg.event)
+          break
+        }
+
+        case 'replay_batch': {
+          for (const ev of msg.events) {
+            this.dispatchToSubscribers(ev)
+          }
           break
         }
 
