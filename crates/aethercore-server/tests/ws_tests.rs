@@ -287,3 +287,95 @@ async fn test_rest_over_ws_in_process_dispatch() {
     let body_bytes = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
     assert_eq!(&body_bytes[..], b"OK");
 }
+
+#[tokio::test]
+async fn test_ws_monotonic_seq_and_resume() {
+    let state = setup_test_state().await;
+
+    // Публикуем серию событий
+    for i in 1..=5 {
+        let ev = EventMessage::reliable(
+            "devices.temp",
+            "sensor",
+            serde_json::json!({ "reading": i }),
+        );
+        state.bus.publish(ev).await.expect("Publish failed");
+    }
+
+    // Даем диспетчеру шины обработать очередь в L1 кольцевой буфер
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Дочитка событий строго после sequence ID = 2
+    let replayed = state
+        .bus
+        .query_after_seq(Some("devices.temp"), 2, 10)
+        .await
+        .expect("Query after seq failed");
+
+    assert_eq!(replayed.len(), 3);
+    assert_eq!(replayed[0].seq, Some(3));
+    assert_eq!(replayed[1].seq, Some(4));
+    assert_eq!(replayed[2].seq, Some(5));
+}
+
+#[tokio::test]
+async fn test_ws_reactive_session_revocation() {
+    let state = setup_test_state().await;
+    let session_id = Uuid::new_v4();
+
+    let claims = JwtClaims {
+        sub: Uuid::new_v4(),
+        username: "operator".to_string(),
+        is_superuser: false,
+        roles: vec!["operator".to_string()],
+        permissions: vec!["devices.view".to_string()],
+        exp: 9999999999,
+        iat: 1000000000,
+        session_id: Some(session_id),
+    };
+    let session = std::sync::Arc::new(WsSession::new(Some(claims), WsCodecFormat::Json, "10.0.0.1".into()));
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+
+    state.ws_registry.register(202, session, tx, vec!["devices.*".into()]).await;
+
+    // Имитируем отзыв сессии
+    let disconnected_count = state.ws_registry.disconnect_session(&session_id, "Session revoked").await;
+    assert_eq!(disconnected_count, 1);
+
+    // Проверяем, что в канал сокета ушло уведомление о закрытии
+    let msg = rx.recv().await.expect("Expected revoked message");
+    if let WsServerMessage::Error { code, .. } = msg {
+        assert_eq!(code, "SESSION_REVOKED");
+    } else {
+        panic!("Expected WsServerMessage::Error with SESSION_REVOKED code");
+    }
+}
+
+#[tokio::test]
+async fn test_ws_rpc_request_reply() {
+    let state = setup_test_state().await;
+    let bus = state.bus.clone();
+
+    // Серверная сторона (WASM-плагин или сервис ядра)
+    let bus_server = bus.clone();
+    tokio::spawn(async move {
+        let mut sub = bus_server.subscribe_topic("plugin.calculator.add");
+        if let Some(req) = sub.recv().await {
+            let a = req.payload.get("a").and_then(|v| v.as_i64()).unwrap_or(0);
+            let b = req.payload.get("b").and_then(|v| v.as_i64()).unwrap_or(0);
+            let _ = bus_server.reply_to(&req, serde_json::json!({ "sum": a + b })).await;
+        }
+    });
+
+    // Клиентский RPC-запрос
+    let resp = bus
+        .request(
+            "plugin.calculator.add",
+            serde_json::json!({ "a": 15, "b": 27 }),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .expect("RPC request failed");
+
+    assert_eq!(resp.payload.get("sum").and_then(|v| v.as_i64()), Some(42));
+}

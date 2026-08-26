@@ -255,6 +255,26 @@ impl EventStorage {
         Ok(records)
     }
 
+    /// Запросить события из базы данных, появившиеся после указанного sequence/ID
+    pub async fn query_after_seq(
+        &self,
+        topic_filter: Option<&str>,
+        after_seq: u64,
+        limit: usize,
+    ) -> Result<Vec<EventMessage>> {
+        let records = self.query(topic_filter, Some(after_seq as i64), limit.min(1000).max(1) as u32).await?;
+        let mut events = Vec::with_capacity(records.len());
+        for rec in records {
+            let payload = serde_json::from_str(&rec.payload_json).unwrap_or(serde_json::Value::Null);
+            let mut ev = EventMessage::reliable(rec.topic, rec.source, payload);
+            ev.id = rec.event_uuid;
+            ev.timestamp = rec.created_at;
+            ev.seq = Some(rec.id as u64);
+            events.push(ev);
+        }
+        Ok(events)
+    }
+
     /// Ручная ротация и очистка устаревших записей журнала
     pub async fn prune(&self, max_age: Option<Duration>, max_count: Option<usize>) -> Result<u64> {
         let mut total_deleted = 0u64;

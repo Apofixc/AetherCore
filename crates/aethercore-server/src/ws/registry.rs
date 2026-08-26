@@ -86,4 +86,69 @@ impl WsConnectionRegistry {
 
         result
     }
+
+    /// Отключить все соединения указанного пользователя (при отзыве доступа или блокировке)
+    pub async fn disconnect_user(&self, user_id: &uuid::Uuid, reason: &str) -> usize {
+        let guard = self.connections.read().await;
+        let mut to_disconnect = Vec::new();
+
+        for (sub_id, record) in guard.iter() {
+            if let Some(claims) = record.session.get_claims().await {
+                if claims.sub == *user_id {
+                    to_disconnect.push((*sub_id, record.sender.clone()));
+                }
+            }
+        }
+        drop(guard);
+
+        let count = to_disconnect.len();
+        for (_, sender) in to_disconnect {
+            let _ = sender.send(WsServerMessage::Error {
+                code: "SESSION_REVOKED".to_string(),
+                message: reason.to_string(),
+                request_id: None,
+            }).await;
+        }
+        count
+    }
+
+    /// Отключить соединения конкретной сессии
+    pub async fn disconnect_session(&self, session_id: &uuid::Uuid, reason: &str) -> usize {
+        let guard = self.connections.read().await;
+        let mut to_disconnect = Vec::new();
+
+        for (sub_id, record) in guard.iter() {
+            if let Some(claims) = record.session.get_claims().await {
+                if claims.session_id == Some(*session_id) {
+                    to_disconnect.push((*sub_id, record.sender.clone()));
+                }
+            }
+        }
+        drop(guard);
+
+        let count = to_disconnect.len();
+        for (_, sender) in to_disconnect {
+            let _ = sender.send(WsServerMessage::Error {
+                code: "SESSION_REVOKED".to_string(),
+                message: reason.to_string(),
+                request_id: None,
+            }).await;
+        }
+        count
+    }
+
+    /// Обновить клеймы/права пользователя на лету во всех его активных соединениях
+    pub async fn reload_user_claims(&self, user_id: &uuid::Uuid, new_claims: aethercore_common::models::user::JwtClaims) -> usize {
+        let guard = self.connections.read().await;
+        let mut count = 0;
+        for record in guard.values() {
+            if let Some(claims) = record.session.get_claims().await {
+                if claims.sub == *user_id {
+                    record.session.set_claims(new_claims.clone()).await;
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
 }

@@ -1042,6 +1042,16 @@ async fn revoke_session_handler(
             )
         })?;
 
+    if revoked {
+        let _ = state.bus.publish(
+            aethercore_common::models::events::EventMessage::reliable(
+                aethercore_common::models::events::TOPIC_AUTH_SESSION_REVOKED,
+                "core.system",
+                serde_json::json!({ "session_id": session_id.to_string() }),
+            )
+        ).await;
+    }
+
     let _ = state
         .audit_service
         .log(

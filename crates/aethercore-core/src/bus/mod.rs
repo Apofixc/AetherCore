@@ -59,6 +59,7 @@ pub struct EventBus {
     metrics: BusMetrics,
     topology: BusTopologyTracker,
     dlq: DeadLetterQueue,
+    global_seq: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl EventBus {
@@ -144,6 +145,7 @@ impl EventBus {
             metrics: metrics.clone(),
             topology: topology.clone(),
             dlq: dlq.clone(),
+            global_seq: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         };
 
         // Запуск фонового диспетчера взвешенных очередей
@@ -216,6 +218,11 @@ impl EventBus {
     /// # Ошибки
     /// Возвращает [`AppError`], если перехватчик отклонил публикацию или очередь переполнена/закрыта.
     pub async fn publish(&self, mut event: EventMessage) -> Result<()> {
+        // Присваиваем монотонный Sequence ID, если не был установлен
+        if event.seq.is_none() {
+            event.seq = Some(self.global_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1);
+        }
+
         // 1. Атомарная проверка и резервация в окне дедупликатора под локом (без TOCTOU)
         if self.dedup.is_duplicate_event_or_record(&event) {
             trace!("Ignoring duplicate event {}", event.id);
@@ -625,6 +632,7 @@ impl EventBus {
                 let payload = serde_json::from_str(&rec.payload_json).unwrap_or(serde_json::Value::Null);
                 let msg = EventMessage {
                     id: rec.event_uuid,
+                    seq: Some(rec.id as u64),
                     topic: rec.topic,
                     event_type: EventType::Reliable,
                     priority: aethercore_common::models::events::EventPriority::Normal,
@@ -647,6 +655,46 @@ impl EventBus {
             let mut combined: Vec<EventMessage> = db_events.into_iter().skip(db_skip).collect();
             combined.extend(ram_events);
             return Ok(combined);
+        }
+
+        Ok(ram_events)
+    }
+
+    /// Запросить события, строго следующие за указанным sequence ID (для надежного Resume)
+    ///
+    /// Сначала опрашивает сверхбыстрый горячий буфер L1 RingBuffer в оперативной памяти.
+    /// Если буфер не содержит нужного количества или события были вытеснены — дочитывает из L2 SQLite.
+    pub async fn query_after_seq(
+        &self,
+        topic_filter: Option<&str>,
+        after_seq: u64,
+        limit: usize,
+    ) -> Result<Vec<EventMessage>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        // 1. Проверяем L1 RAM кольцевой буфер
+        let ram_events = self.ring.query_after_seq(topic_filter, after_seq, limit);
+        if ram_events.len() >= limit || self.storage.is_none() {
+            return Ok(ram_events);
+        }
+
+        // 2. Если в памяти меньше limit и подключена БД — дочитываем из L2 SQLite
+        if let Some(ref st) = self.storage {
+            let db_events = st.query_after_seq(topic_filter, after_seq, limit).await?;
+            if !db_events.is_empty() {
+                let mut combined = db_events;
+                let ram_ids: std::collections::HashSet<_> = combined.iter().map(|e| e.id).collect();
+                for ev in ram_events {
+                    if !ram_ids.contains(&ev.id) {
+                        combined.push(ev);
+                    }
+                }
+                combined.sort_by_key(|e| e.seq.unwrap_or(0));
+                combined.truncate(limit);
+                return Ok(combined);
+            }
         }
 
         Ok(ram_events)

@@ -134,14 +134,31 @@ pub enum WsClientCommand {
     },
     /// Возобновление сессии и дочитка пропущенных событий из L1 RingBuffer / L2 SQLite ядра
     Resume {
-        /// Временная метка, с которой запросить пропущенные события
-        since_timestamp: chrono::DateTime<chrono::Utc>,
+        /// Монотонный Sequence ID последнего полученного события
+        #[serde(default)]
+        last_seen_seq: Option<u64>,
+        /// Временная метка, с которой запросить пропущенные события (fallback)
+        #[serde(default)]
+        since_timestamp: Option<chrono::DateTime<chrono::Utc>>,
         /// Опциональный список топиков (если не задан — берутся активные подписки)
         #[serde(default)]
         topics: Option<Vec<String>>,
         /// Лимит событий
         #[serde(default = "default_retained_limit")]
         limit: usize,
+    },
+    /// Асинхронный RPC-запрос к ядру или WASM-плагину через шину
+    RpcRequest {
+        /// Идентификатор корреляции запроса
+        correlation_id: String,
+        /// Целевой топик RPC-сервиса
+        topic: String,
+        /// JSON полезная нагрузка запроса
+        #[serde(default)]
+        payload: serde_json::Value,
+        /// Опциональный таймаут ожидания ответа в миллисекундах (по умолчанию 5000)
+        #[serde(default)]
+        timeout_ms: Option<u64>,
     },
     /// Динамическая настройка фильтров потока на клиенте
     SetFilter {
@@ -185,10 +202,27 @@ pub enum WsServerMessage {
         /// Содержимое события шины
         event: EventMessage,
     },
+    /// Пакет объединенных событий (Micro-Batching для снижения сетевого оверхеда)
+    Batch {
+        /// Список объединенных событий
+        events: Vec<EventMessage>,
+    },
     /// Пакет пропущенных событий при реконнекте (из L1 RingBuffer / L2 SQLite)
     ReplayBatch {
         /// Список пропущенных событий
         events: Vec<EventMessage>,
+    },
+    /// Ответ на асинхронный RPC-запрос через шину
+    RpcResponse {
+        /// Идентификатор корреляции
+        correlation_id: String,
+        /// Флаг успешности
+        success: bool,
+        /// Полезная нагрузка ответа
+        payload: serde_json::Value,
+        /// Текст ошибки в случае сбоя
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     /// Подтверждение успешной публикации команды/события
     Ack {

@@ -102,6 +102,33 @@ impl EventRingBuffer {
         results
     }
 
+    /// Запросить события, появившиеся строго после заданного sequence ID
+    pub fn query_after_seq(&self, topic_filter: Option<&str>, after_seq: u64, limit: usize) -> Vec<EventMessage> {
+        let guard = self.read_guard();
+        let limit = limit.max(1);
+
+        let mut results = Vec::new();
+        for ev in guard.iter() {
+            if let Some(seq) = ev.seq {
+                if seq > after_seq {
+                    if ev.is_expired() {
+                        continue;
+                    }
+                    if let Some(prefix) = topic_filter {
+                        if !prefix.is_empty() && !ev.topic.starts_with(prefix) {
+                            continue;
+                        }
+                    }
+                    results.push(ev.clone());
+                    if results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+        results
+    }
+
     /// Текущее количество элементов в буфере
     pub fn len(&self) -> usize {
         self.read_guard().len()

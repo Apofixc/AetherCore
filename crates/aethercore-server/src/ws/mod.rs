@@ -207,19 +207,29 @@ async fn handle_socket(
         }
     }
 
-    // 1. Поток передачи сообщений из канала в физический WebSocket
+    // 1. Поток передачи сообщений из канала в физический WebSocket (с Micro-Batching drain)
     let session_out = session.clone();
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            let codec = session_out.get_format().await;
-            match codec.encode(&msg) {
-                Ok(ws_frame) => {
-                    if ws_sink.send(ws_frame).await.is_err() {
-                        break;
-                    }
+            let mut msgs = vec![msg];
+            while let Ok(next) = rx.try_recv() {
+                msgs.push(next);
+                if msgs.len() >= 32 {
+                    break;
                 }
-                Err(e) => {
-                    error!("WebSocket serialization error: {}", e);
+            }
+
+            let codec = session_out.get_format().await;
+            for m in msgs {
+                match codec.encode(&m) {
+                    Ok(ws_frame) => {
+                        if ws_sink.send(ws_frame).await.is_err() {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        error!("WebSocket serialization error: {}", e);
+                    }
                 }
             }
         }
@@ -390,7 +400,7 @@ async fn handle_socket(
                                 }
 
                                 // Дочитка пропущенных событий при реконнекте (L1 RingBuffer / L2 SQLite)
-                                WsClientCommand::Resume { since_timestamp, topics, limit } => {
+                                WsClientCommand::Resume { last_seen_seq, since_timestamp, topics, limit } => {
                                     let target_topics = match topics {
                                         Some(t) => t,
                                         None => topics_recv.read().await.clone(),
@@ -399,16 +409,58 @@ async fn handle_socket(
                                     let mut replayed_events = Vec::new();
                                     for top in &target_topics {
                                         if session_recv.can_read_topic(top).await {
-                                            let events = state_recv.bus.query_history(Some(top.as_str()), limit.min(200)).await.unwrap_or_default();
-                                            for ev in events {
-                                                if ev.timestamp > since_timestamp {
-                                                    replayed_events.push(ev);
+                                            if let Some(seq) = last_seen_seq {
+                                                let events = state_recv.bus.query_after_seq(Some(top.as_str()), seq, limit.min(200)).await.unwrap_or_default();
+                                                replayed_events.extend(events);
+                                            } else if let Some(since) = since_timestamp {
+                                                let events = state_recv.bus.query_history(Some(top.as_str()), limit.min(200)).await.unwrap_or_default();
+                                                for ev in events {
+                                                    if ev.timestamp > since {
+                                                        replayed_events.push(ev);
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-
+                                    replayed_events.sort_by_key(|e| e.seq.unwrap_or(0));
                                     let _ = tx_recv.send(WsServerMessage::ReplayBatch { events: replayed_events }).await;
+                                }
+
+                                // Асинхронный RPC запрос к шине ядра/плагинов
+                                WsClientCommand::RpcRequest { correlation_id, topic, payload, timeout_ms } => {
+                                    if !session_recv.can_read_topic(&topic).await {
+                                        let _ = tx_recv.send(WsServerMessage::RpcResponse {
+                                            correlation_id,
+                                            success: false,
+                                            payload: serde_json::Value::Null,
+                                            error: Some(format!("Access denied to RPC topic '{}'", topic)),
+                                        }).await;
+                                        continue;
+                                    }
+
+                                    let timeout = Duration::from_millis(timeout_ms.unwrap_or(5000));
+                                    let bus = state_recv.bus.clone();
+                                    let tx_rpc = tx_recv.clone();
+                                    tokio::spawn(async move {
+                                        match bus.request(&topic, payload, timeout).await {
+                                            Ok(resp) => {
+                                                let _ = tx_rpc.send(WsServerMessage::RpcResponse {
+                                                    correlation_id,
+                                                    success: true,
+                                                    payload: resp.payload,
+                                                    error: None,
+                                                }).await;
+                                            }
+                                            Err(e) => {
+                                                let _ = tx_rpc.send(WsServerMessage::RpcResponse {
+                                                    correlation_id,
+                                                    success: false,
+                                                    payload: serde_json::Value::Null,
+                                                    error: Some(e.to_string()),
+                                                }).await;
+                                            }
+                                        }
+                                    });
                                 }
 
                                 // Динамическая настройка фильтров клиента

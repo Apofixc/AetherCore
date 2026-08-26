@@ -34,6 +34,29 @@ pub fn create_app_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Фоновый слушатель системных событий шины для мгновенного отзыва сессий
+    let mut system_bus_sub = state.bus.subscribe_topics(&[
+        aethercore_common::models::events::TOPIC_AUTH_SESSION_REVOKED,
+        aethercore_common::models::events::TOPIC_AUTH_USER_UPDATED,
+    ]);
+    let registry_listener = state.ws_registry.clone();
+    tokio::spawn(async move {
+        while let Some(event) = system_bus_sub.recv().await {
+            if event.topic == aethercore_common::models::events::TOPIC_AUTH_SESSION_REVOKED {
+                if let Some(session_id_str) = event.payload.get("session_id").and_then(|v| v.as_str()) {
+                    if let Ok(session_id) = uuid::Uuid::parse_str(session_id_str) {
+                        registry_listener.disconnect_session(&session_id, "Session revoked").await;
+                    }
+                }
+                if let Some(user_id_str) = event.payload.get("user_id").and_then(|v| v.as_str()) {
+                    if let Ok(user_id) = uuid::Uuid::parse_str(user_id_str) {
+                        registry_listener.disconnect_user(&user_id, "User access revoked").await;
+                    }
+                }
+            }
+        }
+    });
+
     Router::new()
         .nest("/api/v1", api::create_api_v1_router())
         .route("/modules/{id}/{*path}", get(module_assets_handler))

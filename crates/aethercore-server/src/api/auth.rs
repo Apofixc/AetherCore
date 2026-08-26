@@ -851,6 +851,14 @@ async fn revoke_my_session_handler(
             (status, Json(e.to_api_response(locale)))
         })?;
 
+    let _ = state.bus.publish(
+        aethercore_common::models::events::EventMessage::reliable(
+            aethercore_common::models::events::TOPIC_AUTH_SESSION_REVOKED,
+            "core.auth",
+            serde_json::json!({ "session_id": session_id.to_string() }),
+        )
+    ).await;
+
     let _ = state
         .audit_service
         .log(

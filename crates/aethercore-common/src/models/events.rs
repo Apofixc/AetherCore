@@ -34,6 +34,13 @@ pub enum EventType {
     Reliable,
 }
 
+/// Системный топик отзыва сессии
+pub const TOPIC_AUTH_SESSION_REVOKED: &str = "$system.auth.session_revoked";
+/// Системный топик обновления прав пользователя
+pub const TOPIC_AUTH_USER_UPDATED: &str = "$system.auth.user_updated";
+/// Префикс топиков для асинхронного RPC
+pub const TOPIC_RPC_PREFIX: &str = "$rpc.";
+
 /// Сообщение события в шине сообщений платформы
 ///
 /// Передает структурированные данные между ядром, плагинами и внешними WebSocket клиентами.
@@ -42,6 +49,9 @@ pub enum EventType {
 pub struct EventMessage {
     /// Уникальный идентификатор сообщения (UUID v4)
     pub id: Uuid,
+    /// Монотонный глобальный порядковый номер в шине (Global Sequence ID)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub seq: Option<u64>,
     /// Топик/тема события (например, `"devices.switch1.metrics"`, `"users.created"`, `"alarms.critical"`)
     pub topic: String,
     /// Тип доставки ([`EventType::Telemetry`] или [`EventType::Reliable`])
@@ -84,6 +94,7 @@ impl EventMessage {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            seq: None,
             topic: topic.into(),
             event_type: EventType::Telemetry,
             priority: EventPriority::Normal,
@@ -106,6 +117,7 @@ impl EventMessage {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            seq: None,
             topic: topic.into(),
             event_type: EventType::Reliable,
             priority: EventPriority::High,
@@ -119,6 +131,12 @@ impl EventMessage {
             correlation_id: None,
             reply_to: None,
         }
+    }
+
+    /// Установить глобальный sequence номер события
+    pub fn with_seq(mut self, seq: u64) -> Self {
+        self.seq = Some(seq);
+        self
     }
 
     /// Установить приоритет события
